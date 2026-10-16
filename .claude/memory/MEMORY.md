@@ -10,3 +10,6 @@
 - [プラグイン](plugins.md) — ハーネス群の配布・インストールの仕様。Agent Plugins 1.0.0 はスキルと MCP のみ、Copilot CLI はそれ以外も同梱できる
 - [ハーネスの調達](harness-sourcing.md) — 標準機能 → OSS（Awesome Copilot など）→ 自作 の順に検討
 - [実例：組み込み機器のプリントデバッグ](example-embedded-print-debug.md) — クロスコンパイル・デプロイ・ログ取得をスキル化し、ヒューマン・オン・ザ・ループにする
+- [自己改善](self-improvement.md) — （大事な考え）実行中にログを残し、実行後に振り返って改善提案し、自分のリポジトリへ Issue を発行する
+- [AI の思考サイクル（PDS）](pds-cycle.md) — （大事な考え）闇雲に実行を繰り返さず、必ず計画・実行・評価のサイクルを回す
+- [ソフトウェア工学の知識体系を参考にする](software-engineering-knowledge.md) — （大事な考え）推測だけでなく、SWEBOK など人間が蓄積してきた知識体系を取り入れる
