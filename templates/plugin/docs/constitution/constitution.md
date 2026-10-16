@@ -37,7 +37,7 @@
 
 | 用語 | 定義 |
 | --- | --- |
-| クリエイター | Agent Plugin を生成するプラグイン。リポジトリ plugin-creater で管理する |
+| クリエイター | リポジトリ plugin-creater 自身。Agent Plugin を生成するプラグインである |
 | 生成プラグイン | クリエイターが生成した Agent Plugin |
 | クリエイター憲章 | クリエイターの憲章（plugin-creater の `docs/constitution/constitution.md`） |
 | 生成プラグイン憲章 | 生成プラグインの憲章。クリエイターがテンプレートから生成し、生成プラグインに同梱する |
