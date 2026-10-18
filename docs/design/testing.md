@@ -68,10 +68,15 @@
 
 - ツール名は、Copilot CLI の公式ドキュメント（フックのリファレンス）にある対応表に従う。例：`bash` → `Bash`、`view` → `Read`、`ask_user` → `AskUserQuestion`、`task` → `Agent`。
 - 本文の中のツール名は、バッククォートで囲んだもの（`` `task` `` など）と、`ask_user` のような普通の単語と紛れない名前だけを置き換える。そのため、SKILL.md やエージェントの本文では、ツール名をバッククォートで囲んで書く。
-- モデル名は、Claude Code で使える名前にする。Claude 以外のモデルは、Claude Code では使えない。
+- モデル名は、Claude Code で使える名前にする。Claude 以外のモデルは、Claude Code では使えない。次の決まりで置き換える。
+  - カスタムエージェントの `model` と `models`（優先する順の候補）は、Claude Code の `model` 1つにする。候補の中に Claude のモデルがあれば、最初のものを Claude Code の ID にする（例：`claude-haiku-5.5` → `claude-haiku-5-5`）。
+  - 候補に Claude のモデルがなければ、Copilot の価格表で同じ値段の Claude のモデルにする（例：`gpt-6-luna` → `claude-haiku-5-5`）。この対応は、変換スクリプトに表として持つ。
+  - `modelPolicy` は Claude Code にないので外す。`reasoningEffort` は `effort` にする。
+- メインのエージェントのモデルは、試験の仕組みが決める。Copilot CLI ではプラグインからメインのエージェントのモデルを決められないので、Claude Code のプラグインの `settings.json` の `agent`（プラグインのエージェントをメインにする設定）は使わない。使うと、Copilot CLI にない振る舞いを試すことになる。
+- Claude Code では、サブエージェントは質問のツール（`AskUserQuestion`）を使えない。クリエイターは、ユーザーへの質問をメインのエージェントだけで行うので（[クリエイターの構造](creator-structure.md) 3.2）、置き換えてもこの点の振る舞いは変わらない。
 - 置き換えは、変換スクリプトで行う。毎回同じ結果になるようにするためである。変換スクリプトも2段目で試験する。
 - 置き換えた版は、`claude plugin validate` で Claude Code に読み込めることを確かめてから試す。警告（作者の情報がないなど）は不合格にしない。
-- 置き換えた版を試すので、結果は Copilot CLI での振る舞いと完全には一致しない。特に、スキルが呼ばれる場面や、エージェントへの仕事の割り振りは、ツールが違うと変わりうる。質問のツールも、Claude Code では選択肢が必要で、Copilot CLI では自由に答えられるので、質問のしかたが少し変わる。
+- 置き換えた版を試すので、結果は Copilot CLI での振る舞いと完全には一致しない。特に、スキルが呼ばれる場面や、エージェントへの仕事の割り振りは、ツールが違うと変わりうる。質問のツールも、Claude Code では選択肢が必要で、Copilot CLI では自由に答えられるので、質問のしかたが少し変わる。作業エージェントも Claude のモデルで動くので、本来のモデル（GPT-6 Luna など）で書いたときの出来は、この試験では分からない。
 
 ## 5. EVAL を実行する仕組み
 
