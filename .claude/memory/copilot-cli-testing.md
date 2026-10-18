@@ -24,8 +24,28 @@
 - できない：カスタムエージェントは、モデルが使えないと読み込み自体が省かれる。フックが読み込まれたかも、確かめられなかった。
 - フォルダを指定するインストールは、将来廃止されると表示された。マーケットプレイスを通したインストールだけになる。
 
+## Copilot SDK で試す（公式ドキュメントで調べた結果。まだ動かしていない）
+
+- `--plugin-dir` でプラグインを読み込む。フック、MCP サーバー、カスタムエージェントも読み込まれる。環境変数 `COPILOT_PLUGIN_DIR_ONLY=true` で、ユーザーがインストールしているほかのプラグインを外せる。読み込まれたプラグインは `rpc.plugins.list()` で分かる。
+  - 要確認：ドキュメントの例は以前の形式だけで、Agent Plugins の形式の `com.github.copilot/` が読み込まれるかは書かれていない。
+- エージェントの質問には `onUserInputRequest`、許可の求めには `onPermissionRequest` で、プログラムから答えられる。
+- 採点と記録に使えるイベント：`skill.invoked`（スキルが呼ばれた）、`subagent.started`・`subagent.completed`（カスタムエージェントとそのモデル）、`tool.execution_*`（使ったツール）、`user_input.requested`（質問）、`assistant.usage`（呼び出しごとのトークンと費用）、`session.idle`（手番の終わり）。
+- SDK は、自分に合う版の Copilot CLI を同梱している。手元の Copilot CLI を使うときは `COPILOT_CLI_PATH` で指定する。
+- `copilot -p` で使える主な項目：`--allow-tool`、`--deny-tool`、`--no-ask-user`（質問させない）、`--share=PATH`（会話の記録を Markdown に書き出す）。
+
+## 費用と環境
+
+- 2026年6月1日から、Copilot の利用は AI クレジットで数える。1クレジットは 0.01 ドルで、使ったモデルとトークンの量で決まる。個人プランの月の枠は、Pro が 1,500、Pro+ が 7,000、Max が 20,000 クレジット。
+  - 要確認：Copilot SDK で動かした分も数えられるか。`assistant.usage` の費用（`totalNanoAiu`）から AI クレジットへの換算。
+- Copilot CLI のローカルのサンドボックスは、2026年10月7日に一般提供になった。Linux では、サンドボックスの中のコマンドは専用のネットワークを使う。そのため、中で起動した Web の画面にブラウザーからつながらないおそれがある（要確認）。
+
 ## 出典
 
 - [GitHub Copilot CLI command reference](https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-command-reference)
 - [GitHub Copilot CLI plugin reference](https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-plugin-reference)
 - [Copilot SDK: Streaming events](https://docs.github.com/en/copilot/how-tos/copilot-sdk/features/streaming-events)
+- [Copilot SDK: Plugin directories](https://docs.github.com/en/copilot/how-tos/copilot-sdk/features/plugin-directories)
+- [Copilot SDK for Node.js（README）](https://github.com/github/copilot-sdk/blob/main/nodejs/README.md)
+- [GitHub Copilot CLI programmatic reference](https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-programmatic-reference)
+- [Usage-based billing for individuals](https://docs.github.com/en/copilot/concepts/billing/usage-based-billing-for-individuals)
+- [Configuring local sandbox settings](https://docs.github.com/en/copilot/how-tos/cloud-and-local-sandboxes/configuring-local-sandbox-settings)

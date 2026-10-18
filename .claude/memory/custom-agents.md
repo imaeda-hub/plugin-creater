@@ -36,6 +36,16 @@
 - Claude Code のツール名（`Read`、`Edit`、`Write`、`Bash`、`Grep`、`Glob` など）も、互換の別名として受け付ける。
 - MCP のツールは `サーバー名/ツール名`、サーバーのツールすべては `サーバー名/*` と書く。
 
+## モデルの指定（2026年10月時点の公式ドキュメント）
+
+- `model` に1つ、または `models` に優先する順の候補を書ける。ユーザーのプランで使える最初の候補が使われ、どれも使えなければセッションのモデルになる。`modelPolicy` が `preferred`（既定）なら `/subagents` で上書きでき、`required` なら上書きできない。
+  - 要確認：Copilot CLI の更新履歴（1.0.83）は「`model` に複数書ける」「`model-policy`」と書いており、コマンドリファレンスと書き方が違う。
+- モデルが決まる順は、呼び出しごとの指定 → ユーザーの設定 → エージェントの定義 → 親のセッション。
+- ユーザーがモデルを Auto にしていると、サブエージェントも `model` に関係なく Auto が選んだモデルになる。
+- プラグインからは、ユーザーと話すメインのエージェントのモデルを決められない。マニフェストにモデルの項目がない。決めるのは、ユーザーの `/model`、`--model`、設定である。
+- サブエージェントは、ユーザーに質問できないものとして設計する。Copilot CLI の公式ドキュメントには、サブエージェントが `ask_user` を使えるという記述がない。Claude Code では、質問のツールがすべてのサブエージェントから取り除かれる。ユーザーとの対話は、メインのエージェントに残す。
+- 費用（100万トークンあたり、入力・出力）：GPT-6 Luna と Claude Haiku 5.5 は 0.10・0.50 ドル、GPT-6.1 Sol と Claude Sonnet 5.5 は 2.00・10.00 ドルで、20倍違う。GPT-6.1 Sol は Pro プランでは使えない。年額の旧プランは、プロンプトの数とセッションのモデルで数えるので、作業エージェントを安いモデルにしても費用は変わらない。
+
 ## サブエージェントとスキル
 
 - サブエージェントにも、プラグインのスキルが見える。スキルの description に合う仕事を頼むと、サブエージェントがそのスキルを呼び、統括エージェント向けの手順を最初から自分で始めてしまうことがあった（Claude Code で確認）。
@@ -46,3 +56,9 @@
 
 - [GitHub Copilot CLI command reference（Custom agents reference）](https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-command-reference)
 - [Custom agents configuration](https://docs.github.com/en/copilot/reference/custom-agents-configuration)
+- [GitHub Copilot CLI plugin reference](https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-plugin-reference)
+- [Models and pricing for GitHub Copilot](https://docs.github.com/en/copilot/reference/copilot-billing/models-and-pricing)
+- [Supported AI models in GitHub Copilot](https://docs.github.com/en/copilot/reference/ai-models/supported-models)
+- [Copilot requests（年額の旧プラン）](https://docs.github.com/en/copilot/concepts/billing/copilot-requests)
+- [Copilot CLI changelog](https://github.com/github/copilot-cli/blob/main/changelog.md)
+- [Claude Code: Create custom subagents](https://code.claude.com/docs/en/sub-agents)
