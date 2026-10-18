@@ -20,6 +20,16 @@
   - LSP サーバー：`com.github.copilot/lsp.json`
 - つまり、Agent Plugins の形式を守ったまま、カスタムエージェントなども同梱できる。
 
+### Copilot CLI が読み込める2つの形式
+
+| 形式 | 見分け方 | 部品の置き場所 |
+| --- | --- | --- |
+| Agent Plugins の形式 | 直下の `plugin.json` に、決まった `$schema` がある | スキルは `skills/<名前>/SKILL.md`、MCP サーバーは直下の `mcp.json`。Copilot CLI 固有の部品（エージェント、コマンド、フック、LSP、ルール）は `com.github.copilot/` の中 |
+| 以前の形式 | `plugin.json` を `.plugin/`、直下、`.github/plugin/`、`.claude-plugin/` の順に探す | `agents/`（`.agent.md`）、`skills/`、`hooks.json` または `hooks/hooks.json`、`.mcp.json` など。`plugin.json` の項目で場所を変えられる |
+
+- 以前の形式では、Claude Code と同じ `.claude-plugin/plugin.json` もマニフェストとして探す。
+- 既存のプラグインを作り直すとき（憲章 第13条）は、どちらの形式かを見分けてから部品を読む。
+
 ## マーケットプレイス
 
 - マーケットプレイスを作り、その中に複数のプラグインを入れることができる。
