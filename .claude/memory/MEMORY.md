@@ -7,7 +7,7 @@
 - [カスタムエージェント（GitHub Copilot CLI）](custom-agents.md) — マルチエージェント構成の1エージェントを定義。モデル・権限・ツールなどを指定できる
 - [マルチエージェントの強み](multi-agent.md) — コンテキストウィンドウの最適化、処理速度、AI クレジットの最適化
 - [ハーネスの置き場所](harness-placement.md) — 決められた場所に置くことで効果を発揮。GitHub リポジトリでは `.github` 内
-- [プラグイン](plugins.md) — ハーネス群の配布・インストールの仕様。Agent Plugins 1.0.0 はスキルと MCP のみ、Copilot CLI はそれ以外も同梱できる
+- [プラグイン](plugins.md) — ハーネス群の配布・インストールの仕様。Agent Plugins 1.0.0 はスキルと MCP のみ、Copilot CLI はそれ以外も同梱できる。Copilot CLI 固有の部品は `com.github.copilot/` に置けば Agent Plugins と両立する
 - [ハーネスの調達](harness-sourcing.md) — 標準機能 → OSS（Awesome Copilot など）→ 自作 の順に検討
 - [実例：組み込み機器のプリントデバッグ](example-embedded-print-debug.md) — クロスコンパイル・デプロイ・ログ取得をスキル化し、ヒューマン・オン・ザ・ループにする
 - [自己改善](self-improvement.md) — （大事な考え）実行中にログを残し、実行後に振り返って改善提案し、自分のリポジトリへ Issue を発行する
