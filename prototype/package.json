@@ -1,0 +1,9 @@
+{
+  "name": "test-env-prototype",
+  "private": true,
+  "description": "Prototype of the test environment described in docs/design/testing.md",
+  "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "0.3.302",
+    "playwright": "1.56.1"
+  }
+}

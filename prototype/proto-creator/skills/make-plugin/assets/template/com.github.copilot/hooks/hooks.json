@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "hooks": {
+    "subagentStart": [
+      { "type": "command", "bash": "python3 \"${PLUGIN_ROOT}/scripts/report_hook.py\" start", "timeoutSec": 10 }
+    ],
+    "subagentStop": [
+      { "type": "command", "bash": "python3 \"${PLUGIN_ROOT}/scripts/report_hook.py\" stop", "timeoutSec": 10 }
+    ],
+    "preToolUse": [
+      { "type": "command", "bash": "python3 \"${PLUGIN_ROOT}/scripts/report_hook.py\" check-stop", "timeoutSec": 10 }
+    ]
+  }
+}

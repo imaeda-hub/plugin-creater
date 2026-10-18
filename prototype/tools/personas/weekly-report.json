@@ -1,0 +1,36 @@
+{
+  "id": "weekly-report",
+  "request": "毎週の売上データ（CSV）から、部長に出す週報を作る作業を、Copilot CLI のプラグインにしたいです。作ってもらえますか？",
+  "profile": "あなたは営業チームのリーダーです。毎週、売上の CSV から部長向けの週報を作っています。AI にプラグインを作ってもらうために、AI の質問に答えます。",
+  "knowledge": [
+    {"id": "output", "fact": "成果物は weekly_report.md という名前の Markdown のファイル。入力は sales.csv（日付・担当・金額の列）",
+     "reveal": "成果物、ファイル、入力について聞かれたら答える"},
+    {"id": "headings", "fact": "すでにある週報のテンプレートを使っている。見出しは「■今週の売上」と「■来週の予定」の2つだけ",
+     "reveal": "テンプレート、資料、資産、見出し、構成について聞かれたら答える"},
+    {"id": "man-yen", "fact": "金額は万円の単位で書き、1万円未満は切り捨てる（例：128,000円は12万円）",
+     "reveal": "数字や金額の書き方について聞かれたら答える"},
+    {"id": "ijou", "fact": "社内のルールで、文書の最後の行は必ず「以上」の2文字だけにする",
+     "reveal": "文書の締めくくり、最後の行、終わり方について聞かれたときだけ答える。当たり前すぎて、それ以外の質問では思いつかない"}
+  ],
+  "markers": {
+    "output": ["weekly_report\\.md"],
+    "headings": ["■今週の売上", "■来週の予定"],
+    "man-yen": ["万円", "切り捨"],
+    "ijou": ["「以上」|以上」"]
+  },
+  "inner": {
+    "fixtures": {
+      "sales.csv": "日付,担当,金額\n2026-10-12,佐藤,128000\n2026-10-13,鈴木,95000\n2026-10-15,佐藤,240000\n2026-10-16,田中,57000\n"
+    },
+    "prompt": "sales.csv から、今週の週報を作ってください。",
+    "settings": {"model": "haiku", "limit": 2},
+    "graders": [
+      {"id": "file", "type": "file_exists", "path": "weekly_report.md"},
+      {"id": "heading-sales", "type": "regex", "path": "weekly_report.md", "pattern": "■今週の売上"},
+      {"id": "heading-plan", "type": "regex", "path": "weekly_report.md", "pattern": "■来週の予定"},
+      {"id": "total-man-yen", "type": "regex", "path": "weekly_report.md", "pattern": "52\\s*万円"},
+      {"id": "no-raw-yen", "type": "not_regex", "path": "weekly_report.md", "pattern": "520,?000"},
+      {"id": "last-line-ijou", "type": "last_line", "path": "weekly_report.md", "text": "以上"}
+    ]
+  }
+}
