@@ -1,6 +1,6 @@
 # Agent SDK で EVAL を動かすときの注意
 
-Claude Code の Agent SDK（TypeScript 版 0.3.302、Claude Code 2.1.302）で、プラグインの EVAL の仕組みを試作して分かったこと（2026年10月）。設計への反映は [試験の設計](../../docs/design/testing.md) にある。
+Claude Code の Agent SDK（TypeScript 版 0.3.302、Claude Code 2.1.302）で、プラグインの EVAL の仕組みを試作して分かったこと（2026年10月）。設計への反映は [試験の設計](../../docs/design/testing.md) にある。試作のコードは、ブランチ `claude/test-prototype` の `prototype/` にある（main には入れていない）。
 
 ## 試されるエージェントを隔離する
 
