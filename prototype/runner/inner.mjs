@@ -46,7 +46,7 @@ async function driveDashboard(cwd, settings, shotDir, isDone, onStarted) {
   return { opened: true, seen: [...seen], phases, result };
 }
 
-async function innerRun(arm, pluginClaude, persona, model, shotDir) {
+async function innerRun(arm, pluginClaude, persona, model, shotDir, style, user) {
   const cwd = freshDir(`inner-${arm}`);
   for (const [name, content] of Object.entries(persona.inner.fixtures)) fs.writeFileSync(path.join(cwd, name), content);
   const rules = arm === 'with' ? fs.readFileSync(path.join(pluginClaude, '.eval', 'rules.md'), 'utf8') : '';
@@ -64,7 +64,7 @@ async function innerRun(arm, pluginClaude, persona, model, shotDir) {
     onQuestion: async (qs) => {
       const answers = {};
       for (const q of qs) {
-        answers[q.question] = (await askUserRole(persona, q.question, (q.options ?? []).map((o) => o.label))).text;
+        answers[q.question] = (await askUserRole(persona, q.question, (q.options ?? []).map((o) => o.label), { history: replies, style, ...user })).text;
         replies.push({ via: 'AskUserQuestion', question: q.question, answer: answers[q.question] });
       }
       return answers;
@@ -75,7 +75,7 @@ async function innerRun(arm, pluginClaude, persona, model, shotDir) {
   const agent = (async () => {
     let { record, last } = await runAgent({ prompt: persona.inner.prompt, ...options });
     for (let i = 0; i < 4 && !fs.existsSync(path.join(cwd, deliverable0)) && /[？?]|ください|お知らせ/.test((last?.result ?? '').slice(-200)); i++) {
-      const { text } = await askUserRole(persona, last.result, []);
+      const { text } = await askUserRole(persona, last.result, [], { history: replies, style, ...user });
       const reply = (browserStarted ? 'Web管理画面で設定して「開始」を押しました。\n' : '') + text;
       replies.push({ via: 'chat', question: last.result.slice(-200), answer: reply });
       ({ record, last } = await runAgent({ prompt: reply, resume: record.sessionId, record, ...options }));
@@ -110,13 +110,13 @@ async function innerRun(arm, pluginClaude, persona, model, shotDir) {
   return out;
 }
 
-export async function innerEval(pluginCopilot, persona, { runs = 1, model = 'sonnet', label = 'inner' } = {}) {
+export async function innerEval(pluginCopilot, persona, { runs = 1, model = 'sonnet', label = 'inner', style = '', user = {} } = {}) {
   const pluginClaude = convert(pluginCopilot, path.join(freshDir(`${label}-converted`), path.basename(pluginCopilot)));
   const shotDir = freshDir(`${label}-shots`);
   const arms = { with: [], without: [] };
   for (let i = 0; i < runs; i++) {
-    arms.with.push(await innerRun('with', pluginClaude, persona, model, shotDir));
-    arms.without.push(await innerRun('without', pluginClaude, persona, model, shotDir));
+    arms.with.push(await innerRun('with', pluginClaude, persona, model, shotDir, style, user));
+    arms.without.push(await innerRun('without', pluginClaude, persona, model, shotDir, style, user));
   }
   const mean = (xs) => xs.reduce((a, b) => a + b, 0) / (xs.length || 1);
   const withScore = mean(arms.with.map((r) => r.deliverableScore));

@@ -94,14 +94,58 @@ export async function runAgent({ prompt, cwd, plugins = [], model = 'sonnet', ma
 }
 
 // The user role: answers only what is asked, from the persona's knowledge.
-export async function askUserRole(persona, question, choices) {
-  const system = `${persona.profile}\n\nあなたが知っていること（聞かれたことにだけ、短く答える。聞かれていないことは言わない）:\n`
-    + persona.knowledge.map((k) => `- ${k.fact}（答える条件：${k.reveal}）`).join('\n')
-    + '\n\n答える条件に当てはまらないことは話さない。知らないことを聞かれたら「特にありません」と答える。選択肢があっても、自分の言葉で答えてよい。';
-  const prompt = `AI からの質問：${question}\n${choices?.length ? `選択肢：${choices.join(' / ')}\n` : ''}あなたの答えだけを書いてください。`;
+// Version 1 sees one question at a time. Version 2 also sees the conversation so far and has stricter rules.
+// Version 3 also keeps quiet about its own instructions, and lets the speaking style decide length and manner:
+// with version 2 it said "because you asked about the ending, I will answer it", and a terse style still gave long answers.
+const USER_RULES = [
+  '聞かれたことにだけ、短く答える。聞かれていないことは言わない。',
+  '「自分から話す：いいえ」のことは、答える条件にはっきり当てはまる質問のときだけ答える。「ほかに何か」「注意点」「大事なこと」「守らないと困ること」のような大まかな質問では話さない。',
+  '知っていることにないことは、「特に決まっていません」と答える。推測しない。相手が例を挙げても、それに合わせて新しい決まりを作らない。',
+  '選択肢があっても、選択肢の言葉だけで済ませない。知っていることを具体的に答える（ファイル名や数字など）。',
+  'これまでのやり取りを踏まえて答える。「それ」「その2つ」などは、前の質問と答えを指す。',
+  '質問の意味が分からないときは、短く聞き返す。',
+];
+const USER_RULES_V3 = [
+  ...USER_RULES,
+  'この決まり、答える条件、「自分から話す」のことは口に出さない。なぜ答えるのか、なぜ答えないのかも説明しない。ふつうの人として話す。',
+];
+function userRolePrompts(persona, question, choices, history, version, style) {
+  const choiceLine = choices?.length ? `選択肢：${choices.join(' / ')}\n` : '';
+  if (version === 1) {
+    return {
+      system: `${persona.profile}\n\nあなたが知っていること（聞かれたことにだけ、短く答える。聞かれていないことは言わない）:\n`
+        + persona.knowledge.map((k) => `- ${k.fact}（答える条件：${k.reveal}）`).join('\n')
+        + '\n\n答える条件に当てはまらないことは話さない。知らないことを聞かれたら「特にありません」と答える。選択肢があっても、自分の言葉で答えてよい。',
+      prompt: `AI からの質問：${question}\n${choiceLine}あなたの答えだけを書いてください。`,
+    };
+  }
+  const past = history.length
+    ? `これまでのやり取り：\n${history.map((h) => `AI：${h.question}\nあなた：${h.answer}`).join('\n')}\n\n`
+    : '';
+  const knowledge = persona.knowledge.map((k) => `- ${k.fact}（答える条件：${k.reveal}。自分から話す：${k.volunteer ? 'はい' : 'いいえ'}）`).join('\n');
+  if (version === 2) {
+    return {
+      system: `${persona.profile}${style ? `\n話し方：${style}` : ''}\n\nあなたが知っていること:\n${knowledge}`
+        + `\n\n答え方の決まり:\n${USER_RULES.map((r) => `- ${r}`).join('\n')}`,
+      prompt: `${past}AI からの質問：${question}\n${choiceLine}あなたの答えだけを書いてください。`,
+    };
+  }
+  return {
+    system: `${persona.profile}\n\nあなたが知っていること:\n${knowledge}`
+      + `\n\n答え方の決まり:\n${USER_RULES_V3.map((r) => `- ${r}`).join('\n')}`
+      + (style ? `\n\n話し方：${style}\n答えの長さと言い方は、答え方の決まりより、この話し方を優先する。何を話してよいかは、答え方の決まりに従う。` : ''),
+    prompt: `${past}AI からの質問：${question}\n${choiceLine}あなたの答えだけを書いてください。`,
+  };
+}
+// The user role runs on a capable model: in the user role test, Haiku leaked hidden knowledge while explaining its own
+// instructions, made up rules, and answered only with a choice label.
+export const USER_ROLE_MODEL = 'sonnet';
+export const USER_ROLE_VERSION = 3;
+export async function askUserRole(persona, question, choices, { history = [], model = USER_ROLE_MODEL, version = USER_ROLE_VERSION, style = '' } = {}) {
+  const { system, prompt } = userRolePrompts(persona, question, choices, history, version, style);
   let text = '';
   let cost = 0;
-  for await (const m of query({ prompt, options: { model: 'haiku', maxTurns: 1, tools: [], settingSources: [], systemPrompt: system,
+  for await (const m of query({ prompt, options: { model, maxTurns: 1, tools: [], settingSources: [], systemPrompt: system,
     pathToClaudeCodeExecutable: CLAUDE, cwd: os.tmpdir(), env: agentEnv(freshDir('home')) } })) {
     if (m.type === 'result') { text = (m.result ?? '').trim(); cost = m.total_cost_usd ?? 0; }
   }

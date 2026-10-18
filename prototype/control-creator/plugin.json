@@ -1,0 +1,6 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "proto-creator",
+  "version": "0.1.0",
+  "description": "Prototype creator: interviews the user and generates an Agent Plugin that embeds the user's knowledge."
+}

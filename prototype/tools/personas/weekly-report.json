@@ -3,34 +3,182 @@
   "request": "毎週の売上データ（CSV）から、部長に出す週報を作る作業を、Copilot CLI のプラグインにしたいです。作ってもらえますか？",
   "profile": "あなたは営業チームのリーダーです。毎週、売上の CSV から部長向けの週報を作っています。AI にプラグインを作ってもらうために、AI の質問に答えます。",
   "knowledge": [
-    {"id": "output", "fact": "成果物は weekly_report.md という名前の Markdown のファイル。入力は sales.csv（日付・担当・金額の列）",
-     "reveal": "成果物、ファイル、入力について聞かれたら答える"},
-    {"id": "headings", "fact": "すでにある週報のテンプレートを使っている。見出しは「■今週の売上」と「■来週の予定」の2つだけ",
-     "reveal": "テンプレート、資料、資産、見出し、構成について聞かれたら答える"},
-    {"id": "man-yen", "fact": "金額は万円の単位で書き、1万円未満は切り捨てる（例：128,000円は12万円）",
-     "reveal": "数字や金額の書き方について聞かれたら答える"},
-    {"id": "ijou", "fact": "社内のルールで、文書の最後の行は必ず「以上」の2文字だけにする",
-     "reveal": "文書の締めくくり、最後の行、終わり方について聞かれたときだけ答える。当たり前すぎて、それ以外の質問では思いつかない"}
+    {
+      "id": "output",
+      "fact": "成果物は weekly_report.md という名前の Markdown のファイル。入力は sales.csv（日付・担当・金額の列）",
+      "reveal": "成果物、ファイル、入力について聞かれたら答える",
+      "volunteer": true
+    },
+    {
+      "id": "headings",
+      "fact": "すでにある週報のテンプレートを使っている。見出しは「■今週の売上」と「■来週の予定」の2つだけ",
+      "reveal": "テンプレート、資料、資産、見出し、構成について聞かれたら答える",
+      "volunteer": false
+    },
+    {
+      "id": "man-yen",
+      "fact": "金額は万円の単位で書き、1万円未満は切り捨てる（例：128,000円は12万円）",
+      "reveal": "数字や金額の書き方について聞かれたら答える",
+      "volunteer": true
+    },
+    {
+      "id": "ijou",
+      "fact": "社内のルールで、文書の最後の行は必ず「以上」の2文字だけにする",
+      "reveal": "文書の締めくくり、最後の行、終わり方について聞かれたときだけ答える。当たり前すぎて、それ以外の質問では思いつかない",
+      "volunteer": false
+    }
   ],
   "markers": {
-    "output": ["weekly_report\\.md"],
-    "headings": ["■今週の売上", "■来週の予定"],
-    "man-yen": ["万円", "切り捨"],
-    "ijou": ["「以上」|以上」"]
+    "output": [
+      "weekly_report\\.md"
+    ],
+    "headings": [
+      "■今週の売上",
+      "■来週の予定"
+    ],
+    "man-yen": [
+      "万円",
+      "切り捨"
+    ],
+    "ijou": [
+      "「以上」|以上」"
+    ]
   },
   "inner": {
     "fixtures": {
       "sales.csv": "日付,担当,金額\n2026-10-12,佐藤,128000\n2026-10-13,鈴木,95000\n2026-10-15,佐藤,240000\n2026-10-16,田中,57000\n"
     },
     "prompt": "sales.csv から、今週の週報を作ってください。",
-    "settings": {"model": "haiku", "limit": 2},
+    "settings": {
+      "model": "haiku",
+      "limit": 2
+    },
     "graders": [
-      {"id": "file", "type": "file_exists", "path": "weekly_report.md"},
-      {"id": "heading-sales", "type": "regex", "path": "weekly_report.md", "pattern": "■今週の売上"},
-      {"id": "heading-plan", "type": "regex", "path": "weekly_report.md", "pattern": "■来週の予定"},
-      {"id": "total-man-yen", "type": "regex", "path": "weekly_report.md", "pattern": "52\\s*万円"},
-      {"id": "no-raw-yen", "type": "not_regex", "path": "weekly_report.md", "pattern": "520,?000"},
-      {"id": "last-line-ijou", "type": "last_line", "path": "weekly_report.md", "text": "以上"}
+      {
+        "id": "file",
+        "type": "file_exists",
+        "path": "weekly_report.md"
+      },
+      {
+        "id": "heading-sales",
+        "type": "regex",
+        "path": "weekly_report.md",
+        "pattern": "■今週の売上"
+      },
+      {
+        "id": "heading-plan",
+        "type": "regex",
+        "path": "weekly_report.md",
+        "pattern": "■来週の予定"
+      },
+      {
+        "id": "total-man-yen",
+        "type": "regex",
+        "path": "weekly_report.md",
+        "pattern": "52\\s*万"
+      },
+      {
+        "id": "no-raw-yen",
+        "type": "not_regex",
+        "path": "weekly_report.md",
+        "pattern": "520,?000"
+      },
+      {
+        "id": "last-line-ijou",
+        "type": "last_line",
+        "path": "weekly_report.md",
+        "text": "以上"
+      }
     ]
+  },
+  "userRoleTests": {
+    "leakMarkers": {
+      "headings": "今週の売上|来週の予定|テンプレート",
+      "ijou": "「以上」|以上」|最後の行"
+    },
+    "askedMarkers": {
+      "output": "成果物|ファイル|入力",
+      "headings": "テンプレート|見出し|構成|資料|資産",
+      "man-yen": "金額|数字|単位",
+      "ijou": "締めくくり|最後の行|終わり方|結び"
+    },
+    "generic": [
+      "守らないと困ることはありますか？",
+      "ほかに、伝えておきたいことはありますか？",
+      "週報づくりで、気をつけていることはありますか？",
+      "注意点を教えてください。",
+      "この作業で大事なことは何ですか？"
+    ],
+    "recall": {
+      "output": {
+        "marker": "weekly_report\\.md",
+        "questions": [
+          "成果物は、どんな名前のファイルですか？",
+          "週報は、どんなファイルで作りますか？"
+        ]
+      },
+      "headings": {
+        "marker": "今週の売上",
+        "questions": [
+          "使っているテンプレートはありますか？",
+          "週報の見出しは、どうなっていますか？"
+        ]
+      },
+      "man-yen": {
+        "marker": "万円",
+        "questions": [
+          "金額は、どう書きますか？",
+          "数字の書き方に決まりはありますか？"
+        ]
+      },
+      "ijou": {
+        "marker": "「以上」|以上」|最後の行",
+        "questions": [
+          "文書の最後の行に、決まりはありますか？",
+          "週報の締めくくりは、どう書きますか？"
+        ]
+      }
+    },
+    "unknown": [
+      "前週比は書きますか？",
+      "グラフは入れますか？",
+      "週報はいつまでに出しますか？",
+      "担当者ごとの目標はありますか？"
+    ],
+    "abstain": "特に(決まって)?(いません|ない|ありません)|決まって(いません|ない)|分かりません|わかりません|知りません|ありません",
+    "context": [
+      {
+        "turns": [
+          "使っているテンプレートはありますか？",
+          "その2つ以外の見出しを足してもいいですか？"
+        ],
+        "expect": "いいえ|足さない|足しません|だけ|ダメ|だめ|使いません|入れません"
+      }
+    ],
+    "options": [
+      {
+        "question": "成果物の形式はどれですか？",
+        "choices": [
+          "Markdown",
+          "Word",
+          "Excel"
+        ],
+        "expect": "weekly_report\\.md"
+      }
+    ],
+    "compound": [
+      {
+        "question": "週報の書き方や社内のルールはありますか？（書き出し・締めくくりの決まり、数字の書き方を含めて教えてください）",
+        "expect": [
+          "万円",
+          "以上」"
+        ]
+      }
+    ]
+  },
+  "styles": {
+    "normal": "",
+    "terse": "口数が少ない。聞かれたことに、一言か二言だけで答える。説明や例は付けない。",
+    "vague": "細かいことを言葉にするのが苦手。最初は「普通の書き方です」「特に変わったことはしていません」のように、あいまいに答える。同じことを具体的に聞き直されたときに、知っていることを答える。"
   }
 }
