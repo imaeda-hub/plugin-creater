@@ -1,6 +1,6 @@
 # Copilot CLI の試験機能
 
-2026年10月時点の公式ドキュメントと、Copilot CLI 1.0.98 で実際に試した結果。このリポジトリの試験は Claude Code で行う（[試験の設計](../../docs/design/testing.md)）。
+2026年10月時点の公式ドキュメントと、Copilot CLI 1.0.98 で実際に試した結果。このリポジトリでは、AI の試験は Claude Code で行い、最終確認だけ人が手元の Copilot CLI で行う（[試験の設計](../../docs/design/testing.md)）。
 
 ## 試験のための専用コマンドはない
 
