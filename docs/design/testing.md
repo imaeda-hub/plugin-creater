@@ -76,9 +76,9 @@
 - ツール名は、Copilot CLI の公式ドキュメント（フックのリファレンス）にある対応表に従う。例：`bash` → `Bash`、`view` → `Read`、`ask_user` → `AskUserQuestion`、`task` → `Agent`。
 - 本文の中のツール名は、バッククォートで囲んだもの（`` `task` `` など）と、`ask_user` のような普通の単語と紛れない名前だけを置き換える。そのため、SKILL.md やエージェントの本文では、ツール名をバッククォートで囲んで書く。
 - モデル名は、Claude Code で使える名前にする。Claude 以外のモデルは、Claude Code では使えない。次の決まりで置き換える。
-  - カスタムエージェントの `model` と `models`（優先する順の候補）は、Claude Code の `model` 1つにする。候補の中に Claude のモデルがあれば、最初のものを Claude Code の ID にする（例：`claude-haiku-5.5` → `claude-haiku-5-5`）。
+  - カスタムエージェントの `model`（1つ、または優先する順のリスト）は、Claude Code の `model` 1つにする。候補の中に Claude のモデルがあれば、最初のものを Claude Code の ID にする（例：`claude-haiku-5.5` → `claude-haiku-5-5`）。
   - 候補に Claude のモデルがなければ、Copilot の価格表で同じ値段の Claude のモデルにする（例：`gpt-6-luna` → `claude-haiku-5-5`）。この対応は、変換スクリプトに表として持つ。
-  - `modelPolicy` は Claude Code にないので外す。`reasoningEffort` は `effort` にする。
+  - `model-policy` は Claude Code にないので外す。`reasoningEffort` は `effort` にする。
 - メインのエージェントのモデルは、試験の仕組みが決める。Copilot CLI ではプラグインからメインのエージェントのモデルを決められないので、Claude Code のプラグインの `settings.json` の `agent`（プラグインのエージェントをメインにする設定）は使わない。使うと、Copilot CLI にない振る舞いを試すことになる。
 - Claude Code では、サブエージェントは質問のツール（`AskUserQuestion`）を使えない。クリエイターは、ユーザーへの質問をメインのエージェントだけで行うので（[クリエイターの構造](creator-structure.md) 3.2）、置き換えてもこの点の振る舞いは変わらない。
 - 置き換えは、変換スクリプトで行う。毎回同じ結果になるようにするためである。変換スクリプトも2段目で試験する。
@@ -192,12 +192,12 @@
 ### 8.2 ユーザーの試験
 
 - 1・2段目はモデルを使わないので、AI クレジットを使わない。
-- EVAL は、Copilot の AI クレジットを使う。1クレジットは 0.01 ドルで、使ったモデルとトークンの量で決まる。個人プランの月の枠は、Pro が 1,500、Pro+ が 7,000、Max が 20,000 クレジットである。公式ドキュメントでは、Copilot CLI が数える対象に入っている。Copilot SDK で動かした分も同じく数えられるかは、書かれていない（要確認）。
+- EVAL は、Copilot の AI クレジットを使う。1クレジットは 0.01 ドルで、使ったモデルとトークンの量で決まる。個人プランの月の枠は、Pro が 1,500、Pro+ が 7,000、Max が 20,000 クレジットである。公式ドキュメントでは、Copilot CLI が数える対象に入っている。Copilot SDK は、Copilot CLI と同じランタイムをユーザーのアカウントで動かし、モデルの呼び出しごとに Copilot の API が返す費用を記録する。そのため、SDK で動かした分も同じく数えられる（Copilot SDK 1.0.22 の説明と型定義で確認）。
 - 見込みは、次のかけ算で出し、EVAL を始める前に回数とあわせて示す（REQ-040）。
   - （ありの1回分 ＋ なしの1回分）× 回数 ＋ 採点でモデルを使う分
   - 1回分には、同じ生成プラグインで前に EVAL をしたときの記録（`assistant.usage`）から測った値を使う。初めてのときは、開発の試験で測った目安（1回あたりのトークン数）に、使うモデルの価格（Copilot の価格表）をかけて出す。
 - 目安は、まだ測っていない。試作（Claude の定価）では、内側の EVAL がプラグインありで1回 約 0.13〜0.22 ドルだった。同じくらいなら、あり・なしを3回ずつで 50〜80 クレジット程度になる（推定）。回数の既定値は、ユーザーの環境で費用を測ってから決める。
-- 見込みは上限ではない。使った分は、`assistant.usage` を足し上げて示す（REQ-041）。そこにある費用（`copilotUsage.totalNanoAiu`）を AI クレジットに直す換算は、要確認。
+- 見込みは上限ではない。使った分は、`assistant.usage` を足し上げて示す（REQ-041）。そこにある費用（`copilotUsage.totalNanoAiu`）は nano-AIU で表され、1 AI クレジットは 10億 nano-AIU である。API の説明が、同じ量を「AI クレジット（小数）」と「nano-AIU（整数）」の2つで返しているので分かる。セッション全体の合計と、その合計がすべての呼び出しを含むか（`aiCreditsStatus`）も、SDK から取れる。
 
 ## 9. 最終確認
 
@@ -247,9 +247,9 @@
 - Copilot SDK（Copilot CLI をプログラムから動かす公式の部品）で Copilot CLI を起動し、生成プラグインを `--plugin-dir` で読み込む。プラグインなしのときは、何も読み込まない。
 - 環境変数 `COPILOT_PLUGIN_DIR_ONLY=true` で、ユーザーがインストールしているほかのプラグインを読み込ませない。あり・なしの比べ合いに、ほかのプラグインが混ざらないようにするためである。読み込まれたプラグインは、セッションの `rpc.plugins.list()` で確かめる。
 - 実行のたびに、課題の入力のファイルだけを写した、まっさらな作業フォルダで始める。
-- コマンドの書き込みを作業フォルダに限るため、Copilot CLI のローカルのサンドボックスを使う。ただし Linux では、サンドボックスの中のコマンドは専用のネットワークを使うと公式ドキュメントにある。中で起動した Web管理画面にブラウザーからつながるかと、SDK から有効にするしかたは、要確認。
-- 要確認：`--plugin-dir` で Agent Plugins の形式（`com.github.copilot/` の中のエージェントやフック）が読み込まれるか。SDK のドキュメントの例は、以前の形式の配置だけである。
-- 要確認：Copilot SDK は、自分に合う版の Copilot CLI を同梱していて、ユーザーがふだん使う Copilot CLI と版が違うことがある。`COPILOT_CLI_PATH` で手元の Copilot CLI を使えるが、SDK の版と合うかは確かめる。
+- Copilot CLI のサンドボックスを使うと、Linux では、生成プラグインの Web管理画面にブラウザーからつながらない（[クリエイターの構造](creator-structure.md) 4.3）。サンドボックスを使うかは、土台の設計で画面との両立のしかたが決まってから決める。それまでは、作業フォルダの外への書き込みを、許可の求めへの答え（下）で拒む。ただし、シェルのコマンドがどこに書くかまでは、許可の求めでは見分けきれない。
+- `--plugin-dir` で読み込んだプラグインも、マニフェストの `$schema` で形式が決まり、Agent Plugins の形式なら `com.github.copilot/` の中のエージェントやフックが読まれる（Copilot CLI 1.0.98 の実装（パッケージに含まれるプログラム、付属の説明、更新履歴）で確認）。Agent Plugins の形式のプラグインを `--plugin-dir` で読み込み、スキルが読まれることは、実際に動かして確かめた。カスタムエージェントが読まれたかは、ログインしないと確かめられないので、EVAL のたびに `subagent.started` の記録で確かめる。
+- Copilot SDK は、対応する版の Copilot のランタイムを同梱している（SDK 1.0.22 は 1.0.98）。EVAL は同梱のものを使い、`COPILOT_CLI_PATH` で手元の Copilot CLI に替えない。ユーザーがふだん使う Copilot CLI と版が違うことがあるので、使った版を記録に残す。
 
 **質問と許可の求め**
 
@@ -257,7 +257,7 @@
 - エージェントの質問（`ask_user`）には、`onUserInputRequest` で、決まった返事（「課題に書いたこと以外は決まっていません。判断して進めてください」）を返す。あり・なしで同じ返事にし、ユーザー役の AI は使わない。AI クレジットを増やさず、プラグインなしのときにナレッジが伝わらないようにするためである（7章）。
 - 許可の求めには、`onPermissionRequest` で答える。作業フォルダの外への書き込みは拒み、ほかは許可する。組織の管理設定で人の承認が要る求め（`managedApprovalRequired`）は、自動では許可せず、EVAL を止めて理由を示す。
 - AI クレジットの予算を使い切ったという求め（`session_limits_exhausted.requested`）には、クレジットを足さずに止める。ユーザーが承認していない費用を使わないためである。
-- 要確認：裏で動くサブエージェントの許可の求めが、SDK に正しく回るか（Agent SDK では、受け付けられずに失敗した。5章）。
+- 裏で動くサブエージェントの許可の求めも、`onPermissionRequest` に届く。許可の求めのイベントに、求めたエージェント（`ownerAgentId`）が入っている（Copilot SDK 1.0.22 の型定義と、Copilot CLI の更新履歴 1.0.87 で確認）。
 
 **Web管理画面の操作と終わり**
 
@@ -347,6 +347,8 @@ EVAL を動かす仕組みは、開発の試験（5章）とユーザーの試�
 - [Configuring local sandbox settings](https://docs.github.com/en/copilot/how-tos/cloud-and-local-sandboxes/configuring-local-sandbox-settings)（Linux では、サンドボックスの中のコマンドは専用のネットワークを使う）
 - [Usage-based billing for individuals](https://docs.github.com/en/copilot/concepts/billing/usage-based-billing-for-individuals)（AI クレジット、プランごとの月の枠）
 - [Models and pricing for GitHub Copilot](https://docs.github.com/en/copilot/reference/copilot-billing/models-and-pricing)
+- Copilot CLI 1.0.98 の npm パッケージ（`@github/copilot`）に含まれるプログラム、`copilot help sandbox` の説明、更新履歴（`changelog.json`）
+- Copilot SDK 1.0.22 の npm パッケージ（`@github/copilot-sdk`）の説明と型定義
 - [Playwright](https://playwright.dev/)
 - [Lost in Simulation: LLM-Simulated Users are Unreliable Proxies for Human Users in Agentic Evaluations（arXiv:2601.17087）](https://arxiv.org/abs/2601.17087)
 - [How Reliable is Your Simulator? Analysis on the Limitations of Current LLM-based User Simulators for Conversational Recommendation（arXiv:2403.16416）](https://arxiv.org/abs/2403.16416)

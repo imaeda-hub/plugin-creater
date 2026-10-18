@@ -27,7 +27,7 @@
 ## Copilot SDK で試す（公式ドキュメントで調べた結果。まだ動かしていない）
 
 - `--plugin-dir` でプラグインを読み込む。フック、MCP サーバー、カスタムエージェントも読み込まれる。環境変数 `COPILOT_PLUGIN_DIR_ONLY=true` で、ユーザーがインストールしているほかのプラグインを外せる。読み込まれたプラグインは `rpc.plugins.list()` で分かる。
-  - 要確認：ドキュメントの例は以前の形式だけで、Agent Plugins の形式の `com.github.copilot/` が読み込まれるかは書かれていない。
+  - 形式は、読み込み方ではなく、マニフェストの `$schema` で決まる。Agent Plugins の形式なら、`--plugin-dir` でも `com.github.copilot/` の中が読まれる（Copilot CLI 1.0.98 の実装と更新履歴で確認。スキルが読まれることは実際に動かして確かめた）。
 - エージェントの質問には `onUserInputRequest`、許可の求めには `onPermissionRequest` で、プログラムから答えられる。
 - 採点と記録に使えるイベント：`skill.invoked`（スキルが呼ばれた）、`subagent.started`・`subagent.completed`（カスタムエージェントとそのモデル）、`tool.execution_*`（使ったツール）、`user_input.requested`（質問）、`assistant.usage`（呼び出しごとのトークンと費用）、`session.idle`（手番の終わり）。
 - SDK は、自分に合う版の Copilot CLI を同梱している。手元の Copilot CLI を使うときは `COPILOT_CLI_PATH` で指定する。
@@ -36,8 +36,8 @@
 ## 費用と環境
 
 - 2026年6月1日から、Copilot の利用は AI クレジットで数える。1クレジットは 0.01 ドルで、使ったモデルとトークンの量で決まる。個人プランの月の枠は、Pro が 1,500、Pro+ が 7,000、Max が 20,000 クレジット。
-  - 要確認：Copilot SDK で動かした分も数えられるか。`assistant.usage` の費用（`totalNanoAiu`）から AI クレジットへの換算。
-- Copilot CLI のローカルのサンドボックスは、2026年10月7日に一般提供になった。Linux では、サンドボックスの中のコマンドは専用のネットワークを使う。そのため、中で起動した Web の画面にブラウザーからつながらないおそれがある（要確認）。
+  - SDK は CLI と同じランタイムをユーザーのアカウントで動かすので、SDK で動かした分も数えられる。`assistant.usage` の費用（`totalNanoAiu`）は nano-AIU で、1 AI クレジット = 10億 nano-AIU（Copilot SDK 1.0.22 の型定義で確認）。
+- Copilot CLI のローカルのサンドボックスは、2026年10月7日に一般提供になった。Linux では、サンドボックスの中のコマンドは専用のネットワークを使う。外から中へ接続を通す仕組みはないので、中で起動した Web の画面にはブラウザーからつながらない。シェルのコマンド、フック、手元で動かす MCP サーバー（既定）が中で動く。サンドボックスは既定ではオフ（`copilot help sandbox` と実装で確認）。
 
 ## 出典
 
