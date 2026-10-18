@@ -4,7 +4,7 @@
 - [ハーネスエンジニアリングの目的と人間の役割](harness-purpose.md) — 目的はヒューマン・オン・ザ・ループ。監督のためエージェントの振る舞いを可視化する。ハーネスは AI が知らないことを人間が対話を通じて作る
 - [スキル（GitHub Copilot CLI）](skills.md) — 本質は description。Markdown・スクリプト・アセット・リファレンスで構成し、推論の要否で Markdown とスクリプトに分ける
 - [MCP](mcp.md) — 外部システムと安全にデータをやり取りする役割に特化。ローカルの操作はスキルへ移行
-- [カスタムエージェント（GitHub Copilot CLI）](custom-agents.md) — マルチエージェント構成の1エージェントを定義。モデル・権限・ツールなどを指定できる
+- [カスタムエージェント（GitHub Copilot CLI）](custom-agents.md) — マルチエージェント構成の1エージェントを定義。必須は description だけ。権限は tools の別名（read、edit、execute など）で絞る。サブエージェントがスキルを呼んで手順を始めないよう、tools を絞る
 - [マルチエージェントの強み](multi-agent.md) — コンテキストウィンドウの最適化、処理速度、AI クレジットの最適化
 - [ハーネスの置き場所](harness-placement.md) — 決められた場所に置くことで効果を発揮。GitHub リポジトリでは `.github` 内
 - [プラグイン](plugins.md) — ハーネス群の配布・インストールの仕様。Agent Plugins 1.0.0 はスキルと MCP のみ、Copilot CLI はそれ以外も同梱できる。Copilot CLI 固有の部品は `com.github.copilot/` に置けば Agent Plugins と両立する
@@ -21,3 +21,4 @@
 - [KISS](kiss.md) — （大事な考え）必要なものだけを、できるだけ単純に作る。AI で作るとリポジトリは肥大化しやすい。リファクタリングはあとから整え、KISS は最初から足さない
 - [Copilot CLI の試験機能](copilot-cli-testing.md) — EVAL 専用のコマンドはない。`-p`・`--plugin-dir`・実行記録で組める。トークンなしでもスキルと MCP の読み込みは確かめられるが、カスタムエージェントは確かめられない
 - [Claude Code の EVAL の仕組み](claude-plugin-eval.md) — 課題をプラグインあり・なしで3回ずつ実行し、スコアを比べる。採点の種類。プログラムでの採点はなく、ユーザー役が答える仕組みも見当たらない
+- [Agent SDK で EVAL を動かすときの注意](agent-sdk-eval.md) — 環境変数は必要なものだけ渡す。コマンドはサンドボックスに閉じ込め、Web 画面の操作だけ外に出す。許可を求めるのは質問だけにする
