@@ -24,7 +24,7 @@
 - 開発の試験とユーザーの試験は、同じ3段階で行う。1・2段目は、同じ仕組みを使う（10.2）。
 - 1・2段目はモデルを使わないので、費用がかからず、結果も毎回同じになる。
 - 1段目では、Agent Plugins の公式スキーマを手元に写して使う。カスタムエージェントの項目は、Copilot CLI のコマンドリファレンスとカスタムエージェントの設定リファレンスとで一部違うので、両方を認める。
-- 生成プラグインの1段目では、生成前の確認でよいと答えたナレッジが、すべて入っているかも確かめる（10.3）。クリエイター自身の1段目では、会話例の版も確かめる（6.6）。
+- 生成プラグインの1段目では、作業の定義が決まりの形に合うか、EVAL の課題の基準の写しが作業の定義と同じか、生成前の確認でよいと答えたナレッジがすべて入っているかも確かめる（10.1、10.3）。土台のファイルがひな形と同じかは、生成プラグインの1段目では確かめず、クリエイターが組み立ての後に確かめる（[クリエイターの構造](creator-structure.md) 4.1）。クリエイター自身の1段目では、会話例の版も確かめる（6.6）。
 - 2段目では、たとえば次のように部品を動かす。
   - フック：標準入力に JSON を渡し、標準出力の JSON と終了コードを確かめる。入力の形は Copilot CLI と Claude Code で違う（例：エージェント名が `agentName` と `agent_type`）ので、両方の形で確かめる。
   - MCP サーバー：単体で起動し、MCP のクライアント（MCP 公式の Inspector の CLI モードなど）からツールを呼ぶ。
@@ -80,14 +80,16 @@
   - カスタムエージェントの `model`（1つ、または優先する順のリスト）は、Claude Code の `model` 1つにする。候補の中に Claude のモデルがあれば、最初のものを Claude Code の ID にする（例：`claude-haiku-5.5` → `claude-haiku-5-5`）。
   - 候補に Claude のモデルがなければ、Copilot の価格表で同じ値段の Claude のモデルにする（例：`gpt-6-luna` → `claude-haiku-5-5`）。この対応は、変換スクリプトに表として持つ。
   - `model-policy` は Claude Code にないので外す。`reasoningEffort` は `effort` にする。
+  - Web管理画面で選ぶモデルは Copilot の名前（例：`gpt-6-luna`）で出す。試験の仕組みが、選ばれた名前を、この対応で Claude Code の ID にしてから `model` に入れる。
 - メインのエージェントのモデルは、試験の仕組みが決める。Copilot CLI ではプラグインからメインのエージェントのモデルを決められないので、Claude Code のプラグインの `settings.json` の `agent`（プラグインのエージェントをメインにする設定）は使わない。使うと、Copilot CLI にない振る舞いを試すことになる。
 - Claude Code では、サブエージェントは質問のツール（`AskUserQuestion`）を使えない。クリエイターは、ユーザーへの質問をメインのエージェントだけで行うので（[クリエイターの構造](creator-structure.md) 3.2）、置き換えてもこの点の振る舞いは変わらない。
 - 生成プラグインの Web管理画面は、エクステンションの中で動く（[生成プラグインの構造](generated-plugin-structure.md) 4.1）。エクステンションは、Copilot CLI とつなぐ薄いつなぎ口と、Copilot CLI に依らない中心の処理と画面に分かれている（同 3.2）。開発の試験では、試験の仕組みが Agent SDK 用のつなぎ口を持ち、生成プラグインの中心の処理と画面をそのまま動かす。
-  - 画面を開くツールと記録のツールは、試験の仕組みが、試すエージェントに MCP のツールとして出す。
+  - 画面を開くツールと記録のツールは、試験の仕組みが、試すエージェントに MCP のツールとして出す（Agent SDK の同じプロセスの中で動く MCP サーバー）。エージェントの定義の `tools` に書いたエクステンションのツール名は、Agent SDK の MCP のツール名（`mcp__<サーバー名>__<ツール名>`）に置き換える。
+  - 記録のツールを呼んだエージェントは、Agent SDK のフックの入力に付くエージェントの番号（`agent_id`）で知り、ツールの呼び出しと結び付ける。結び付け方は要確認である。
   - 開始では、統括のエージェントの定義（指示とモデル）で、Agent SDK の別の実行を始める。作業・検証のモデルは、置き換えたエージェントの定義の `model` を、画面で選んだモデルにしてから始める。
-  - 止めるでは、Agent SDK の実行を中断する。
+  - 止めるでは、統括の Agent SDK の実行を中断する。メインの実行は中断しない（[生成プラグインの構造](generated-plugin-structure.md) 4.4 と同じ範囲）。
   - 状態は、Agent SDK のフックとメッセージ（サブエージェントの開始と終わり、ツールの使用）から作る。
-  - つなぎ口が違うので、Copilot CLI とのつなぎ（統括の起動、モデルの上書き、取り消し、イベント）は、開発の試験では確かめられない。最終確認で確かめる（9章）。
+  - つなぎ口が違うので、Copilot CLI とのつなぎ（統括の起動、モデルの上書き、取り消し、イベント、許可の待ち、`/clear` での読み込み直し）は、開発の試験では確かめられない。最終確認で確かめる（9章）。
 - 置き換えは、変換スクリプトで行う。毎回同じ結果になるようにするためである。変換スクリプトも2段目で試験する。
 - 置き換えた版は、`claude plugin validate` で Claude Code に読み込めることを確かめてから試す。警告（作者の情報がないなど）は不合格にしない。
 - 置き換えた版を試すので、結果は Copilot CLI での振る舞いと完全には一致しない。特に、スキルが呼ばれる場面や、エージェントへの仕事の割り振りは、ツールが違うと変わりうる。質問のツールも、Claude Code では選択肢が必要で、Copilot CLI では自由に答えられるので、質問のしかたが少し変わる。作業エージェントも Claude のモデルで動くので、本来のモデル（GPT-6 Luna など）で書いたときの出来は、この試験では分からない。
@@ -102,7 +104,7 @@
   - 環境変数は、必要なもの（パス、プロキシと証明書、モデルの接続先）だけを渡し、実行のたびに一時的なホームフォルダを使う。試験する側のセッションの設定が混ざると振る舞いが変わり、資格情報が混ざると試されるコードから見えてしまうためである。
   - ユーザー設定とプロジェクト設定は読み込ませない。
   - コマンドは OS のサンドボックスで動かし、書き込みを作業フォルダに限る。ファイルの書き込みのツールも、作業フォルダの中だけを許す。サンドボックスがないと、エージェントが自分の判断で作業フォルダの外に作業を移すことがあるためである。
-  - 生成プラグインの Web管理画面を操作するスクリプトだけは、パスを指定してサンドボックスの外で動かす。Linux のサンドボックスの中では、コマンドごとに専用の localhost を持つので、中で起動した画面にはブラウザーからつながらないためである。
+  - 生成プラグインの Web管理画面は、試験の仕組みのつなぎ口の側で動き（4章）、試されるエージェントは画面を起動しない。画面を操作する Playwright も、試験の仕組みが動かす。どちらもサンドボックスの中のコマンドではないので、画面にブラウザーからつながる。
 - 普段のツールと、試すプラグインの MCP サーバーのツールは、あらかじめ許可する。許可を求める仕組みに回すのは、ユーザー役が答える質問だけにする。裏で動くサブエージェントの許可の求めは、受け付けられずに失敗することがあるためである。
 - 使われたスキル、サブエージェントとそのモデルは、Agent SDK の実行の記録から採点に使う。
 
@@ -211,7 +213,7 @@
 - 最終確認では、人が手元の Copilot CLI にプラグインをインストールし、使い始められることを確かめる（出力の要件のインストールの受け入れ基準）。
 - Copilot CLI での読み込みの不具合や、Copilot CLI でしか起きない不具合は、ここで見つける。
 - ユーザーの試験のうち、Copilot CLI を動かす部分（Copilot SDK での EVAL の実行と、試験を頼まれたときの流れ）も、ここで人が手元で確かめる。開発の試験では、Copilot CLI を動かさないためである（1章）。
-- 生成プラグインとクリエイターのエクステンションのつなぎ口（読み込まれるか、統括の起動、モデルの上書き、止める、イベントの受け取り）も、ここで確かめる。あわせて、[生成プラグインの構造](generated-plugin-structure.md) 11章の、実機で確かめることを確かめる。
+- 生成プラグインとクリエイターのエクステンションのつなぎ口（読み込まれるか、統括の起動、モデルの上書き、止める、イベントの受け取り、許可の待ち、`/clear` での読み込み直し）も、ここで確かめる。[生成プラグインの構造](generated-plugin-structure.md) 11章の、実機で確かめることは、その項目に頼る部品を作る前に確かめる。ここでは、その結果が今の Copilot CLI の版でも変わらないことを、つなぎ口の動きとあわせて確かめる。
 
 ## 10. ユーザーの環境での試験
 
@@ -222,8 +224,8 @@
 | もの | 置き場所 |
 | --- | --- |
 | 1・2段目のスクリプトと、それを1つのコマンドで動かす入口 | 生成プラグインのリポジトリ（ひな形から入れる） |
-| 番号を付けたナレッジの一覧 | 生成プラグインのリポジトリ |
-| EVAL の課題（頼むときの言葉、入力のファイル、Web管理画面の設定、基準ごとの採点のしかた） | 生成プラグインのリポジトリ。合否の基準そのものは作業の定義にあり、課題は基準の番号で参照する（[生成プラグインの構造](generated-plugin-structure.md) 4.9） |
+| 番号と種類を付けたナレッジの一覧 | 生成プラグインのリポジトリ |
+| EVAL の課題（頼むときの言葉、入力のファイル、Web管理画面の設定、基準の番号と文の写し、基準ごとの採点のしかた） | 生成プラグインのリポジトリのテストのフォルダ。合否の基準は作業の定義が元で、課題には番号と文を写す。1段目で、写しが作業の定義と同じかを確かめる（[生成プラグインの構造](generated-plugin-structure.md) 4.9） |
 | EVAL を動かす仕組みと採点 | クリエイター |
 
 試験は次の順に進める。
@@ -244,9 +246,9 @@
 
 構造の検査で、生成前の確認でよいと答えたナレッジが、すべて生成プラグインに入っているかを確かめる（REQ-039、[クリエイターの構造](creator-structure.md) 3.5）。
 
-- メインのエージェントは、よいと答えたナレッジに番号（例：`K-01`）を付けて一覧にする。組み立てのときに、一覧を生成プラグインのテストのフォルダに入れる。直した後も、リポジトリだけで突き合わせられるようにするためである（REQ-042）。
-- 作業エージェントは、ナレッジを入れた箇所に、その番号を書く。
-- 構造の検査は、一覧の番号ごとに、生成プラグインのファイル（テストのフォルダを除く）にその番号があるかを調べる。ない番号は、そのナレッジの文と一緒に、不合格の理由として示す。
+- メインのエージェントは、よいと答えたナレッジに番号（例：`K-01`）と種類（合否の決め方か、それ以外か）を付けて一覧にする。組み立てのときに、一覧を生成プラグインのテストのフォルダに入れる。直した後も、リポジトリだけで突き合わせられるようにするためである（REQ-042）。
+- 作業の定義の合否の基準に付けるナレッジの番号は、合否の決め方のナレッジのものだけにする。作業エージェントは、それ以外のナレッジを入れた箇所に、その番号を書く。
+- 構造の検査は、一覧の番号ごとに、種類で決まった置き場所を調べる。合否の決め方は作業の定義の中に、それ以外は作業の定義とテストのフォルダを除くファイルの中に、番号があるかを見る（[生成プラグインの構造](generated-plugin-structure.md) 6.4）。ない番号は、そのナレッジの文と一緒に、不合格の理由として示す。
 - 番号があっても、ナレッジが正しい意味で入ったとは限らない。意味は EVAL で確かめる。
 
 ### 10.4 EVAL
@@ -256,8 +258,8 @@
 - Copilot SDK（Copilot CLI をプログラムから動かす公式の部品）で Copilot CLI を起動し、生成プラグインを `--plugin-dir` で読み込む。プラグインなしのときは、何も読み込まない。
 - 環境変数 `COPILOT_PLUGIN_DIR_ONLY=true` で、ユーザーがインストールしているほかのプラグインを読み込ませない。あり・なしの比べ合いに、ほかのプラグインが混ざらないようにするためである。読み込まれたプラグインは、セッションの `rpc.plugins.list()` で確かめる。
 - 実行のたびに、課題の入力のファイルだけを写した、まっさらな作業フォルダで始める。
-- 生成プラグインの Web管理画面はエクステンションの中で動き、エクステンションはサンドボックスの外で動く見込みである（[生成プラグインの構造](generated-plugin-structure.md) 4.12、要確認）。外で動くと確かめられたら、EVAL では Copilot CLI のサンドボックスを使い、作業フォルダの外への書き込みを止める。確かめるまでは、作業フォルダの外への書き込みを、許可の求めへの答え（下）で拒む。ただし、シェルのコマンドがどこに書くかまでは、許可の求めでは見分けきれない。
-- エクステンションは試験的な機能なので、Copilot SDK で起動する Copilot CLI でも、実験モードを有効にする必要がある。SDK からの指定のしかたは要確認である。
+- 生成プラグインの Web管理画面はエクステンションの中で動き、エクステンションはサンドボックスの外で動く見込みである（[生成プラグインの構造](generated-plugin-structure.md) 4.12、要確認。同 11章 #3）。外で動くと確かめられたら、EVAL では Copilot CLI のサンドボックスを使い、作業フォルダの外への書き込みを止める。確かめるまでは、作業フォルダの外への書き込みを、許可の求めへの答え（下）で拒む。ただし、シェルのコマンドがどこに書くかまでは、許可の求めでは見分けきれない。
+- Copilot SDK でエクステンションを読み込む条件は、セッションの作成で `requestExtensions: true` を指定することである（実験モードの旗は要らない。`-p` で Copilot CLI を直接動かすときは、`EXTENSIONS` の機能の旗が要る）。実際に読み込まれるかは要確認である（[生成プラグインの構造](generated-plugin-structure.md) 11章 #1）。
 - `--plugin-dir` で読み込んだプラグインも、マニフェストの `$schema` で形式が決まり、Agent Plugins の形式なら `com.github.copilot/` の中のエージェントやフックが読まれる（Copilot CLI 1.0.98 の実装（パッケージに含まれるプログラム、付属の説明、更新履歴）で確認）。Agent Plugins の形式のプラグインを `--plugin-dir` で読み込み、スキルが読まれることは、実際に動かして確かめた。カスタムエージェントが読まれたかは、ログインしないと確かめられないので、EVAL のたびに `subagent.started` の記録で確かめる。
 - Copilot SDK は、対応する版の Copilot のランタイムを同梱している（SDK 1.0.22 は 1.0.98）。EVAL は同梱のものを使い、`COPILOT_CLI_PATH` で手元の Copilot CLI に替えない。ユーザーがふだん使う Copilot CLI と版が違うことがあるので、使った版を記録に残す。
 
@@ -343,6 +345,8 @@ EVAL を動かす仕組みは、開発の試験（5章）とユーザーの試�
 - [Claude Code: Plugin manifest reference](https://code.claude.com/docs/en/plugins/manifest-reference)
 - [Claude Code: Create custom subagents](https://code.claude.com/docs/en/sub-agents)
 - [Claude Code: Sandboxing](https://code.claude.com/docs/en/sandboxing)
+- [Claude Agent SDK: Give Claude custom tools](https://code.claude.com/docs/en/agent-sdk/custom-tools)（同じプロセスの中で動く MCP サーバー、ツール名の形 `mcp__<サーバー名>__<ツール名>`）
+- [Claude Code: Hooks reference](https://code.claude.com/docs/en/hooks)（サブエージェントの中のツールの使用に付く `agent_id`）
 - [Claude Agent SDK: Plugins in the SDK](https://code.claude.com/docs/en/agent-sdk/plugins)
 - [Claude Agent SDK: Use Claude Code features in the SDK](https://code.claude.com/docs/en/agent-sdk/claude-code-features)
 - [Claude Agent SDK: Handle approvals and user input](https://code.claude.com/docs/en/agent-sdk/user-input)
@@ -355,10 +359,10 @@ EVAL を動かす仕組みは、開発の試験（5章）とユーザーの試�
 - [Copilot SDK: Streaming events](https://docs.github.com/en/copilot/how-tos/copilot-sdk/features/streaming-events)（採点と記録に使うイベント）
 - [Copilot SDK for Node.js（README）](https://github.com/github/copilot-sdk/blob/main/nodejs/README.md)（`onUserInputRequest`、`onPermissionRequest`、`managedApprovalRequired`、`COPILOT_CLI_PATH`、Node.js の版）
 - [About cloud and local sandboxes](https://docs.github.com/en/copilot/concepts/security-governance-and-network-settings/about-cloud-and-local-sandboxes)
-- [Configuring local sandbox settings](https://docs.github.com/en/copilot/how-tos/cloud-and-local-sandboxes/configuring-local-sandbox-settings)（Linux では、サンドボックスの中のコマンドは専用のネットワークを使う）
+- [Configuring local sandbox settings](https://docs.github.com/en/copilot/how-tos/cloud-and-local-sandboxes/configuring-local-sandbox-settings)（サンドボックスの設定、Linux で要る道具）
 - [Usage-based billing for individuals](https://docs.github.com/en/copilot/concepts/billing/usage-based-billing-for-individuals)（AI クレジット、プランごとの月の枠）
 - [Models and pricing for GitHub Copilot](https://docs.github.com/en/copilot/reference/copilot-billing/models-and-pricing)
-- Copilot CLI 1.0.98 の npm パッケージ（`@github/copilot`）に含まれるプログラム、`copilot help sandbox` の説明、更新履歴（`changelog.json`）
+- Copilot CLI 1.0.98 の npm パッケージ（`@github/copilot`）に含まれるプログラム（`copilot-sdk/types.d.ts` と `cli-main.js` の `requestExtensions`）、`copilot help sandbox` の説明、更新履歴（`changelog.json`）
 - Copilot SDK 1.0.22 の npm パッケージ（`@github/copilot-sdk`）の説明と型定義
 - [Playwright](https://playwright.dev/)
 - [Lost in Simulation: LLM-Simulated Users are Unreliable Proxies for Human Users in Agentic Evaluations（arXiv:2601.17087）](https://arxiv.org/abs/2601.17087)
