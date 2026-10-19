@@ -311,12 +311,13 @@ EVAL を動かす仕組みは、開発の試験（5章）とユーザーの試�
 | --- | --- |
 | Python と PyYAML・jsonschema | 1段目 |
 | Node.js（Copilot SDK は 20.19 以上か 22.12 以上） | 2段目の Web管理画面の試験、EVAL |
-| Playwright とブラウザー（Chromium） | 2段目の Web管理画面の試験、EVAL の画面の操作 |
+| Playwright とブラウザー（手元の Chrome か Edge。どちらもないときは Playwright の Chromium） | 2段目の Web管理画面の試験、EVAL の画面の操作 |
 | Copilot SDK | EVAL |
 | Linux でサンドボックスを使うときは、bubblewrap 0.5.0 以上（外への通信を許すときは、slirp4netns などもあわせて） | EVAL |
 
 - 試験の前に、入口とクリエイターが、道具がそろっているかを確かめる。足りないときは、クリエイターが足りない道具と入れ方を示し、ユーザーがよいと答えたら入れる（REQ-048）。
 - Python のパッケージは仮想環境に入れ、ユーザーの環境全体は変えない。Node.js のパッケージも、試験のためのフォルダに入れる。
+- ブラウザーは、Playwright の `channel`（`chrome`、`msedge`）で手元の Chrome か Edge を使う。どちらもないときだけ、Playwright の Chromium を、Playwright の既定の場所（ホームフォルダの中の共通の場所）に入れる（REQ-048）。生成プラグインごとに入れ直さないためである。
 - 要確認：道具を入れるフォルダの場所。生成プラグインのリポジトリだけで1・2段目が動くこと（REQ-042）と、プラグインが実行中に書くデータはインストール先ではなく `PLUGIN_DATA` に置くという公式の勧めの、両方に合う場所にする。
 - 要確認：Python や Node.js そのものがないときの入れ方（OS ごとに違う）。
 
