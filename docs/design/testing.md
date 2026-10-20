@@ -28,7 +28,7 @@
 - 2段目では、たとえば次のように部品を動かす。
   - フック：標準入力に JSON を渡し、標準出力の JSON と終了コードを確かめる。入力の形は Copilot CLI と Claude Code で違う（例：エージェント名が `agentName` と `agent_type`）ので、両方の形で確かめる。
   - MCP サーバー：単体で起動し、MCP のクライアント（MCP 公式の Inspector の CLI モードなど）からツールを呼ぶ。
-  - Web管理画面：エクステンションの中心の処理と画面を、偽物のつなぎ口（テストのフォルダに置く）につないで動かし、ブラウザーを操作するプログラム（Playwright）で、人と同じ操作をして確かめる。エージェントの状態は、本物のエージェントを動かさず、偽物のつなぎ口から用意したイベントを流して確かめる。開始や止めるの操作が、つなぎ口への正しい呼び出しになるかも確かめる。許可の求めも偽物のつなぎ口から流し、画面で承認・拒否できること、ほかのセッションの作業の求めがチャットに回ること（答えを出さない）を確かめる（[生成プラグインの構造](generated-plugin-structure.md) 3.2、4.14、10章）。つなぎ口そのものは、最終確認で確かめる（9章）。
+  - Web管理画面：エクステンションの中心の処理と画面を、偽物のつなぎ口（テストのフォルダに置く）につないで動かし、ブラウザーを操作するプログラム（Playwright）で、人と同じ操作をして確かめる。エージェントの状態は、本物のエージェントを動かさず、偽物のつなぎ口から用意したイベントを流して確かめる。開始や止めるの操作が、つなぎ口への正しい呼び出しになるかも確かめる。許可の求めも偽物のつなぎ口から流し、この実行のエージェントの求めを画面で承認・拒否できること、ほかの場所で答えが出る（待ちの終わり）と画面の待ちが消えること、チャットでのほかの作業の求めには何も返さないこと（答えを出さない）を確かめる（[生成プラグインの構造](generated-plugin-structure.md) 3.2、4.14、6.1、10章）。つなぎ口そのものは、最終確認で確かめる（9章）。
 
 ## 3. 試験は2重になる
 
@@ -90,7 +90,7 @@
   - 開始では、統括のエージェントの定義（指示とモデル）で、Agent SDK の別の実行を始める。作業・検証のモデルは、置き換えたエージェントの定義の `model` を、画面で選んだモデルにしてから始める。
   - 止めるでは、統括の Agent SDK の実行を中断する。メインの実行は中断しない（[生成プラグインの構造](generated-plugin-structure.md) 4.4 と同じ範囲）。
   - 状態は、Agent SDK のフックとメッセージ（サブエージェントの開始と終わり、ツールの使用）から作る。エージェントの終わりが取り消されたものかも、ここから作る。取れるかは要確認で、取れないときは、試験の仕組みが止めたかどうかだけで決める。
-  - 許可の求めは、Agent SDK の `canUseTool` で受けて中心の処理に渡し、画面の答えを返す見込みである（[生成プラグインの構造](generated-plugin-structure.md) 4.14）。裏で動くサブエージェントの求めが `canUseTool` に届くかは要確認で、届かないときは、5章のとおりあらかじめ許可し、画面での許可は2段目の偽物のつなぎ口と最終確認で確かめる。
+  - 開発の試験では、5章のとおり普段のツールをあらかじめ許可する。画面で許可する流れ（[生成プラグインの構造](generated-plugin-structure.md) 4.14）は、2段目の偽物のつなぎ口と、最終確認で確かめる。
   - つなぎ口が違うので、Copilot CLI とのつなぎ（統括の起動、モデルの上書き、取り消し、イベント、許可の求めの扱い（`onPermissionRequest`）、`/clear` での読み込み直し）は、開発の試験では確かめられない。最終確認で確かめる（9章）。
 - 置き換えは、変換スクリプトで行う。毎回同じ結果になるようにするためである。変換スクリプトも2段目で試験する。
 - 置き換えた版は、`claude plugin validate` で Claude Code に読み込めることを確かめてから試す。警告（作者の情報がないなど）は不合格にしない。
@@ -269,13 +269,14 @@
 
 - 課題の頼むときの言葉には、作業に要る情報をすべて書く。
 - エージェントの質問（`ask_user`）には、`onUserInputRequest` で、決まった返事（「課題に書いたこと以外は決まっていません。判断して進めてください」）を返す。あり・なしで同じ返事にし、ユーザー役の AI は使わない。AI クレジットを増やさず、プラグインなしのときにナレッジが伝わらないようにするためである（7章）。
-- 許可の求めには、`onPermissionRequest` で答える。作業フォルダの外への書き込みは拒み、ほかは許可する。組織の管理設定で人の承認が要る求め（`managedApprovalRequired`）は、自動では許可せず、EVAL を止めて理由を示す。生成プラグインありのとき、生成プラグインの実行のエージェントの求めは、エクステンションが画面に出して答えを待つので、この答えは、画面に出ないもの（メインのエージェントの求めなど、エクステンションが答えを出さずに回したもの）に使う。実行のエージェントの求めには、下の画面の操作で、同じ決めで答える。エクステンションが答えを出さなかった求めだけがここに回るかは要確認である（[生成プラグインの構造](generated-plugin-structure.md) 4.14、11章 #21）。
+- 許可の求めには、`onPermissionRequest` で答える。作業フォルダの外への書き込みは拒み、ほかは許可する。組織の管理設定で人の承認が要る求め（`managedApprovalRequired`）は、自動では許可せず、EVAL を止めて理由を示す。
+- 生成プラグインありのとき、生成プラグインの実行のエージェントの求め（イベントの `agentId` があるもの）は、エクステンションが画面に出し、同じ求めがこの `onPermissionRequest` にも同時に届いて、先に答えたほうが効く（[生成プラグインの構造](generated-plugin-structure.md) 4.14）。そこで、この仕組みは実行のエージェントの求めには何も返さず（`no-result`）、下の画面の操作（Playwright）で、上と同じ決めで答える。ほかの求めには、上の決めで答える。先に答えたほうが効くか、何も返しても進むかは要確認である（同 11章 #21）。違ったときの代わりの案は、EVAL のときだけ、Copilot SDK 側の `onPermissionRequest` を実行のエージェントには登録しない、などである。
 - AI クレジットの予算を使い切ったという求め（`session_limits_exhausted.requested`）には、クレジットを足さずに止める。ユーザーが承認していない費用を使わないためである。
-- 裏で動くサブエージェントの許可の求めも、`onPermissionRequest` の仕組みに届く。許可の求めのイベントに、求めたエージェント（`ownerAgentId`）が入っている（Copilot SDK 1.0.22 の型定義と、Copilot CLI の更新履歴 1.0.87 で確認）。
+- 裏で動くサブエージェントの許可の求めも、`onPermissionRequest` の仕組みに届く。求めたサブエージェントは、許可の求めのイベント自体の `agentId` で分かる（`ownerAgentId` は、多重化したセッションで許可の回復を担うエージェントで、別のものである。Copilot SDK 1.0.22 の型定義と、Copilot CLI の更新履歴 1.0.87 で確認）。
 
 **Web管理画面の操作と終わり**
 
-- 7章と同じく、Playwright でブラウザーを操作し、人と同じ流れ（設定 → 開始 → 監視 → 結果）で生成プラグインを動かす。チャットに出た URL（`assistant.message`）を開き、課題に書いた設定を入れて開始する。実行中に画面に出た許可の求めには、上の決め（作業フォルダの外への書き込みは拒み、ほかは承認）で、画面の承認・拒否の操作を行う。答えない求めがあるとエージェントが待ち続けるので、画面に出た求めは、決めた時間のうちに必ず答える。生成プラグインには、試験のためだけの機能を足さない。
+- 7章と同じく、Playwright でブラウザーを操作し、人と同じ流れ（設定 → 開始 → 監視 → 結果）で生成プラグインを動かす。チャットに出た URL（`assistant.message`）を開き、課題に書いた設定を入れて開始する。実行中に画面に出た許可の求めには、上の決め（作業フォルダの外への書き込みは拒み、ほかは承認）で、画面の承認・拒否の操作を行う。画面の答えが出ると、求めは待ちの終わりで画面から消える。答えない求めがあるとエージェントが待ち続けるので、画面に出た求めは、決めた時間のうちに必ず答える。生成プラグインには、試験のためだけの機能を足さない。
 - Copilot SDK の EVAL では Issue を起票しない。そのため、エクステンションの中から `gh` のログインで起票できるか（[生成プラグインの構造](generated-plugin-structure.md) 11章 #11）の影響を受けない。
 - 生成プラグインありのときは、画面に終わった理由（REQ-012）が出たら終わりとし、結果の表示を読む。なしのときは、エージェントが手番を終えたら（`session.idle`）終わりとする。
 
@@ -328,7 +329,7 @@ EVAL を動かす仕組みは、開発の試験（5章）とユーザーの試�
 | Node.js（Copilot SDK は 20.19 以上か 22.12 以上） | 2段目の Web管理画面の試験、EVAL |
 | Playwright とブラウザー（手元の Chrome か Edge。どちらもないときは Playwright の Chromium） | 2段目の Web管理画面の試験、EVAL の画面の操作 |
 | Copilot SDK | EVAL |
-| Linux でサンドボックスを使うときは、bubblewrap 0.5.0 以上（外への通信を許すときは、slirp4netns などもあわせて） | EVAL |
+| Linux でサンドボックスを使うときは、bubblewrap 0.5.0 以上、slirp4netns、util-linux 2.35 以上（unshare と nsenter）、iptables・ip6tables とその -restore（外への通信を許すかどうかに関係なく、Linux のすべてのサンドボックスで要る） | EVAL |
 
 - 試験の前に、入口とクリエイターが、道具がそろっているかを確かめる。足りないときは、クリエイターが足りない道具と入れ方を示し、ユーザーがよいと答えたら入れる（REQ-048）。
 - Python のパッケージは仮想環境に入れ、ユーザーの環境全体は変えない。Node.js のパッケージも、試験のためのフォルダに入れる。
@@ -362,7 +363,7 @@ EVAL を動かす仕組みは、開発の試験（5章）とユーザーの試�
 - [Copilot SDK: Streaming events](https://docs.github.com/en/copilot/how-tos/copilot-sdk/features/streaming-events)（採点と記録に使うイベント）
 - [Copilot SDK for Node.js（README）](https://github.com/github/copilot-sdk/blob/main/nodejs/README.md)（`onUserInputRequest`、`onPermissionRequest`、`managedApprovalRequired`、`COPILOT_CLI_PATH`、Node.js の版）
 - [About cloud and local sandboxes](https://docs.github.com/en/copilot/concepts/security-governance-and-network-settings/about-cloud-and-local-sandboxes)
-- [Configuring local sandbox settings](https://docs.github.com/en/copilot/how-tos/cloud-and-local-sandboxes/configuring-local-sandbox-settings)（サンドボックスの設定、Linux で要る道具）
+- [Configuring local sandbox settings](https://docs.github.com/en/copilot/how-tos/cloud-and-local-sandboxes/configuring-local-sandbox-settings)（サンドボックスの設定、Linux で要る道具（Prerequisites）。更新履歴 1.0.83）
 - [Usage-based billing for individuals](https://docs.github.com/en/copilot/concepts/billing/usage-based-billing-for-individuals)（AI クレジット、プランごとの月の枠）
 - [Models and pricing for GitHub Copilot](https://docs.github.com/en/copilot/reference/copilot-billing/models-and-pricing)
 - Copilot CLI 1.0.98 の npm パッケージ（`@github/copilot`）に含まれるプログラム（`copilot-sdk/types.d.ts` と `cli-main.js` の `requestExtensions`）、`copilot help sandbox` の説明、更新履歴（`changelog.json`）
