@@ -32,6 +32,8 @@
 - `--plugin-dir` でプラグインを読み込む。フック、MCP サーバー、カスタムエージェントも読み込まれる。環境変数 `COPILOT_PLUGIN_DIR_ONLY=true` で、ユーザーがインストールしているほかのプラグインを外せる。読み込まれたプラグインは `rpc.plugins.list()` で分かる。
   - 形式は、読み込み方ではなく、マニフェストの `$schema` で決まる。Agent Plugins の形式なら、`--plugin-dir` でも `com.github.copilot/` の中が読まれる（Copilot CLI 1.0.98 の実装と更新履歴で確認。スキルが読まれることは実際に動かして確かめた）。
 - エージェントの質問には `onUserInputRequest`、許可の求めには `onPermissionRequest` で、プログラムから答えられる。
+  - 許可の求めは、答える仕組みを登録したすべての相手（SDK のセッション、エクステンション）に届く。先に答えたものが使われ、後の答えは使われない（`extension.js` の `_handleBroadcastEvent`、`rpc.d.ts`）。フックがすでに答えを決めた求め（`resolvedByHook` が真）には答えない。
+- SDK で作ったセッションに、プラグインのエクステンションを読み込ませるには、`requestExtensions: true` を指定する（既定はオフ。`types.d.ts`）。
 - 採点と記録に使えるイベント：`skill.invoked`（スキルが呼ばれた）、`subagent.started`・`subagent.completed`（カスタムエージェントとそのモデル）、`tool.execution_*`（使ったツール）、`user_input.requested`（質問）、`assistant.usage`（呼び出しごとのトークンと費用）、`session.idle`（手番の終わり）。
 - SDK は、対応する版の Copilot のランタイムを同梱している（SDK 1.0.22 は 1.0.98）。手元の Copilot CLI を使うときは `COPILOT_CLI_PATH` で指定する。
 - `copilot -p` で使える主な項目：`--allow-tool`、`--deny-tool`、`--no-ask-user`（質問させない）、`--share=PATH`（会話の記録を Markdown に書き出す）。
