@@ -189,9 +189,8 @@ export async function makeHarness(t, options = {}) {
     uiCalls,
     root: null,
 
+    // 待っている Promise を片づける。偽物の時計の待ちは動かさない（列が空になるのは待たない）
     async settle() {
-      await clock.flush();
-      await core.whenIdle();
       await clock.flush();
     },
     state: () => core.getState(),

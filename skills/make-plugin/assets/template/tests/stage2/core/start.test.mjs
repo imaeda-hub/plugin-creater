@@ -95,9 +95,9 @@ test('REQ-005 起動に失敗すると、上書きが外れ、準備中に戻っ
   const h = await makeHarness(t);
   await h.core.open({ requestText: 'x' });
   h.port.behave('startAgent', { error: new Error('このモデルは使えません') });
-  const p = h.core.start(h.settings());
+  const refusal = expectRefusal(h.core.start(h.settings()));
   await h.settle();
-  const message = await expectRefusal(p);
+  const message = await refusal;
   assert.match(message, /このモデルは使えません/);
   const methods = h.port.calls.map((c) => c.method);
   assert.equal(methods.filter((m) => m === 'setSubagentModels').length, 2);
@@ -119,9 +119,9 @@ test('REQ-005 モデルの上書きに失敗すると、統括は起動せず、
   await h.core.open({ requestText: 'x' });
   let calls = 0;
   h.port.behave('setSubagentModels', { value: () => { calls += 1; if (calls === 1) throw new Error('設定できません'); } });
-  const p = h.core.start(h.settings());
+  const refusal = expectRefusal(h.core.start(h.settings()));
   await h.settle();
-  await expectRefusal(p);
+  await refusal;
   assert.equal(h.port.callsOf('startAgent').length, 0);
   assert.equal(h.run(), null);
 });
@@ -136,10 +136,10 @@ test('REQ-005 起動が時間切れになると、名前から統括を探して
       return new Promise(() => {});
     },
   });
-  const p = h.core.start(h.settings());
+  const refusal = expectRefusal(h.core.start(h.settings()));
   await h.settle();
   await h.clock.advance(LIMITS.CALL_TIMEOUT_MS);
-  const message = await expectRefusal(p);
+  const message = await refusal;
   assert.match(message, /時間切れ/);
   assert.match(message, /取り消しました/);
   assert.deepEqual(h.port.argsOf('cancelAgent'), ['late-1']);
@@ -154,10 +154,10 @@ test('REQ-005 時間切れで統括が見つからなければ、「起動した
   const h = await makeHarness(t);
   await h.core.open({ requestText: 'x' });
   h.port.behave('startAgent', { hang: true });
-  const p = h.core.start(h.settings());
+  const refusal = expectRefusal(h.core.start(h.settings()));
   await h.settle();
   await h.clock.advance(LIMITS.CALL_TIMEOUT_MS);
-  const message = await expectRefusal(p);
+  const message = await refusal;
   assert.match(message, /起動したかは分かりません/);
   assert.equal(h.state().startError.unknownLaunch, true);
   assert.equal(h.port.callsOf('cancelAgent').length, 0);
@@ -173,10 +173,10 @@ test('REQ-005 起動が時間切れになった後に遅れて起動した統括
   const h = await makeHarness(t);
   await h.core.open({ requestText: 'x' });
   h.port.behave('startAgent', { delay: 15_000 });
-  const p = h.core.start(h.settings());
+  const refusal = expectRefusal(h.core.start(h.settings()));
   await h.settle();
   await h.clock.advance(LIMITS.CALL_TIMEOUT_MS);
-  await expectRefusal(p);
+  await refusal;
   assert.equal(h.run(), null);
   assert.equal(h.port.callsOf('cancelAgent').length, 0, '時間切れの時点ではまだ起動していない');
 
@@ -205,7 +205,7 @@ test('REQ-009 開始中に止めても、起動が返らないまま、押して
   await h.core.open({ requestText: 'x' });
   h.port.behave('startAgent', { hang: true });
   h.port.behave('listTasks', { hang: true });
-  const p = h.core.start(h.settings());
+  const refusal = expectRefusal(h.core.start(h.settings()));
   await h.settle();
   await h.clock.advance(1000);
   const pressed = h.clock.now();
@@ -219,7 +219,7 @@ test('REQ-009 開始中に止めても、起動が返らないまま、押して
   assert.equal(run.status, 'finished');
   assert.equal(run.endReason.kind, 'user_stopped');
   assert.ok(LIMITS.STOP_DEADLINE_MS < 10_000, '押してから 10 秒のうちに終わる');
-  await expectRefusal(p);
+  await refusal;
   assert.equal(h.port.overrides, null, '上書きが外れている');
 });
 
@@ -232,11 +232,11 @@ test('REQ-009 開始中に止めると、名前から統括を探して取り消
       return new Promise(() => {});
     },
   });
-  const p = h.core.start(h.settings());
+  const refusal = expectRefusal(h.core.start(h.settings()));
   await h.settle();
   await h.core.stop();
   await h.settle();
-  await expectRefusal(p);
+  await refusal;
   assert.deepEqual(h.port.argsOf('cancelAgent'), ['orch-x']);
   assert.equal(h.run().status, 'finished');
   assert.equal(h.run().endReason.kind, 'user_stopped');
@@ -248,12 +248,12 @@ test('REQ-009 開始中に止めた後に、起動の結果が遅れて届いて
   const h = await makeHarness(t);
   await h.core.open({ requestText: 'x' });
   h.port.behave('startAgent', { delay: 5000 });
-  const p = h.core.start(h.settings());
+  const refusal = expectRefusal(h.core.start(h.settings()));
   await h.settle();
   await h.clock.advance(1000);
   await h.core.stop();
   await h.settle();
-  await expectRefusal(p);
+  await refusal;
   assert.equal(h.run().status, 'finished');
   await h.clock.advance(5000);
   const late = h.port.tasks.find((x) => x.agentType === `${PLUGIN}:orchestrator`);

@@ -359,7 +359,7 @@ async function failStart(ctx, run, failure, launched) {
   }
   await unsetOverrides(ctx, run);
   const unknownLaunch = failure.timedOut && launched && found.length === 0;
-  let message = failure.message;
+  let message = failure.message.replace(/[。.]?$/, '。');
   if (failure.timedOut && launched) {
     message += unknownLaunch ? '起動したかは分かりません。' : '起動していた統括は取り消しました。';
   }

@@ -83,13 +83,21 @@
 - A4：入口のスキルの「エクステンションのツールがないときの直し方」に、3つ目の原因（/extensions mode が Disabled）を足すよう、generated-plugin-structure.md 4.7 と creator-structure.md 4.3 に足す提案。
 - R2：`requestSandboxPermissive` を「サンドボックスの外で動かす」と示さない（generated-plugin-structure.md 6.3）。tasks.list には shell と client のタスクも入る。
 
+## 後の仕事に渡すこと（作業のエージェントの報告から）
+
+- A3→D1：会話例の版は、冒頭30行に「クリエイターの版：x.y.z」と書く。examples/ に版のない Markdown を置くと不合格になる。
+- A3→B2：ひな形の文書や土台に `K-数字` の例を書かない（「それ以外」のナレッジの番号の探索に引っかかる）。
+- A3→A1・A2・C3：task.json の settings の options は文字の並び。workers[].agent は `worker` か `worker-<名前>`。eval.json の形は BLUEPRINT 4.3。
+- A3→C2・D1：構造の検査は `run_checks(root, kind)`（kind は generated か plugin）。試験の入口 run.py は `--root`、`--stage1-script`、`--stage2-dir`、`--need` で使い回せる。
+- A3：SKILL.md のフロントマターの Agent Skills の6項目以外（user-invocable など）は不合格にした（R1 の勧め）。references の 20KB は 20,000 バイト未満と読んだ。
+
 ## 動いているサブエージェント（同じセッションなら SendMessage で続けられる）
 
 | 仕事 | ID |
 | --- | --- |
 | A1 | a53fe02c46a87994d |
 | A2 | a4dd7b3736f4dd2a9 |
-| A3 | a6ae7ad9d3151a163 |
+| A3 | a6ae7ad9d3151a163（完了） |
 | A4 | afd1d4ef4c0e6d043（完了） |
 | C1 | ad77758fe8b6dfff7 |
 | B3 | ワークフロー wf_3c0c1bb4-188。台本は ~/.claude/projects/-home-user-plugin-creater/f6e65e0d-9c94-5351-8ee1-475927b3b43e/workflows/scripts/b3-creator-nl-parts-wf_3c0c1bb4-188.js。止まったら Workflow の scriptPath と resumeFromRunId で続ける（書き終えた段は使い回される） |
