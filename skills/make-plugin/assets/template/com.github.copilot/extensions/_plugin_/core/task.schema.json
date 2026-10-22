@@ -27,7 +27,7 @@
         "properties": {
           "id": { "type": "string", "pattern": "^C-[0-9]+$", "description": "基準の番号（例：C-01）" },
           "text": { "type": "string", "minLength": 1, "description": "基準の文。ナレッジの文のまま書く" },
-          "knowledge": { "type": "string", "pattern": "^K-[0-9]+$", "description": "もとになったナレッジの番号（例：K-03）" }
+          "knowledge": { "type": "string", "pattern": "^K-[0-9]+$", "description": "もとになったナレッジの番号（K- に数字を続けた形）" }
         }
       }
     },

@@ -179,14 +179,14 @@ def load_schema(directory: str, name: str) -> Dict[str, Any]:
         return json.load(f)
 
 
-def describe_schema_error(error: "jsonschema.ValidationError") -> str:
-    """jsonschema の英語の文を、平易な日本語にする。"""
+def describe_schema_error(error: "jsonschema.ValidationError", prefix: Tuple[Any, ...] = ()) -> str:
+    """jsonschema の英語の文を、平易な日本語にする。prefix は、部分だけ検査したときの上の階層の名前。"""
     # oneOf / anyOf は、いちばん近い選択肢の誤りを示す
     if error.validator in ("oneOf", "anyOf") and error.context:
         best = jsonschema.exceptions.best_match(error.context)
         if best is not None:
             error = best
-    where = "/".join(str(p) for p in error.absolute_path) or "(全体)"
+    where = "/".join(str(p) for p in list(prefix) + list(error.absolute_path)) or "(全体)"
     v, want, inst = error.validator, error.validator_value, error.instance
     if v == "required" and isinstance(inst, dict):
         message = "必須の項目がない: " + "、".join(k for k in want if k not in inst)
@@ -291,6 +291,22 @@ def is_loopback(host: str) -> bool:
         return False
 
 
+MCP_SERVER_DEFS = {"stdio": "stdioServer", "streamable-http": "streamableHttpServer", "sse": "sseServer"}
+
+
+def mcp_server_problems(schema: Dict[str, Any], name: str, server: Any) -> List[str]:
+    """サーバー1つを、その type に合う定義だけで調べる（oneOf のままだと、関係ない選択肢の誤りが出てしまう）。"""
+    where = "mcpServers/%s" % name
+    if not isinstance(server, dict):
+        return ["%s: サーバーの定義が項目の集まりになっていない" % where]
+    kind = MCP_SERVER_DEFS.get(server.get("type"))
+    if kind is None:
+        return ["%s/type: stdio、streamable-http、sse のどれかでなければならない（今は %s）" % (where, short(server.get("type")))]
+    sub = {"$schema": schema["$schema"], "$defs": schema["$defs"], "$ref": "#/$defs/" + kind}
+    errors = sorted(jsonschema.Draft202012Validator(sub).iter_errors(server), key=lambda e: [str(p) for p in e.absolute_path])
+    return [describe_schema_error(e, ("mcpServers", name)) for e in errors]
+
+
 def check_mcp_url(name: str, url: str, c: Check) -> None:
     try:
         parts = urlsplit(url)
@@ -356,8 +372,14 @@ def check_mcp(ctx: Context, c: Check) -> None:
     data = read_json_file(path, "mcp.json", c)
     if data is None:
         return
-    for problem in schema_problems(data, load_schema(SCHEMA_DIR, "mcp.schema.json"), "mcp.json:"):
-        c.error(problem)
+    schema = load_schema(SCHEMA_DIR, "mcp.schema.json")
+    for e in sorted(jsonschema.Draft202012Validator(schema).iter_errors(data), key=lambda e: [str(p) for p in e.absolute_path]):
+        path = list(e.absolute_path)
+        if e.validator == "oneOf" and len(path) == 2 and path[0] == "mcpServers":
+            for problem in mcp_server_problems(schema, path[1], e.instance):   # 種類（type）に合う選択肢だけで調べる
+                c.error("mcp.json: " + problem)
+        else:
+            c.error("mcp.json: " + describe_schema_error(e))
     if not isinstance(data, dict):
         return
     plugin_version = schema_version(ctx.manifest.get("$schema")) if ctx.manifest else None
@@ -715,7 +737,7 @@ def check_knowledge(ctx: Context, c: Check) -> None:
     for cid, criterion in task_criteria(ctx.task).items():
         k = criterion.get("knowledge")
         if k is not None and (k not in by_id or by_id[k]["kind"] != "criterion"):
-            c.error("基準 %s の knowledge %s が、ナレッジの一覧にある「合否の決め方」の番号でない" % (cid, short(k)))
+            c.error("基準 %s の knowledge %s が、ナレッジの一覧にある「合否の決め方」の番号でない" % (cid, k))
 
 
 ROLE_FILES = (("orchestrator", "統括"), ("worker", "作業"), ("verifier", "検証"))
@@ -733,7 +755,7 @@ def check_agent_tools(ctx: Context, c: Check) -> None:
     for role, label in ROLE_FILES:
         names = agents_of(ctx, role)
         if not names:
-            c.error("%s エージェントの com.github.copilot/agents/%s.agent.md がない" % (label, role))
+            c.error("%sエージェントの com.github.copilot/agents/%s.agent.md がない" % (label, role))
         for name in names:
             where = "com.github.copilot/agents/%s.agent.md（%s）:" % (name, label)
             tools = agent_tools(ctx.agents[name][0])

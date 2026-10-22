@@ -30,7 +30,9 @@ class Sandbox(unittest.TestCase):
         self.tmp = tempfile.mkdtemp()
         self.root = os.path.join(self.tmp, "plugin")
         shutil.copytree(GOOD, self.root)
-        self.write(EXT + "/core/task.schema.json", open(TASK_SCHEMA, encoding="utf-8").read())
+        # 土台の task.schema.json は見本に持たず、ひな形のものを写して使う（二重に持つとずれるため）
+        os.makedirs(self.path(EXT + "/core"))
+        shutil.copy(TASK_SCHEMA, self.path(EXT + "/core/task.schema.json"))
 
     def tearDown(self):
         shutil.rmtree(self.tmp, ignore_errors=True)

@@ -206,7 +206,11 @@
         : null;
     if (!pairs) return invalid();
     if (pairs.length === 0) return none();
-    return h('dl', { class: 'kv' }, pairs.map(([k, v]) => [h('dt', null, k), h('dd', null, v == null ? '' : typeof v === 'object' ? JSON.stringify(v) : v)]));
+    return h(
+      'dl',
+      { class: 'kv' },
+      pairs.map(([k, v]) => h('div', { class: 'fact' }, h('dt', null, k), h('dd', null, v == null ? '' : typeof v === 'object' ? JSON.stringify(v) : v))),
+    );
   }
 
   function tablePart(value) {

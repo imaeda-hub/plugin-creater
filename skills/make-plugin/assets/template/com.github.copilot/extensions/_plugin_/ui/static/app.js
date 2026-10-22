@@ -244,6 +244,9 @@
     return fold;
   }
 
+  /** 見出しと値の1組。幅が足りないときは、値が見出しの下に回る。 */
+  const fact = (term, value, valueClass) => h('div', { class: 'fact' }, h('dt', null, term), h('dd', { class: valueClass }, value));
+
   function agentCard(agent) {
     const [statusLabel, tone] = AGENT_STATUS[agent.status] ?? [text(agent.status), 'neutral'];
     const selected = text(agent.selectedModel);
@@ -258,14 +261,10 @@
       h(
         'dl',
         { class: 'facts' },
-        h('dt', null, '担当している作業'),
-        h('dd', null, agent.task ? agent.task : '（なし）'),
-        h('dt', null, '選んだモデル'),
-        h('dd', null, selected || '（指定なし）'),
-        h('dt', null, '実際に動いたモデル'),
-        h('dd', { class: 'actual-model' }, actual || '（まだ分かりません）', differs ? badge('選んだモデルと違います', 'warn') : null),
-        h('dt', null, '最後に動いた時刻'),
-        h('dd', null, time ?? '（まだ動いていません）'),
+        fact('担当している作業', agent.task ? agent.task : '（なし）'),
+        fact('選んだモデル', selected || '（指定なし）'),
+        fact('実際に動いたモデル', [actual || '（まだ分かりません）', differs ? badge('選んだモデルと違います', 'warn') : null], 'actual-model'),
+        fact('最後に動いた時刻', time ?? '（まだ動いていません）'),
       ),
       agent.replySummary ? h('p', { class: 'reply-summary' }, agent.replySummary) : null,
       agent.agentId ? replyFold(agent.agentId, '最後の返事の全文を開く') : null,
@@ -379,7 +378,7 @@
       { class: 'wait', dataset: { requestId: wait.requestId, kind: wait.kind } },
       h('h3', null, who, ' の確認：', WAIT_KINDS[wait.kind] ?? text(wait.kind)),
       detail.sandboxBypass ? h('p', { class: 'alert alert-error' }, 'この操作は、安全のための囲い（サンドボックス）の外で動かす求めです。内容をよく確かめてから答えてください。') : null,
-      h('dl', { class: 'facts wide' }, rows.map(([term, value]) => [h('dt', null, term), h('dd', null, value)])),
+      h('dl', { class: 'facts wide' }, rows.map(([term, value]) => fact(term, value))),
     );
   }
 

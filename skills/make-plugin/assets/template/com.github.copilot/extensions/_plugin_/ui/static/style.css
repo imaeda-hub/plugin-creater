@@ -359,20 +359,39 @@ h3 {
   margin: 0.25rem 0;
 }
 
-.facts {
-  display: grid;
-  grid-template-columns: minmax(5rem, 38%) minmax(0, 1fr);
-  gap: 0.1rem 0.5rem;
+.facts,
+.kv {
   font-size: 0.875rem;
 }
 
-.facts dt {
+/* 見出しと値は横に並べる。幅が足りないときは、値が見出しの下に回る（文字が1字ずつ折れない） */
+.fact {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 0.5rem;
+}
+
+.fact dt {
+  flex: 1 1 8.5rem;
+  min-width: 0;
   color: var(--muted);
 }
 
+.fact dd {
+  flex: 2 1 8rem;
+  min-width: 0;
+}
+
 .facts.wide {
-  grid-template-columns: minmax(6rem, 22%) minmax(0, 1fr);
   font-size: 1rem;
+}
+
+.facts.wide .fact {
+  padding: 0.1rem 0;
+}
+
+.facts.wide .fact dt {
+  flex-basis: 11rem;
 }
 
 .reply-summary {
@@ -600,17 +619,6 @@ h3 {
   padding: 0.5rem 0.8rem;
   border: 1px solid var(--line);
   border-radius: var(--radius);
-}
-
-.kv {
-  display: grid;
-  grid-template-columns: minmax(4rem, 35%) minmax(0, 1fr);
-  gap: 0.1rem 0.5rem;
-}
-
-.kv dt {
-  color: var(--muted);
-  overflow-wrap: anywhere;
 }
 
 .table-wrap {
