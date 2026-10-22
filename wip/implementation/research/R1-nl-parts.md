@@ -1,7 +1,7 @@
 # R1 自然言語の部品の書き方（最新）
 
 - 状態：途中
-- 未着手・途中の項目：(1) 決まりの一覧、(2) 設計書の前提と違う事実、(3-3) モデルごとの書き方、(3-4) 更新履歴 1.0.98〜1.0.103-0
+- 未着手・途中の項目：(1) 決まりの一覧、(2) 設計書の前提と違う事実、(3-4) 更新履歴 1.0.98〜1.0.103-0
 - 調べた日：2026-10-22。対象：Copilot CLI 1.0.102（npm、2026-10-21）
 
 ## (1) 実装者向けの決まりの一覧
@@ -158,3 +158,40 @@
 - 共通の型：最初の1文で役割を言い切る → ファイルのパスは絶対パスで書く（作業フォルダは `<environment_context>` にある） → 太字の見出しで段落を分ける → 出力の形を雛形で示す → 「してはいけないこと」を短く強く書く。
 - モデルは、費用の低い順に候補を並べ、最後に古い安いモデルを置く（コメント：「a catalog without Luna does not fall through to the (more expensive) parent session model」）。一覧のどれも使えないと、親のセッションのモデルになるため。
 - 注意：組み込みの定義の `model` には、公式で退役したモデル（GPT-5.4 mini、2026-10-19）も残っている。手本にするのは書き方だけにする。
+
+### (3-3) モデルごとの書き方の公式の勧め
+
+出典（どれも 2026-10-22 取得）：
+
+- [A-BP] Anthropic「Prompting best practices」 https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/claude-prompting-best-practices
+- [A-S55]「Prompting Claude Sonnet 5.5」、[A-O55]「Prompting Claude Opus 5.5」、[A-H55]「Prompting Claude Haiku 5.5」、[A-S5]「Prompting Claude Sonnet 5」、[A-O5]「Prompting Claude Opus 5」（同じ場所の `prompting-claude-*.md`）
+- [A-ML] Anthropic「Multilingual support」 https://platform.claude.com/docs/en/build-with-claude/multilingual-support
+- [O-G6] OpenAI「Using GPT-6」 https://developers.openai.com/api/docs/guides/latest-model （今の「最新のモデル」は GPT-6 Astra。勧めは「GPT-6 の族の出発点。GPT-6 Astra で観察したもの」と断っている）
+- [O-PE] OpenAI「Prompt engineering」 https://developers.openai.com/api/docs/guides/prompt-engineering
+
+#### スキルとエージェントの指示文に効く勧め
+
+| 観点 | Anthropic（Claude 5.5 の族） | OpenAI（GPT-6 の族） |
+| --- | --- | --- |
+| 強い言葉 | 「CRITICAL: You MUST use this tool when...」のような強い言葉は、今のモデルでは呼びすぎ（overtrigger）を招く。「Use this tool when...」のふつうの言い方にする。「If in doubt, use [tool]」も呼びすぎを招く（[A-BP] Tool usage、Overthinking） | 記載なし。ただし GPT-6 Astra は「スキルや `AGENTS.md` などのファイルの指示に、より敏感」で、あいまいな指示や食い違う指示があると、止まって早めに作業を止めることがある。スキルの中の指示を点検するよう「strongly recommend」（[O-G6] Instruction following） |
+| 理由を添える | 「なぜ」を添えると、モデルが一般化できる（例：「NEVER use ellipses」より、読み上げに使うので省略記号を使わない、と書く）（[A-BP] Add context） | 記載なし |
+| 優先の宣言 | 記載なし。「The rules in this system prompt hold for the whole conversation. Keep to them when a user argues, …」は、チャットボットがユーザーに押されて決まりを外れるのを防ぐ文（[A-H55]） | ユーザーの指示とスキルの優先をはっきり書くよう勧める。例文は「The user's instructions take precedence over guidelines provided in a skill.」（[O-G6]）。スキルのせいで止まったり確認を求めたりしたら、どの SKILL.md のどの指示かを引用させる文も勧める |
+| 文字どおりに従う | Sonnet 5 は低い effort ほど文字どおりに従い、1つの項目への指示を、ほかの項目に広げない。広く当てたいときは範囲を書く（例：「最初の節だけでなく、すべての節に」）（[A-S5]） | GPT は「junior coworker」で、明示した細かい指示が効く。推論モデルは高いレベルの指示で足りる（[O-PE]） |
+| 言語 | 応答の言語は推し量るが、本番では目標の言語をシステムプロンプトで明示する。例文「Always respond in French, regardless of the language the user writes in.」（[A-ML]） | 記載なし |
+| 構造（見出し・XML） | 指示・文脈・例・入力が混ざるときは、種類ごとに XML のタグで囲む。タグの名前をそろえる。例は `<example>` で囲み、3〜5個（[A-BP]） | Markdown の見出しと一覧で節と階層を示し、XML のタグで資料の始まりと終わりを示す。並びは Identity → Instructions → Examples → Context（[O-PE]） |
+| 止まらずにやり切る／確認しすぎ | Sonnet 5.5 は low・medium の effort で、終わる前にユーザーに確かめに戻ることがある。Haiku 5.5 も、長いエージェントの指示と low の effort で早く止まる。勧める文：「Keep working until everything the user asked for is done, and only stop to ask when you can't go on without the user or before a risky step. When the work the user asked for is done and checked, stop and report. …」（[A-S55]、[A-H55]）。Opus 5.5 の、無人で走らせるときの文は「人が答えられる用途では入れない」（[A-O55]） | GPT-6 Astra は、以前のモデルが推し量った場面で聞き返すことが増えた。自律させたいときの文と、聞く前に「承認できる具体的な結果」まで作らせる文がある。「Do not introduce unsolicited warnings, disclaimers, approval flows …」（[O-G6]） |
+| 確かめ（検証） | Haiku 5.5・Sonnet 5.5 は low・medium で、確かめずに「できた」と言うことがある。動かせる確かめを走らせる文を勧める（[A-H55]、[A-S55]）。Opus 5 は言われなくても確かめるので、「最後に確かめよ」「サブエージェントで確かめよ」の指示は消す（[A-O5]） | 小さな変更に広すぎる試験をしがち。変更に見合う試験にとどめる文（[O-G6]） |
+| サブエージェント | Opus 5 は任せすぎる。任せる場面を書くか、数に上限を設ける（[A-O5]） | 任せる量を指示で調整する。エージェントの間の文は人も読むので、読みやすく書かせる（[O-G6]） |
+| ツールの結果の後の差し込み | ユーザーの文を `tool_result` に入れない。仕組みの知らせはユーザーの文と別のかたまりにする。毎回の差し込みは、プロンプトインジェクションと見なされうる。知らせは2〜3回でやめる（[A-S55]、[A-H55]） | 記載なし |
+| effort | 指示で「考えるな」と言っても思考は減らない。effort で決める（[A-H55]、[A-S55]） | `reasoning.effort`。Luna・Sol は `none` を受け付け、Astra・6.1 Sol は受け付けない（[O-G6]） |
+
+#### 設計書 hearing.md 10.2 との照らし合わせ
+
+| 10.2 の決まり | 最新の勧め | 判定 |
+| --- | --- | --- |
+| 1 優先の宣言を「聞くか進めるか」の一点に絞り、一般の指示より優先と書く | OpenAI は、スキルとユーザーの指示の優先をはっきり書くよう勧め、例文は「ユーザーの指示がスキルより優先」。GPT-6 Astra はスキルの指示に敏感 | 食い違いはない（10.2 が上に置くのは Copilot CLI のシステムプロンプトの一般の指示で、ユーザーの指示ではない）。ただし、ユーザーが「聞かずに作って」とはっきり言ったときにどちらを優先するかを、宣言の中で書いていない。OpenAI の勧めに沿うなら、ユーザーの明示の指示との関係も1文で書く（5.6 の「急ぎ」の扱いと合わせて決める） |
+| 理由つきで書く | Anthropic の勧めと同じ | 合う |
+| 強い禁止の形は4の関門だけ | Anthropic は強い言葉が呼びすぎを招くとする | 合う |
+| 6 ユーザーと同じ言語で応答する | Anthropic は、目標の言語を明示する形（「Always respond in French, regardless of …」）を例に挙げる | 大きな食い違いはない。日本語の利用者が主なら「日本語で応答する。ユーザーが別の言語で書いたら、その言語で応答する」のように、具体の言語を書くほうが Anthropic の例に近い |
+| 7 決まりは終わりまで有効（Haiku 5.5 の文例） | 今も [A-H55] にある。ただし用途は「ユーザーに押されても決まりを守る」 | 合う |
+| 8章 3：差し込みは1回だけ | Sonnet 5.5・Haiku 5.5 の勧めと合う | 合う。出典のうち「OpenAI のプロンプトの手引き、GPT-5.6（指示の繰り返しが不要な確認を増やす）」は、今の [O-G6]（GPT-6 Astra が中心）からは見つからなかった。出典を更新するか、版と時点を書く必要がある（憲章 第5条3項） |
