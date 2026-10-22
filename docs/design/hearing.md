@@ -27,10 +27,10 @@
 | 記録のツール | ヒアリングの状態とナレッジなどを書く、クリエイターのエクステンションの「知らせる」ツール。一覧は [生成プラグインの構造](generated-plugin-structure.md) 9章 |
 | 状態取得ツール | ヒアリングの状態を返す、クリエイターのエクステンションのツール（`<クリエイターの名前>_state`。7.5） |
 
-## 2. 依って立つ Copilot CLI 1.0.98 の事実
+## 2. 依って立つ Copilot CLI の事実
 
-- この章の事実は、断りがない限り、Copilot CLI 1.0.98 で実測した（オフラインのモードで偽物のモデルにつないで確認、2026-10）。
-- 限界：BYOK（自前の API キーとエンドポイントでモデルを使う設定）の経路だけを見た。GitHub にログインして Copilot のモデルを使う経路で同じかと、本物のモデルが指示にどう従うかは確かめていない（14章）。
+- この章の事実は、断りがない限り、Copilot CLI 1.0.98 で実測し、1.0.101 でも同じであることを確かめた（オフラインのモードで偽物のモデルにつないで確認、2026-10-22）。1.0.101 で測り直したのは、`ask_user` のフォームと結果の文、Esc と Ctrl+D、autopilot、同じ手番の自動コンパクションでスキルが消えること、フックの差し込みの場所、`@ファイル`・`view`・文書の送られ方、2.7 のシステムプロンプトである。npm の最新の 1.0.102（2026-10-21）でも、2.7 のシステムプロンプトは同じだった。
+- 限界：BYOK（自前の API キーとエンドポイントでモデルを使う設定）の経路だけを見た。GitHub にログインして Copilot のモデルを使う経路で同じかと、本物のモデルが指示にどう従うかは確かめていない。Auto を選んだときのシステムプロンプトも確かめていない（14章）。
 
 ### 2.1 ask_user
 
@@ -49,7 +49,7 @@
 | `task_complete` は、autopilot と plan モードで加わる。説明は「Only call this tool when you are confident the task is fully complete.」である | 5.5 |
 | `-p` と `--no-ask-user` では、`ask_user` がない | 3.1 |
 | サブエージェントは、`tools` に書いても `ask_user` を持たない | 4.1、9 |
-| Copilot CLI のシステムプロンプトは、全モデルで文章での質問を禁じ（「Never ask questions via plain text output.」）、おすすめを `default` にするよう指示する | 4.1、4.2 |
+| Copilot CLI のシステムプロンプトは、Copilot CLI で選べる全モデルで同じ `<ask_user>` 節を持ち、文章での質問を禁じ（「Never ask questions via plain text output.」）、おすすめを `default` にするよう指示する。全モデルに「Ask for guidance if uncertain; use the ask_user tool to ask clarifying questions」もある（1.0.101） | 4.1、4.2 |
 | Copilot CLI のシステムプロンプトは、関係する好みを1つのフォームにまとめて聞くことも勧める（「You want to collect several related preferences at once rather than asking one at a time」） | 4.1 |
 
 ### 2.2 SKILL.md とコンテキストウィンドウ
@@ -66,7 +66,7 @@
 | 自動コンパクションで、`ask_user` の答え、ツールの結果（エクステンションのツールの返り値を含む）、`view` で読んだ中身は消える | 7.1、8 |
 | 手番の途中でモデルが `skill` ツールで呼んだスキルは、その手番の中で自動コンパクションが起きると、本文もパスも残らない。次にユーザーが打った手番でも戻らない。ユーザーが `/<クリエイターの名前>:make-plugin` と打って始めた手番で同じことが起きるかは、確かめていない（14章） | 8 |
 | コンパクションの後に `skill` ツールで呼び直すと、本文がもう一度入る。参考にとどめる実験1回だけで確かめた（その実験では、上限を超えて履歴が削られ、偽物のモデルが手順を繰り返した） | 8 |
-| エクステンションのプロセスはコンパクションをまたいで動き続け、`session.compaction_start` と `session.compaction_complete` のイベントを受け取れる | 8 |
+| エクステンションのプロセスはコンパクションをまたいで動き続け、`session.compaction_start` と `session.compaction_complete` のイベントを受け取れる。1.0.101 では、イベントに `compactionAttemptId`、`outcome` などの項目が足された（1.0.98 の項目は残る） | 8 |
 
 ### 2.3 再開と /clear
 
@@ -80,7 +80,7 @@
 | テキストのファイルの `@ファイル` は、中身ではなくパスと行数だけを入れる。公式のショートカットの表（中身を入れる）と食い違う | 3.1 |
 | `view` は 20KB を超えるファイルを読まない | 9、10.1 |
 | `view` は docx・xlsx・pptx・PDF を文字にせず、生のバイトを返す。文書を文字にする組み込みのツールはない | 9 |
-| 打った発言の `@` やパスの貼り付けで示した文書は、モデルの API の形式によって、ファイルのまま提供元に送られる（native document）。対象は pdf・doc・docx・xls・xlsx・ppt・pptx・rtf・odt で、拡張子で決まる。OpenAI Responses の形式はこれらすべてを送り、Anthropic の形式は PDF だけを送る。chat completions の形式はどれも送らず、パスだけを入れる | 3.1 |
+| 打った発言の `@` やパスの貼り付けで示した文書は、モデルの API の形式によって、ファイルのまま提供元に送られる（native document）。対象は pdf・doc・docx・xls・xlsx・ppt・pptx・rtf・odt で、拡張子で決まる。OpenAI Responses の形式はこれらすべてを送り、Anthropic の形式は PDF だけを送る。chat completions の形式はどれも送らず、パスだけを入れる。どれを送るかは、モデルの名前ではなく通信の形式で決まる（Claude のモデル名でも Responses の形式なら全部を送り、GPT-6 のモデル名でも Anthropic の形式なら PDF だけを送った。1.0.101）。ログインした経路で、各モデルがどの形式で送られるかは確かめていない（H7） | 3.1 |
 | ファイルのまま送ったときは、発言に「The user included native document attachments in this message. Review any attached document directly before responding, and do not call tools just to read an attached document.」の文が加わる | 3.1 |
 | ファイルのまま送った文書は、その発言の一部として履歴に残る見込みである（確かめていない） | 3.1、9 |
 | 提供元が文書を断ると（400）、その手番はエラーで終わる。履歴の中の文書は、パスに置き換わる | 3.1 |
@@ -108,19 +108,25 @@
 - サブエージェントが受け取るのは、自分のシステムプロンプトと、渡した prompt だけである。返るのは最後の文だけである。
 - 複数のサブエージェントを並列に呼べる。
 - サブエージェントのモデルは、呼び出しごとの値、`~/.copilot/settings.json` の subagents の上書き、エージェントの定義の `model`、親のセッションの値の順で決まる（公式のコマンドリファレンス）。
-- 組み込みの explore（費用の低いモデル）と research（claude-sonnet-5）は、定義でモデルが決められている（Copilot CLI 1.0.98 の npm パッケージの `definitions/`）。
+- 組み込みの explore（費用の低いモデル）と research（claude-sonnet-5）は、定義でモデルが決められている（Copilot CLI 1.0.98〜1.0.102 の npm パッケージの `definitions/`）。公式のコマンドリファレンスの表は research を claude-haiku-4.5 としていて、パッケージと食い違う。
 - サブエージェントの `tools` には、エクステンションのツールを名前のまま書けて、呼べる（[生成プラグインの構造](generated-plugin-structure.md) 11章 #8）。
-- カスタムエージェントが `tools` の別名 `search`・`web` で対応するツールを受け取れるのは、更新履歴では 1.0.100 からである（「Custom agents that declare the documented `search`, `web` or `todo` tool aliases … now receive the matching tools」）。1.0.98 で受け取れるかは確かめていない（[生成プラグインの構造](generated-plugin-structure.md) 11章 #24）。
+- カスタムエージェントが `tools` の別名 `search`・`web` で対応するツールを受け取れるのは、更新履歴では 1.0.100 からである（「Custom agents that declare the documented `search`, `web` or `todo` tool aliases … now receive the matching tools」）。今の版（1.0.101、1.0.102）での実測はしていない（[生成プラグインの構造](generated-plugin-structure.md) 11章 #24）。
 
 ### 2.7 モデルごとのシステムプロンプト
 
-| モデル | ヒアリングと逆向きの指示 |
-| --- | --- |
-| gpt-4.1、gpt-5-mini | 「Be extremely biased for action. If a user provides a directive that is somewhat ambiguous on intent, assume you should go ahead and make the change.」 |
-| gpt-5.5、gpt-5.4-mini | 「…then stop—no recap, optional extras, offer to continue, or follow-up question.」 |
-| Claude Sonnet 5.5、Claude Opus 5.5 | 「Prioritize brevity.」 |
-| Claude Sonnet 5.5 | 「limit your response to 100 words or less」 |
-| gpt-4.1 | 「try to limit your response to 100 words or less」 |
+- Copilot CLI のシステムプロンプトは、モデルの ID ごとに族に分かれる（1.0.101 で、Copilot CLI で選べる全モデル（33 のモデル名）を測った。1.0.102 でも同じ）。
+- 族はモデルの ID の完全一致で決まり、通信の形式では変わらない。知らない ID は「その他」の族になる。
+
+| 族 | モデル（2026-10 に Copilot CLI で選べるもの） | ヒアリングと逆向きの指示 |
+| --- | --- | --- |
+| GPT | GPT-6.1 Sol、GPT-6 Sol、GPT-6 Luna、GPT-6 Astra、GPT-5.6 Sol・Terra・Luna、GPT-5.3-Codex | 「…then stop—no recap, optional extras, offer to continue, or follow-up question.」「Bias to action: … assume they want tools/code used.」「Make reasonable assumptions for missing details; do not stop at analysis or a partial fix.」 |
+| Claude 5 | Claude Haiku 5.5、Sonnet 5.5、Sonnet 5、Opus 5.5、Opus 5、Opus 4.8、Fable 5、Fable 5.1 | 「limit your response to 100 words or less」「Prioritize brevity. Default to the shortest possible response that satisfies the request.」 |
+| その他 | Gemini 4 Argon、Gemini 3.8 Flash、Claude Haiku 4.5、Grok、Kimi K3、MAI-Code-1.1-Flash | 「try to limit your response to 100 words or less」 |
+
+- どの族にも、同じ `<ask_user>` 節（2.1）がある。
+- GPT の族の「Make reasonable assumptions for missing details」は、推し量りで埋めずに `ask_user` で聞くヒアリングの決まりと、まともにぶつかる（10.2）。
+- 既定のモデルは Claude Sonnet 5.5 である（公式ドキュメント「Supported AI models in GitHub Copilot」）。
+- Auto を選んだときにどの族になるかは、確かめていない（14章）。
 
 ## 3. ヒアリングの流れ
 
@@ -591,7 +597,7 @@
 
 本文の先頭に、次の決まりを理由つきで置く。
 
-1. このスキルの仕事は、ヒアリングでユーザーのナレッジを引き出すことである。答えがユーザーにしか分からないところでは `ask_user` で聞き、答えを受け取るまで先へ進まない。この点は、「あいまいでも進める」「追加の質問をしない」という一般の指示より優先する（2.1、2.7）。
+1. このスキルの仕事は、ヒアリングでユーザーのナレッジを引き出すことである。答えがユーザーにしか分からないところでは `ask_user` で聞き、答えを受け取るまで先へ進まない。この点は、「足りない情報は推し量って進める」「追加の質問をしない」「短く答える」という一般の指示より優先する（2.1、2.7）。
 2. ファイルを読む、記録する、調べることは、ユーザーに断らずに進める。
 3. 答えを受けたら、次の問いの前に、記録のツールで記録する。
 4. 生成前の確認でユーザーがよいと答えるまで、生成しない（6.3）。
@@ -702,7 +708,7 @@
 | H4 | エクステンションのツールの定義が後回し（deferred）にされ、状態取得ツールの説明がモデルに見えないことがあるか（更新履歴 1.0.100） | 7.5、8章 |
 | H5 | 記録のツールと状態取得ツールの日本語の返り値が、画面にどう出るか | 7.5 |
 | H6 | `model` を書かない読み取り役が、ログインした環境で、親のセッションのモデルで動くか | 9章 |
-| H7 | ログインした環境で、`@` で示した PDF と Office の文書が、どのモデルでファイルのまま届くか | 3.1 |
+| H7 | ログインした環境で、`@` で示した PDF と Office の文書が、どのモデルでファイルのまま届くか。確かめ方：文書を示して1回送り、`~/.copilot/session-state/<セッション>/events.jsonl` の `user.message` の `supportedNativeDocumentMimeTypes` を見る（空ならパスだけ、PDF だけなら Anthropic の形式、4種類なら Responses の形式） | 3.1 |
 | H8 | `ask_user` の `message` の Markdown が描画されるか。長い `message`、日本語の入力と貼り付けが、どう折り返されるか | 4.3、4.5 |
 | H9 | よく使う端末で、Shift+Enter が自由入力の欄の改行になるか（ならないと、Enter と同じく確定になる） | 4.2 |
 | H10 | autopilot で続けるよう促されても、各モデルが生成に進まずに止まるか | 5.5 |
@@ -711,11 +717,13 @@
 | H13 | 以前の形式のプラグインを、どのファイルで見分けるか（Copilot CLI のプラグインリファレンスでも確かめる） | 3.2 |
 | H14 | ユーザーが `/<クリエイターの名前>:make-plugin` と打って始めた手番で、その手番の中で自動コンパクションが起きると、SKILL.md の本文が残るか | 8章 |
 | H15 | `ask_user` の自由入力の欄に書いた `@` やパスで、文書がファイルのままモデルに届くか | 3.1 |
-| H16 | 1.0.98 で、Gemini 系のモデルが `ask_user` を呼んで失敗しないか（更新履歴 1.0.100 の修正「Gemini tool calls no longer fail when array parameters define enum values」） | 4.1 |
+| H16 | ログインした環境で、Gemini 系のモデルが `ask_user` を呼んで失敗しないか（1.0.100 で直った不具合「Gemini tool calls no longer fail when array parameters define enum values」。BYOK のツールの定義には違いが見えない） | 4.1 |
 | H17 | autopilot で答えが自動で返るときに、`onPostToolUse` が呼ばれるか。続けるよう促す発言で、`onUserPromptSubmitted` が呼ばれるか（呼ばれると、その発言がユーザーの打った発言として問答の記録に入る） | 5.5、7.4、11章 |
 | H18 | `-p` のとき、クリエイターのエクステンションと make-plugin が読み込まれるか。読み込まれないとき、どの直し方が示されるか | 3.1 |
 | H19 | Copilot CLI の各モデルが、10.4 の1文を読んでも、自由入力で聞く問いを `ask_user` の自由入力の欄で出すか | 4.1、10.4 |
 | H20 | 状態取得ツールが大きな返り値（振り返りの材料）を返したとき、モデルに全文が届くか。大きなツールの出力は一時ファイルに書かれ、参照だけが返る仕組みがある（Copilot SDK の `LargeToolOutputConfig`、既定 51,200 バイト）。届かないなら、分けて返す | 7.5、11章 |
+| H21 | Auto を選んだとき、システムプロンプトが 2.7 のどの族になるか。会話の途中でモデルが変わったとき、族も変わるか | 2.7、10.2 |
+| H22 | ログインした環境でも、システムプロンプトが 2.7 と同じか | 2.7 |
 
 - 読み取り役の `tools` から `skill` を外すとスキルを呼べなくなるかは、[生成プラグインの構造](generated-plugin-structure.md) 11章 #16 と同じ確かめである。
 
@@ -739,6 +747,7 @@
 
 **実測**
 
+- Copilot CLI 1.0.101・1.0.102 で再確認（オフラインのモードで偽物のモデルにつないで確認、2026-10-22）。2.7 は Copilot CLI で選べる全モデル（33 のモデル名）の対話モードの最初のリクエスト。
 - Copilot CLI 1.0.98 で実測（オフラインのモードで偽物のモデルにつないで確認、2026-10）。`ask_user` のフォームと結果の文、`-p`・`--no-ask-user`・autopilot の振る舞い、スキルの載り方と名前、自動コンパクションで残るもの・消えるもの、`--resume`・`--continue`・`/clear`、`@ファイル`・`view`・文書・貼り付けの扱い、エクステンションのフックの差し込みと画面への出方、サブエージェントの振る舞い、モデルごとのシステムプロンプト。
 - Copilot CLI 1.0.98 の npm パッケージ（`@github/copilot`）：`copilot-sdk/types.d.ts`（`SessionHooks`）、`definitions/*.agent.yaml`（組み込みのエージェントのモデル）、`cli-main.js`（貼り付けの扱い）、更新履歴（`changelog.json`）
 
@@ -750,6 +759,8 @@
 - [GitHub Copilot hooks reference](https://docs.github.com/en/copilot/reference/hooks-configuration)
 - [Responsible use of GitHub Copilot CLI](https://docs.github.com/en/copilot/responsible-use/copilot-cli)（英語が主な対応言語）
 - [Copilot CLI changelog](https://github.com/github/copilot-cli/blob/main/changelog.md)（1.0.100 のツールの定義の後回し、カスタムエージェントの別名 `search`・`web`、Gemini のツールの呼び出し）
+- [Supported AI models in GitHub Copilot](https://docs.github.com/en/copilot/reference/ai-models/supported-models)（Copilot CLI で選べるモデル、退役したモデル、既定のモデル）
+- [About Copilot auto model selection](https://docs.github.com/en/copilot/concepts/models/auto-model-selection)
 - [Agent Skills Specification](https://agentskills.io/specification)（本文の行数とトークン数、参照は1段）
 - [Anthropic: Skill authoring best practices](https://platform.claude.com/docs/en/agents-and-tools/agent-skills/best-practices)
 - [Claude Code: Skills](https://code.claude.com/docs/en/skills)（コンパクションの後に先頭5,000トークンを入れ直す）

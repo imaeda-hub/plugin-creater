@@ -104,3 +104,5 @@
 - 憲章の改訂：第5条3項に「最新の公式の情報にもとづく」を足した（0.24.0）。ユーザーが承認。
 - ユーザーの指摘：GPT-5 系など古いモデルの事実に頼っていた。今の主なモデル（GPT-6 系、Claude Haiku 5.5 など）と最新の Copilot CLI 1.0.101 で確かめ直す調査を実行中（scratchpad の research/models2/）。結果で hearing.md 2章などを直す。
 - 伝え方の教訓（追加）：あなたの判断が要らない、事実で決まることは問いにしない。モデルの世代名など、判断に関係のない情報を問いに入れない。
+- 今のモデルと最新の Copilot CLI での確かめ（research/A-models2-report.md）：GPT-4.1・GPT-5 mini・GPT-5.5 などは退役済み。今の GPT の族（GPT-6 系など）には「Bias to action」「Make reasonable assumptions for missing details」「…then stop—no … follow-up question」、Claude 5 の族には「100 words or less」「Prioritize brevity」がある。システムプロンプトはモデル ID で族に分かれる。1.0.101・1.0.102 でも、ヒアリングに関わるほかの事実は 1.0.98 と同じ。hearing.md 2章・10.2・14章と testing.md 9章を直した。
+- 残る宿題：ほかの設計書（generated-plugin-structure.md など）の 1.0.98 の事実を、最新の版で確かめ直す（憲章 第5条3項）。
