@@ -374,3 +374,34 @@ export function analyzeEntries(entries, opts) {
   }
   return issues;
 }
+
+// 課題の案に番号を付ける。機械的な案は M1、M2…、統括が足した案は O1、O2…
+export function numberIssues(drafts, prefix, source) {
+  return drafts.map((d, i) => ({ id: `${prefix}${i + 1}`, title: d.title, body: d.body, source }));
+}
+
+// 記録の行をたどって、終わった時点のフェーズを求める（実行中と同じ決め方。4.5）
+export function phaseFromEntries(entries, pluginName) {
+  const agents = new Map();
+  for (const entry of entries) {
+    if (entry.t !== 'event' || !entry.e) continue;
+    const e = entry.e;
+    if (e.type === 'agent.started') {
+      const parentRole = e.parentAgentId ? agents.get(e.parentAgentId)?.role : null;
+      agents.set(e.agentId, { role: roleOfAgentType(e.agentType, pluginName) ?? parentRole ?? null, active: true });
+    } else if (['agent.completed', 'agent.failed', 'agent.idle'].includes(e.type)) {
+      const a = agents.get(e.agentId);
+      if (a) a.active = false;
+    }
+  }
+  let doing = false;
+  let planning = false;
+  for (const a of agents.values()) {
+    if (!a.active) continue;
+    if (a.role === 'verifier') return 'study';
+    if (a.role === 'worker') doing = true;
+    if (a.role === 'orchestrator') planning = true;
+  }
+  if (doing) return 'do';
+  return planning ? 'plan' : null;
+}

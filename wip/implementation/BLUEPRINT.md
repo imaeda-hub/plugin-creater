@@ -245,3 +245,22 @@ startServer({ preferredPort, staticDir, routes, onListen }) -> Promise<{ url, po
 - 試験の名前には、確かめる要件の番号を入れる（例：`test('REQ-009 止めると統括だけが取り消される', …)`）。追跡の表（8章）の突き合わせに使う。
 - 試験のファイルの置き場所：中心の処理は `tests/stage2/core/*.test.mjs`、サーバーは `tests/stage2/ui/server.test.mjs`、画面は `tests/stage2/ui/screen.test.mjs`（node:test と playwright のライブラリ。@playwright/test の実行の仕組みは使わない）、構造の検査は `tests/stage1/`。作業ごとの部品の試験は `tests/stage2/task/`。
 - 2段目は `node --test` でまとめて動かせるようにする（試験の入口が呼ぶ）。Python の部品の試験は `tests/stage2/task/test_*.py`（unittest）。
+
+## 7. クリエイターのエクステンションのツール（C1 と B3 で合わせる）
+
+generated-plugin-structure.md 9章の表に名前を付けたもの。説明の文はモデルの振る舞いを決めるので、C1 は仮の文を置き、B3（Opus）が R1 に沿って仕上げる。項目と段階の値は、画面に出る日本語の名前をそのまま使う（hearing.md 7.5。内部の記号を引数にも返り値にも出さない）。
+
+| ツール | 呼ぶもの | 引数（要点） | 確認を省くか |
+| --- | --- | --- | --- |
+| `plugin-creator_open` | メイン | なし | 省く |
+| `plugin-creator_state` | メイン | `include`：なし／「最後の問答」／「振り返りの材料」 | 省く |
+| `plugin-creator_progress` | メイン | `stage`（段階の名前）、`items`（項目の名前、状態、ユーザーの言葉の抜き書き、保留ならだれが知っているか）。段階を「生成」に進めるときは、承認の答えの抜き書き | 省く |
+| `plugin-creator_record` | メイン | `knowledge`（hearing.md 7.3 の欄。番号を渡すと更新）、`assets`、`oss`（標準機能と公開のプラグインの選んだ結果） | 省く |
+| `plugin-creator_confirm` | メイン | 生成前の確認で示すもの（ナレッジの番号の一覧、振る舞いの案、作業の定義の案のパス〔`.plugin-creator-work/draft/task.json`〕、EVAL の課題と基準の案と入力のファイルの一覧、作り直しなら引き継ぐことと変わること） | 省く |
+| `plugin-creator_results` | メイン | 試験の入口と EVAL が書いた結果のファイルのパス | 省く |
+| `plugin-creator_doc_text` | 読み取り役 | `path` | 省く（エクステンションの読み込みのときの確認に含まれる。ユーザーの答え：未決のまま。C1 は省かない設定で作り、決まったら変える） |
+| `plugin-creator_issue` | メイン | `title`、`body` | 省かない（creator-structure.md 4.5） |
+
+- 段階の名前：始まり、実物を受け取る、読む、できていたことの確認（作り直しのときだけ）、前回の1回、決まりの確かめ、項目の点検、資産と公開のプラグイン、画面、生成前の確認、生成。
+- 項目の名前：作業の目的、頼む場面と言い方、受け取るもの、進め方、成果物、合否の決め方、決まった書き方やルール、守らないと困ること、使う道具と環境、いつもと違うとき、前回の1回、候補の確かめ（エクステンションが計算）、資産、標準機能と公開のプラグイン、開始前に設定したいこと、実行中に見たいこと、終わった後に見たい結果と見せ方、できていたことの確認（作り直しのときだけ）。
+- 状態の名前：未着手、聞いた、決まりなし、保留。ナレッジの状態：候補、決まった、外した。ナレッジの種類：合否の決め方、それ以外。

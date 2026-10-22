@@ -70,10 +70,18 @@ const STEP_REPOSITORY =
 const STEP_GH = 'gh（GitHub の公式のコマンド）を入れて、gh auth login でログインする。';
 const STEP_LOGIN = 'gh auth login でログインする。';
 
+const REASON_TEXT = {
+  no_repository: 'このプラグインの設定ファイル（plugin.json）に repository が書かれていません。',
+  not_github: 'plugin.json の repository が GitHub の URL ではありません。',
+  no_gh: 'gh（GitHub の公式のコマンド）が見つかりません。',
+  not_logged_in: 'gh でログインしていません。',
+};
+
 // 起票できるかを確かめる。
-// 返り値：{ ok, reason, steps, repo }
-//   reason：no_repository | not_github | no_gh | not_logged_in | null
-//   steps：起票できるようにするための手順（平易な日本語）
+// 返り値：{ ok, reason, code, steps, repo }
+//   reason：画面にそのまま出せる平易な日本語の文（起票できるなら null）
+//   code：no_repository | not_github | no_gh | not_logged_in | null
+//   steps：起票できるようにするための手順（平易な日本語の文の配列）
 export async function checkCanFile({ pluginRoot, ghCommand, clock }) {
   let manifest = null;
   try {
@@ -96,20 +104,20 @@ export async function checkCanFile({ pluginRoot, ghCommand, clock }) {
   }
 
   const steps = [];
-  let reason = null;
+  let code = null;
   if (!hasRepo) {
-    reason = 'no_repository';
+    code = 'no_repository';
     steps.push(STEP_PUBLISH, STEP_REPOSITORY);
   } else if (!repo) {
-    reason = 'not_github';
+    code = 'not_github';
     steps.push(STEP_PUBLISH, STEP_REPOSITORY);
   }
   if (ghMissing) {
-    reason ??= 'no_gh';
+    code ??= 'no_gh';
     steps.push(STEP_GH);
   } else if (notLoggedIn) {
-    reason ??= 'not_logged_in';
+    code ??= 'not_logged_in';
     steps.push(STEP_LOGIN);
   }
-  return { ok: reason === null, reason, steps, repo };
+  return { ok: code === null, reason: code ? REASON_TEXT[code] : null, code, steps, repo };
 }

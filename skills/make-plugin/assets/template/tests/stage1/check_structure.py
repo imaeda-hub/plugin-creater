@@ -49,13 +49,14 @@ CATALOG: Dict[str, Tuple[List[str], str]] = {
     "manifest": (["REQ-004"], "plugin.json が公式スキーマ（Agent Plugins 1.0.0）に合う"),
     "mcp": (["REQ-004"], "mcp.json が公式スキーマと決まりに合う"),
     "skills": (["REQ-004"], "スキルのフロントマターが Agent Skills の決まりに合う"),
-    "agents": (["REQ-004"], "カスタムエージェントのフロントマターが決まりに合う"),
+    "references": (["REQ-004"], "スキルの references の各ファイルが 20KB 未満で、本文で名指しされている"),
+    "agents": (["REQ-004", "REQ-010"], "カスタムエージェントの定義が決まりに合う（フロントマター、tools に skill や * や知らない名前がない）"),
     "layout": (["REQ-004"], "ファイルの置き場所が Agent Plugins の形式に合う"),
     "symlinks": (["REQ-004"], "根の外に出るシンボリックリンクがない"),
     "task": (["REQ-011"], "作業の定義（task.json）が task.schema.json に合う"),
     "eval": (["REQ-011"], "EVAL の課題の基準の番号と文が作業の定義の写しと同じ"),
     "knowledge": (["REQ-039"], "ナレッジの番号がそれぞれの置き場所にある"),
-    "agent-tools": (["REQ-010"], "エージェントの tools が決まりに合う（検証に書き込みとコマンドがなく、スキルがない）"),
+    "agent-tools": (["REQ-010"], "統括・作業・検証の定義がそろい、tools があり、検証エージェントに書き込みとコマンドがない"),
     "tool-names": ([], "記録のツールの名前の頭がプラグインの名前"),
     "trace": (["REQ-003"], "要件の追跡の表がそろっている"),
 }
@@ -137,6 +138,7 @@ class Context:
         self.real_root = os.path.realpath(self.root)
         self.manifest: Optional[Dict[str, Any]] = None
         self.plugin_name: Optional[str] = None
+        self.mcp_servers: Set[str] = set()                          # mcp.json にあるサーバーの名前
         self.agents: Dict[str, Tuple[Dict[str, Any], str]] = {}   # ファイル名（.agent.md を除く）-> (フロントマター, 本文)
         self.task: Optional[Dict[str, Any]] = None
         self.task_path: Optional[str] = None
@@ -387,6 +389,8 @@ def check_mcp(ctx: Context, c: Check) -> None:
     if plugin_version and mcp_version and plugin_version != mcp_version:
         c.error("mcp.json: $schema の版 %s が plugin.json の版 %s と違う（食い違うと MCP だけが無効になる）" % (mcp_version, plugin_version))
     servers = data.get("mcpServers")
+    if isinstance(servers, dict):
+        ctx.mcp_servers = set(servers)
     for name, server in (servers.items() if isinstance(servers, dict) else []):
         if not isinstance(server, dict):
             continue
@@ -405,12 +409,15 @@ def check_mcp(ctx: Context, c: Check) -> None:
 
 
 SKILL_NAME = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
+# Agent Skills の項目。これ以外（user-invocable、disable-model-invocation、argument-hint など）は書かない（R1、仕様 7.1）
 SKILL_FIELDS = {"name", "description", "license", "compatibility", "metadata", "allowed-tools"}
+SKILL_BODY_LINES = 500
+REFERENCE_MAX_BYTES = 20000   # 「20KB 未満」。view が読まない上限を超えないよう、1KB を 1000 バイトとして数える
 
 
 def check_skill_file(path: str, folder: str, c: Check) -> None:
     label = "skills/%s/SKILL.md:" % folder
-    meta, _ = parse_frontmatter(path, label[:-1], c)
+    meta, body = parse_frontmatter(path, label[:-1], c)
     if meta is None:
         return
     name, description = meta.get("name"), meta.get("description")
@@ -421,9 +428,14 @@ def check_skill_file(path: str, folder: str, c: Check) -> None:
     elif name != folder:
         c.error("%s name %s がフォルダの名前 %s と違う" % (label, short(name), folder))
     if not isinstance(description, str) or not description.strip():
-        c.error("%s description がない（何をするかと、いつ使うかを書く）" % label)
-    elif len(description) > 1024:
-        c.error("%s description が %d 文字ある（1024 文字以内）" % (label, len(description)))
+        c.error("%s description がない（何ができるかと、いつ使うかを書く）" % label)
+    else:
+        if len(description) > 1024:
+            c.error("%s description が %d 文字ある（1024 文字以内）" % (label, len(description)))
+        if "<" in description or ">" in description:
+            c.error("%s description に < や > を入れない（XML のタグと見なされる）" % label)
+        if re.match(r"\s*(I|You)\s+can\b", description, re.I):
+            c.error("%s description を「I can …」「You can …」の形にしない（スキルの内容を三人称で書く）" % label)
     if "license" in meta and not isinstance(meta["license"], str):
         c.error("%s license は文字にする" % label)
     comp = meta.get("compatibility")
@@ -433,11 +445,27 @@ def check_skill_file(path: str, folder: str, c: Check) -> None:
     if "metadata" in meta and (not isinstance(md, dict) or not all(isinstance(k, str) and isinstance(v, str) for k, v in md.items())):
         c.error("%s metadata は文字から文字への表にする" % label)
     tools = meta.get("allowed-tools")
-    if "allowed-tools" in meta and not (isinstance(tools, str) or (isinstance(tools, list) and all(isinstance(t, str) for t in tools))):
-        c.error("%s allowed-tools は文字（空白区切り）にする" % label)
+    if "allowed-tools" in meta:
+        if not (isinstance(tools, str) or (isinstance(tools, list) and all(isinstance(t, str) for t in tools))):
+            c.error("%s allowed-tools は文字（空白区切り）にする" % label)
+        c.warn("%s allowed-tools は書かない決まり（スキルが呼ばれると、そのツールが確認なしで許可される）。要るときは書く前にユーザーに確かめる" % label)
     for key in meta:
         if key not in SKILL_FIELDS:
-            c.warn("%s %s は Agent Skills の項目にない（公式の参照実装 skills-ref は不合格にする）" % (label, key))
+            c.error("%s %s は Agent Skills の項目にない（Agent Plugins は Agent Skills に従わないスキルを読み飛ばす。書くのは name と description だけにする）" % (label, key))
+    lines = len(body.splitlines())
+    if lines > SKILL_BODY_LINES:
+        c.warn("%s 本文が %d 行ある（%d 行以内が勧め）" % (label, lines, SKILL_BODY_LINES))
+
+
+def skill_folders(ctx: Context) -> List[Tuple[str, str]]:
+    """(フォルダの名前, SKILL.md の場所)。skills/ の直下の子フォルダだけ。"""
+    base = os.path.join(ctx.root, "skills")
+    found = []
+    for folder in sorted(os.listdir(base)) if os.path.isdir(base) else []:
+        path = os.path.join(base, folder, "SKILL.md")
+        if os.path.isfile(path):
+            found.append((folder, path))
+    return found
 
 
 def check_skills(ctx: Context, c: Check, kind: str) -> None:
@@ -448,25 +476,53 @@ def check_skills(ctx: Context, c: Check, kind: str) -> None:
         else:
             c.skip("skills/ がない")
         return
-    count = 0
     for folder in sorted(os.listdir(base)):
-        directory = os.path.join(base, folder)
-        if not os.path.isdir(directory):
-            continue
-        path = os.path.join(directory, "SKILL.md")
-        if not os.path.isfile(path):
+        if os.path.isdir(os.path.join(base, folder)) and not os.path.isfile(os.path.join(base, folder, "SKILL.md")):
             c.warn("skills/%s/: SKILL.md がない（スキルとして読まれない）" % folder)
-            continue
-        count += 1
+    found = skill_folders(ctx)
+    for folder, path in found:
         check_skill_file(path, folder, c)
-    if kind == "generated" and count == 0:
+    if kind == "generated" and not found:
         c.error("skills/ に入口のスキル（skills/<名前>/SKILL.md）がない")
 
 
+def check_references(ctx: Context, c: Check) -> None:
+    """references の各ファイルが view で読める大きさで、SKILL.md の本文が名指ししている。"""
+    checked = 0
+    for folder, path in skill_folders(ctx):
+        refs = os.path.join(os.path.dirname(path), "references")
+        if not os.path.isdir(refs):
+            continue
+        with open(path, encoding="utf-8", errors="ignore") as f:
+            text = f.read()
+        for directory, dirs, files in os.walk(refs):
+            if directory != refs:
+                c.warn("skills/%s/references/: 入れ子のフォルダ %s がある（SKILL.md から1段で参照できる場所に置く）" % (folder, rel(ctx, directory)))
+            for file in sorted(files):
+                checked += 1
+                full = os.path.join(directory, file)
+                size = os.path.getsize(full)
+                if size >= REFERENCE_MAX_BYTES:
+                    c.error("%s が %d バイトある（20KB 未満にする。view は大きいファイルを読まない）" % (rel(ctx, full), size))
+                if file not in text:
+                    c.error("%s を SKILL.md の本文で名指ししていない（いつ読むかを本文に書く）" % rel(ctx, full))
+    if not checked:
+        c.skip("references のファイルがない")
+
+
 AGENT_FIELDS = {"description", "name", "model", "models", "model-policy", "modelPolicy", "tools", "mcp-servers",
-                "include-custom-instructions", "infer", "reasoningEffort", "target", "disable-model-invocation",
-                "user-invocable", "metadata"}
+                "include-custom-instructions", "infer", "reasoningEffort", "reasoning-effort", "target",
+                "disable-model-invocation", "user-invocable", "metadata"}
+# 書いてよいが、効くかが確かめられていない、または既定のままでよい項目（R1）
+AGENT_DISCOURAGED = {"models", "modelPolicy", "model-policy", "reasoningEffort", "reasoning-effort",
+                     "include-custom-instructions", "infer", "user-invocable"}
 AGENT_BODY_MAX = 30000
+AGENT_ID = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
+TOOL_ALIASES = {"execute", "read", "edit", "search", "agent", "web", "todo"}
+# Claude Code 互換の名前（公式のコマンドリファレンスが受け付けるとしているもの）
+TOOL_COMPAT = {"shell", "bash", "powershell", "notebookread", "multiedit", "write", "notebookedit", "grep", "glob",
+               "task", "custom-agent"}
+BUILTIN_MCP_SERVERS = {"github-mcp-server"}
 
 
 def string_or_list(value: Any) -> bool:
@@ -486,6 +542,31 @@ def agent_tools(meta: Dict[str, Any]) -> Optional[List[str]]:
     return []
 
 
+def check_agent_tool_names(ctx: Context, label: str, meta: Dict[str, Any], tools: List[str], c: Check) -> None:
+    """tools の各名前が、別名・このプラグインのエクステンションのツール・MCP のツールのどれかか（知らない名前は黙って無視される）。"""
+    own_servers = set(meta["mcp-servers"]) if isinstance(meta.get("mcp-servers"), dict) else set()
+    servers = ctx.mcp_servers | own_servers | BUILTIN_MCP_SERVERS
+    for tool in tools:
+        lowered = tool.lower()
+        if tool == "*":
+            c.error("%s tools に * がある（すべてのツールとスキルが使える）" % label)
+        elif lowered == "skill":
+            c.error("%s tools に skill がある（サブエージェントがスキルを呼び、メインのエージェント向けの手順を始めてしまう）" % label)
+        elif lowered in TOOL_ALIASES or lowered in TOOL_COMPAT:
+            continue
+        elif "/" in tool:
+            if tool.split("/", 1)[0] not in servers:
+                c.error("%s tools の %s は、mcp.json か mcp-servers にないサーバーのツール（黙って無視される）" % (label, tool))
+        elif ctx.plugin_name and tool.startswith(ctx.plugin_name + "_"):
+            continue
+        elif RECORD_TOOL.match(tool):
+            continue   # 記録のツールの名前の頭は、試験「記録のツールの名前の頭がプラグインの名前」が見る
+        else:
+            c.error("%s tools の %s は、別名（%s）でも、このプラグインのエクステンションのツール（%s_…）でも、"
+                    "MCP のツール（サーバー名/ツール名）でもない（知らない名前は黙って無視される）"
+                    % (label, tool, "、".join(sorted(TOOL_ALIASES)), ctx.plugin_name or "<プラグインの名前>"))
+
+
 def check_agents(ctx: Context, c: Check) -> None:
     base = os.path.join(ctx.root, "com.github.copilot", "agents")
     if not os.path.isdir(base):
@@ -502,20 +583,32 @@ def check_agents(ctx: Context, c: Check) -> None:
         meta, body = parse_frontmatter(path, label[:-1], c)
         if meta is None:
             continue
-        ctx.agents[file[: -len(".agent.md")]] = (meta, body)
+        agent_id = file[: -len(".agent.md")]
+        ctx.agents[agent_id] = (meta, body)
+        if not AGENT_ID.match(agent_id):
+            c.error("%s ファイル名（エージェントの ID）は小文字の英数字とハイフンにする" % label)
         if not isinstance(meta.get("description"), str) or not meta["description"].strip():
             c.error("%s description がない（必須）" % label)
-        if "name" in meta and not isinstance(meta["name"], str):
-            c.error("%s name は文字にする" % label)
+        if "name" in meta and meta["name"] != agent_id:
+            c.error("%s name %s がファイル名の ID %s と違う（name は書かないか、ID と同じにする）" % (label, short(meta["name"]), agent_id))
         for key in ("model", "models"):   # 1つでも、優先する順のリストでもよい
             if key in meta and not string_or_list(meta[key]):
                 c.error("%s %s はモデルの名前（1つ）か、優先する順の名前のリストにする" % (label, key))
         if "tools" in meta and not (isinstance(meta["tools"], str) or (
                 isinstance(meta["tools"], list) and all(isinstance(t, str) for t in meta["tools"]))):
             c.error("%s tools は文字か、文字のリストにする" % label)
+        tools = agent_tools(meta)
+        if tools is None:
+            c.warn("%s tools がない（書かないと、すべてのツールとスキルが使える）" % label)
+        else:
+            check_agent_tool_names(ctx, label, meta, tools, c)
+        if meta.get("disable-model-invocation") is True:
+            c.error("%s disable-model-invocation: true がある（task で起動するエージェントに書くと、起動が断られる）" % label)
         for key in meta:
             if key not in AGENT_FIELDS:
                 c.warn("%s %s は公式ドキュメントにない項目" % (label, key))
+            elif key in AGENT_DISCOURAGED:
+                c.warn("%s %s は書かない決まり（効くかが確かめられていない、または既定のままでよい）" % (label, key))
         if len(body) > AGENT_BODY_MAX:
             c.error("%s 本文が %d 文字ある（%d 文字以内）" % (label, len(body), AGENT_BODY_MAX))
 
@@ -762,11 +855,6 @@ def check_agent_tools(ctx: Context, c: Check) -> None:
             if tools is None:
                 c.error("%s tools が書かれていない（書かないと、すべてのツールとスキルが使える）" % where)
                 continue
-            lowered = [t.lower() for t in tools]
-            if "*" in tools:
-                c.error("%s tools に * がある（すべてのツールが使える）" % where)
-            if "skill" in lowered:
-                c.error("%s tools に skill がある（サブエージェントがスキルを呼んでしまう）" % where)
             if role == "verifier":
                 for tool in tools:
                     if tool.lower() in WRITE_TOOLS:
@@ -950,6 +1038,7 @@ def run_checks(root: str, kind: str = "generated") -> Report:
     check_manifest(ctx, report.new("manifest"))
     check_mcp(ctx, report.new("mcp"))
     check_skills(ctx, report.new("skills"), kind)
+    check_references(ctx, report.new("references"))
     check_agents(ctx, report.new("agents"))
     check_layout(ctx, report.new("layout"))
     check_symlinks(ctx, report.new("symlinks"))

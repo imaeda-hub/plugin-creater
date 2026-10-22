@@ -166,18 +166,18 @@ export async function startServer({ preferredPort = 0, staticDir, routes = {}, o
     }
     query.delete('k');
 
-    let pathname;
-    try {
-      pathname = decodeURIComponent(rawPath);
-    } catch {
-      return sendJson(res, 400, { error: '問い合わせの形が正しくありません' });
-    }
-
+    // 窓口は、元の文字のまま（% の符号を戻す前に）合わせてから、:名前 の部分だけを戻す（番号に / があってもよいように）
     for (const route of compiled) {
       if (route.method !== req.method) continue;
-      const match = route.re.exec(pathname);
+      const match = route.re.exec(rawPath);
       if (!match) continue;
-      const params = Object.fromEntries(route.names.map((name, i) => [name, match[i + 1]]));
+      let params;
+      try {
+        params = Object.fromEntries(route.names.map((name, i) => [name, decodeURIComponent(match[i + 1])]));
+      } catch {
+        return sendJson(res, 400, { error: '問い合わせの形が正しくありません' });
+      }
+      const pathname = rawPath;
       const body = req.method === 'GET' || req.method === 'HEAD' ? undefined : await readBody(req);
       const result = await route.handler({ method: req.method, path: pathname, params, query: Object.fromEntries(query), headers: req.headers }, body);
       if (result instanceof Reply) return send(res, result.status, result.headers, result.body);
@@ -185,6 +185,12 @@ export async function startServer({ preferredPort = 0, staticDir, routes = {}, o
     }
 
     if (req.method === 'GET') {
+      let pathname;
+      try {
+        pathname = decodeURIComponent(rawPath);
+      } catch {
+        return sendJson(res, 400, { error: '問い合わせの形が正しくありません' });
+      }
       const name = pathname === '/' ? 'index.html' : pathname.slice(1);
       const found = await readStatic(staticDirs, name);
       if (found) {

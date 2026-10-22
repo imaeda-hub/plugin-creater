@@ -24,7 +24,7 @@ copilot plugin install {{plugin_name}}@{{marketplace_name}}
 
 ### 2. 試験的機能を有効にする
 
-画面を動かす仕組み（エクステンション。Copilot CLI が起動する別のプログラム）は、Copilot CLI 1.0.98 では試験的な機能です。有効にしないと、{{plugin_name}} は使えません。
+画面を動かす仕組み（エクステンション。Copilot CLI が起動する別のプログラム）は、試験的な機能です（Copilot CLI 1.0.102 の時点）。有効にしないと、{{plugin_name}} は使えません。
 
 ```text
 /experimental on
@@ -34,12 +34,14 @@ copilot plugin install {{plugin_name}}@{{marketplace_name}}
 
 ### 3. 読み込むときの確認を許可する
 
-{{plugin_name}} を読み込むとき、Copilot CLI がチャットに次の確認を出します。
+{{plugin_name}} を読み込むとき、Copilot CLI がチャットに確認を出します。題は `Extension "<名前>" wants elevated permissions` で、本文は次のとおりです。
 
 ```text
 This extension wants to: skip tool permission prompts, register hooks, handle permission requests.
 Denying will prevent this extension from loading.
 ```
+
+Copilot CLI 1.0.101 から、この確認は必ずあなたに出ます。許可を自動で判定する設定（Assisted の許可）を使っていても、自動では許可されません。
 
 確認の意味は次のとおりです。
 
@@ -53,6 +55,7 @@ Denying will prevent this extension from loading.
 | --- | --- |
 | Yes | 今回だけ許可します。Copilot CLI を起動するたびと、`/clear` のたびに、また確認が出ます |
 | Yes, and always allow "<名前>" in this directory | このフォルダでは常に許可します。このフォルダでは、次から確認が出ません（`/clear` の後も、起動し直しても）。ほかのフォルダでは、また出ます |
+| Yes, and don't ask again for "<名前>" this session | フォルダが分からないときに、上の選択肢の代わりに出ます。このセッションの間は、確認が出ません |
 | No (Esc) | 断ります。{{plugin_name}} は読み込まれません |
 
 初めて起動するときは、フォルダーを信頼するかの確認の後に、この確認が2回出ることがあります。
@@ -121,7 +124,8 @@ EVAL（実際のモデルで課題を実行して採点する試験）は、plug
 
 ## うまく始まらないとき
 
-チャットで作業を頼んでも画面の URL が示されず、直し方が示されたときは、{{plugin_name}} のエクステンションが読み込まれていません。次のどちらかです。
+チャットで作業を頼んでも画面の URL が示されないときは、{{plugin_name}} のエクステンションが読み込まれていません。次のどれかです。
 
 - 試験的機能を有効にしていない：`/experimental on` で有効にして、Copilot CLI を起動し直します。
 - 読み込むときの確認を断った：Copilot CLI を起動し直して、出た確認を許可します。選び方は「3. 読み込むときの確認を許可する」にあります。
+- エクステンションを使わない設定（`/extensions mode` の Disabled）にしている：`/extensions mode` で Load & Augment か Load Only に戻します。Disabled は、次のセッションにも残ります。

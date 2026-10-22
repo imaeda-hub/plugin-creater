@@ -99,7 +99,7 @@ class GoodSample(Sandbox):
 
     def test_REQ_004_kind_plugin_runs_only_the_official_checks(self):
         ids = {c.id for c in self.report("plugin").checks}
-        self.assertEqual({"manifest", "mcp", "skills", "agents", "layout", "symlinks"}, ids)
+        self.assertEqual({"manifest", "mcp", "skills", "references", "agents", "layout", "symlinks"}, ids)
 
     def test_REQ_039_every_check_title_names_its_requirement_where_it_has_one(self):
         for check_id, (reqs, _) in cs.CATALOG.items():
@@ -244,11 +244,36 @@ class Skills(Sandbox):
         self.replace(self.SKILL, "description: 見本の作業を頼まれたときに使う入口のスキル。", "description: 使う: とき: に")
         self.assertFailsWith("skills", "YAML")
 
-    def test_REQ_004_unknown_field_is_a_warning_not_an_error(self):
-        self.replace(self.SKILL, "name: sample-entry\n", "name: sample-entry\nuser-invocable: true\n")
+    def test_REQ_004_only_agent_skills_fields_are_allowed(self):
+        for key in ("user-invocable: true", "disable-model-invocation: true", "argument-hint: x", "model: haiku"):
+            text = self.read(self.SKILL)
+            self.replace(self.SKILL, "name: sample-entry\n", "name: sample-entry\n%s\n" % key)
+            self.assertFailsWith("skills", key.split(":")[0], "Agent Skills の項目にない")
+            self.write(self.SKILL, text)
+
+    def test_REQ_004_license_compatibility_and_metadata_are_allowed(self):
+        self.replace(self.SKILL, "name: sample-entry\n",
+                     "name: sample-entry\nlicense: MIT\ncompatibility: Copilot CLI\nmetadata:\n  version: \"1\"\n")
+        self.assertPasses("skills")
+
+    def test_REQ_004_allowed_tools_is_a_warning_because_it_grants_tools_without_asking(self):
+        self.replace(self.SKILL, "name: sample-entry\n", "name: sample-entry\nallowed-tools: Bash\n")
         self.assertPasses("skills")
         warnings = {c.id: c.warnings for c in self.report().checks}["skills"]
-        self.assertTrue(any("user-invocable" in w for w in warnings))
+        self.assertTrue(any("allowed-tools" in w and "確認なし" in w for w in warnings))
+
+    def test_REQ_004_description_must_not_hold_xml_tags(self):
+        self.replace(self.SKILL, "入口のスキル。", "<b>入口</b>のスキル。")
+        self.assertFailsWith("skills", "< や >")
+
+    def test_REQ_004_description_must_not_start_with_i_can(self):
+        self.replace(self.SKILL, "description: 見本の作業", "description: I can run the sample. 見本の作業")
+        self.assertFailsWith("skills", "I can")
+
+    def test_REQ_004_long_body_is_only_a_warning(self):
+        self.write(self.SKILL, self.read(self.SKILL) + "行\n" * 500)
+        self.assertPasses("skills")
+        self.assertTrue(any("500 行" in w for w in {c.id: c.warnings for c in self.report().checks}["skills"]))
 
     def test_REQ_004_folder_without_skill_md_is_only_a_warning(self):
         os.makedirs(self.path("skills/empty"))
@@ -283,9 +308,54 @@ class Agents(Sandbox):
         self.replace(self.WORKER, "model: 5", "model: []")
         self.assertFailsWith("agents", "model")
 
-    def test_REQ_004_model_policy_is_a_known_field(self):
-        self.replace(self.WORKER, "tools:", "model-policy: preferred\ntools:")
-        self.assertEqual([], {c.id: c.warnings for c in self.report().checks}["agents"])
+    def test_REQ_004_fields_not_yet_verified_are_accepted_with_a_warning(self):
+        for line in ("models: [gpt-6-luna]", "model-policy: preferred", "modelPolicy: preferred", "reasoningEffort: low",
+                     "include-custom-instructions: true", "infer: true", "user-invocable: true"):
+            text = self.read(self.WORKER)
+            self.replace(self.WORKER, "tools:", line + "\ntools:")
+            self.assertPasses("agents")
+            key = line.split(":")[0]
+            self.assertTrue(any(key in w and "書かない決まり" in w for w in {c.id: c.warnings for c in self.report().checks}["agents"]), key)
+            self.write(self.WORKER, text)
+
+    def test_REQ_004_agent_started_by_task_may_not_disable_model_invocation(self):
+        self.replace(self.WORKER, "tools:", "disable-model-invocation: true\ntools:")
+        self.assertFailsWith("agents", "disable-model-invocation", "起動が断られる")
+
+    def test_REQ_004_name_must_be_absent_or_equal_to_the_id(self):
+        self.replace(self.WORKER, "tools:", "name: worker\ntools:")
+        self.assertPasses("agents")
+        self.replace(self.WORKER, "name: worker", "name: helper")
+        self.assertFailsWith("agents", "name 'helper'", "ID worker")
+
+    def test_REQ_004_id_is_lowercase_letters_digits_and_hyphens(self):
+        os.rename(self.path(self.WORKER), self.path("com.github.copilot/agents/Worker_Two.agent.md"))
+        self.assertFailsWith("agents", "ID", "小文字")
+
+    def test_REQ_004_agent_without_tools_is_a_warning(self):
+        self.replace(self.WORKER, "tools: [read, edit, execute, search, sample-plugin_show]\n", "")
+        self.assertPasses("agents")
+        self.assertTrue(any("tools がない" in w for w in {c.id: c.warnings for c in self.report().checks}["agents"]))
+
+    def test_REQ_004_unknown_tool_names_are_reported_because_they_are_silently_ignored(self):
+        self.replace(self.WORKER, "tools: [read,", "tools: [Read, reed, other-plugin_x, sample-plugin_anything, read,")
+        problems = self.problems("agents")
+        self.assertEqual(2, len(problems), problems)
+        self.assertTrue(any("reed" in p and "黙って無視される" in p for p in problems))
+        self.assertTrue(any("other-plugin_x" in p for p in problems))
+
+    def test_REQ_004_mcp_tools_must_name_a_known_server(self):
+        self.replace(self.WORKER, "tools: [read,", "tools: [nope/tool, read,")
+        self.assertFailsWith("agents", "nope/tool")
+        self.write("mcp.json", json.dumps({"$schema": Mcp.SCHEMA, "mcpServers": {"nope": {"type": "stdio", "command": "node"}}}))
+        self.assertPasses("agents")
+        self.write("mcp.json", json.dumps({"$schema": Mcp.SCHEMA, "mcpServers": {}}))
+        self.replace(self.WORKER, "tools: [nope/tool,", "mcp-servers:\n  nope:\n    type: local\n    command: node\ntools: [nope/*,")
+        self.assertPasses("agents")
+
+    def test_REQ_010_wildcard_and_skill_fail_in_any_agent(self):
+        self.replace(self.WORKER, "tools: [read,", 'tools: ["*", Skill, read,')
+        self.assertFailsWith("agents", "* がある", "skill がある")
 
     def test_REQ_004_unknown_field_is_a_warning(self):
         self.replace(self.WORKER, "tools:", "colour: red\ntools:")
@@ -304,6 +374,43 @@ class Agents(Sandbox):
         self.write("com.github.copilot/agents/helper.md", "---\ndescription: x\n---\n")
         self.assertPasses("agents")
         self.assertTrue(any("helper.md" in w for w in {c.id: c.warnings for c in self.report().checks}["agents"]))
+
+
+class References(Sandbox):
+    SKILL = "skills/sample-entry/SKILL.md"
+
+    def add(self, name, size=100):
+        self.write("skills/sample-entry/references/" + name, "あ" * (size // 3))
+
+    def mention(self, name):
+        self.write(self.SKILL, self.read(self.SKILL) + "\nこの段階の始めに `references/%s` を読む。\n" % name)
+
+    def test_REQ_004_no_references_folder_is_skipped(self):
+        check = {c.id: c for c in self.report().checks}["references"]
+        self.assertEqual("skipped", check.status)
+
+    def test_REQ_004_small_and_named_reference_passes(self):
+        self.add("stage1.md")
+        self.mention("stage1.md")
+        self.assertPasses("references")
+
+    def test_REQ_004_reference_of_20kb_or_more_fails(self):
+        self.add("big.md", 20001)
+        self.mention("big.md")
+        self.assertFailsWith("references", "big.md", "20KB 未満")
+        self.add("big.md", 19998)
+        self.assertPasses("references")
+
+    def test_REQ_004_reference_not_named_in_the_body_fails(self):
+        self.add("orphan.md")
+        self.assertFailsWith("references", "orphan.md", "名指ししていない")
+
+    def test_REQ_004_nested_references_folder_is_a_warning(self):
+        self.add("deep/inner.md")
+        self.mention("inner.md")
+        check = {c.id: c for c in self.report().checks}["references"]
+        self.assertEqual([], check.errors)
+        self.assertTrue(any("入れ子" in w for w in check.warnings))
 
 
 class Layout(Sandbox):
@@ -550,10 +657,6 @@ class AgentTools(Sandbox):
         self.replace(self.VERIFIER, self.VERIFIER_TOOLS + "\n", "")
         self.assertFailsWith("agent-tools", "verifier.agent.md", "tools が書かれていない")
 
-    def test_REQ_010_wildcard_fails(self):
-        self.replace(self.VERIFIER, self.VERIFIER_TOOLS, 'tools: ["*"]')
-        self.assertFailsWith("agent-tools", "*")
-
     def test_REQ_010_tools_as_a_comma_separated_text_is_read(self):
         self.replace(self.VERIFIER, self.VERIFIER_TOOLS, "tools: read, edit")
         self.assertFailsWith("agent-tools", "書き込みのツール edit")
@@ -563,7 +666,7 @@ class AgentTools(Sandbox):
                           ("com.github.copilot/agents/worker.agent.md", "tools: [read,")):
             text = self.read(path)
             self.replace(path, old, old + " Skill,")
-            self.assertFailsWith("agent-tools", "skill")
+            self.assertFailsWith("agents", "skill がある")
             self.write(path, text)
 
     def test_REQ_010_a_missing_role_fails(self):
@@ -574,7 +677,7 @@ class AgentTools(Sandbox):
 
     def test_REQ_010_second_worker_is_checked_too(self):
         self.write("com.github.copilot/agents/worker-extra.agent.md", "---\ndescription: 2人目\ntools: [read, skill]\n---\n本文\n")
-        self.assertFailsWith("agent-tools", "worker-extra.agent.md")
+        self.assertFailsWith("agents", "worker-extra.agent.md", "skill がある")
 
     def test_REQ_005_record_tool_prefix_in_tools_must_be_the_plugin_name(self):
         self.replace(self.VERIFIER, "sample-plugin_verdict", "other-plugin_verdict")

@@ -36,18 +36,7 @@ export const SAMPLE_TASK = {
   settings: [
     { key: 'week', label: '対象の週', type: 'text', default: '', required: true, help: '例：2026-W42', options: [] },
     { key: 'items', label: '項目の数', type: 'number', default: 5, required: false, help: '週報に書く項目の数です。', options: [] },
-    {
-      key: 'tone',
-      label: '文体',
-      type: 'select',
-      default: 'desu',
-      required: false,
-      help: '',
-      options: [
-        { value: 'desu', label: 'です・ます調' },
-        { value: 'da', label: 'だ・である調' },
-      ],
-    },
+    { key: 'tone', label: '文体', type: 'select', default: 'です・ます調', required: false, help: '', options: ['です・ます調', 'だ・である調'] },
     { key: 'attach', label: '前回の週報をつける', type: 'checkbox', default: false, required: false, help: '', options: [] },
     { key: 'folder', label: '保存先のフォルダ', type: 'path', default: '', required: false, help: '空なら作業フォルダに保存します。', options: [] },
   ],
@@ -109,9 +98,9 @@ export function runState(phase = 'do', overrides = {}) {
       iteration: 1,
       maxIterations: 3,
       agents: [
-        agent('orchestrator', 'orchestrator', null, running('orchestrator'), { task: '計画を立てる', selectedModel: 'claude-opus-5-5', actualModel: 'claude-opus-5-5', lastActiveAt: Date.UTC(2026, 9, 22, 3, 4, 5), agentId: 'ag-orch', replySummary: '計画を記録しました。' }),
+        agent('orchestrator', 'orchestrator', '統括', running('orchestrator'), { task: '計画を立てる', selectedModel: 'claude-opus-5-5', actualModel: 'claude-opus-5-5', lastActiveAt: Date.UTC(2026, 9, 22, 3, 4, 5), agentId: 'ag-orch', replySummary: '計画を記録しました。' }),
         agent('worker', 'worker', '週報を書く係', running('worker'), { task: '週報の下書きを書く', selectedModel: 'claude-haiku-5-5', actualModel: 'claude-haiku-5-5', lastActiveAt: Date.UTC(2026, 9, 22, 3, 4, 9), agentId: 'ag-work' }),
-        agent('verifier', 'verifier', null, running('verifier'), { selectedModel: 'claude-opus-5-5', agentId: null }),
+        agent('verifier', 'verifier', '検証', running('verifier'), { selectedModel: 'claude-opus-5-5', agentId: null }),
       ],
       iterations: [
         {

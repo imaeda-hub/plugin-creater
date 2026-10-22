@@ -53,6 +53,9 @@
     memory: '記憶の保存',
     'custom-tool': '追加のツールの利用',
     hook: 'フックの実行',
+    path: '場所（フォルダやファイル）の利用',
+    workflow: '手順（ワークフロー）の実行',
+    'extension-management': '拡張機能の管理',
   };
   const FILING_STATES = {
     none: ['未起票', 'neutral'],
@@ -256,7 +259,7 @@
     return h(
       'article',
       { class: `agent agent-${tone}`, dataset: { slot: agent.slot, role: agent.role, status: agent.status } },
-      h('header', { class: 'agent-head' }, h('h3', null, ROLES[agent.role] ?? text(agent.role)), agent.label ? h('p', { class: 'agent-label' }, agent.label) : null),
+      h('header', { class: 'agent-head' }, h('h3', null, ROLES[agent.role] ?? text(agent.role)), agent.role === 'worker' && agent.label ? h('p', { class: 'agent-label' }, agent.label) : null),
       h('p', { class: 'agent-status' }, badge(statusLabel, tone)),
       h(
         'dl',
@@ -357,7 +360,7 @@
 
   function waitItem(wait, agents) {
     const agent = wait.slot == null ? null : agents.find((a) => a.slot === wait.slot);
-    const who = wait.slot == null ? '実行全体' : agent ? `${ROLES[agent.role] ?? text(agent.role)}${agent.label ? `（${agent.label}）` : ''}` : text(wait.slot);
+    const who = wait.slot == null ? '実行全体' : agent ? `${ROLES[agent.role] ?? text(agent.role)}${agent.role === 'worker' && agent.label ? `（${agent.label}）` : ''}` : text(wait.slot);
     const detail = wait.detail ?? {};
     const list = (items) => (Array.isArray(items) && items.length ? h('ul', { class: 'plain-list' }, items.map((item) => h('li', null, item))) : null);
     const rows = [];
@@ -377,7 +380,10 @@
       'article',
       { class: 'wait', dataset: { requestId: wait.requestId, kind: wait.kind } },
       h('h3', null, who, ' の確認：', WAIT_KINDS[wait.kind] ?? text(wait.kind)),
-      detail.sandboxBypass ? h('p', { class: 'alert alert-error' }, 'この操作は、安全のための囲い（サンドボックス）の外で動かす求めです。内容をよく確かめてから答えてください。') : null,
+      // 囲いの外で動かす求めだけを目立たせる。「記録だけにして中で動かし直す」求め（sandboxPermissive）は、外で動かすとは書かない。
+      detail.sandboxBypass && !detail.sandboxPermissive
+        ? h('p', { class: 'alert alert-error', dataset: { sandboxBypass: 'true' } }, 'この操作は、安全のための囲い（サンドボックス）の外で動かす求めです。内容をよく確かめてから答えてください。')
+        : null,
       h('dl', { class: 'facts wide' }, rows.map(([term, value]) => fact(term, value))),
     );
   }
