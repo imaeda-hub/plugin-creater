@@ -1,7 +1,7 @@
 # R1 自然言語の部品の書き方（最新）
 
 - 状態：途中
-- 未着手・途中の項目：(1) 決まりの一覧、(2) 設計書の前提と違う事実、(3-4) 更新履歴 1.0.98〜1.0.103-0
+- 未着手・途中の項目：(1) 決まりの一覧、(2) 設計書の前提と違う事実
 - 調べた日：2026-10-22。対象：Copilot CLI 1.0.102（npm、2026-10-21）
 
 ## (1) 実装者向けの決まりの一覧
@@ -195,3 +195,39 @@
 | 6 ユーザーと同じ言語で応答する | Anthropic は、目標の言語を明示する形（「Always respond in French, regardless of …」）を例に挙げる | 大きな食い違いはない。日本語の利用者が主なら「日本語で応答する。ユーザーが別の言語で書いたら、その言語で応答する」のように、具体の言語を書くほうが Anthropic の例に近い |
 | 7 決まりは終わりまで有効（Haiku 5.5 の文例） | 今も [A-H55] にある。ただし用途は「ユーザーに押されても決まりを守る」 | 合う |
 | 8章 3：差し込みは1回だけ | Sonnet 5.5・Haiku 5.5 の勧めと合う | 合う。出典のうち「OpenAI のプロンプトの手引き、GPT-5.6（指示の繰り返しが不要な確認を増やす）」は、今の [O-G6]（GPT-6 Astra が中心）からは見つからなかった。出典を更新するか、版と時点を書く必要がある（憲章 第5条3項） |
+
+### (3-4) 更新履歴（1.0.98 〜 1.0.102 と、先行版 1.0.102-0・1.0.102-1・1.0.103-0）
+
+出典：[PKG] の `changelog.json`（1.0.102）と、`@github/copilot-linux-x64@1.0.103-0`（2026-10-22 03:41 UTC 公開の先行版）の `changelog.json`。公開の https://github.com/github/copilot-cli/blob/main/changelog.md （2026-10-22 取得、最新は 1.0.102）と同じ文である。1.0.99 は先行版（1.0.99-0〜-3）だけで、正式版はなく、その中身は 1.0.100 に入っている。
+
+スキル、カスタムエージェント、プラグイン、エクステンション、`ask_user`、コンパクションに関わるものだけを拾った。
+
+| 版 | 種類 | 変更（原文） | 関わるもの | 設計への影響 |
+| --- | --- | --- | --- | --- |
+| 1.0.98 | fixed | Command hooks complete reliably even when child-exit signals are lost under Node | フック（コマンドの形） | なし（設計はエクステンションのフックを使う） |
+| 1.0.98 | fixed | Resuming a session now respects abandoned pending-permission work and continues only active permission requests. | 再開と許可の確認 | なし |
+| 1.0.100（1.0.99-1） | added | Install verified Skills and plugins from GitHub install links via `copilot plugin install "ghapp://air/install?..."` | プラグイン、スキル | なし |
+| 1.0.100（1.0.99-1） | fixed | Avoid false context exhaustion and rollover refusal when tool definitions are deferred | ツールの定義の後回し、コンテキスト | ツールの定義が後回しにされる仕組みがあることの裏づけ（hearing.md 14章 H4） |
+| 1.0.100（1.0.99-1） | fixed | Custom agents that declare the documented `search`, `web` or `todo` tool aliases, or name `github-mcp-server/web_search`, now receive the matching tools | カスタムエージェントの `tools` | 1.0.100 より前の版では、読み取り役・統括・検証の `search`・`web` が効かない（生成プラグインの構造 11章 #24） |
+| 1.0.100（1.0.99-0） | fixed | A skill `allowed-tools` rule keeps commas inside its arguments instead of being split apart. Where a list's structure is ambiguous, its unscoped rules now prompt instead of being granted. | スキルの `allowed-tools` | 設計は `allowed-tools` を使わない。使わないことの理由の1つになる |
+| 1.0.100（1.0.99-0） | improved | Trusted repository plugins install and update automatically before chat runs. | プラグイン | なし |
+| 1.0.100（1.0.99-0） | improved | Rename the built-in browser plugin to browser-use … | 組み込みのプラグイン | なし |
+| 1.0.100（1.0.99-0） | fixed | Path-specific instruction files in the repository root .github/instructions are now applied automatically when the agent reads or edits a matching file | インストラクション | なし |
+| 1.0.100（1.0.99-3・1.0.99-2・1.0.100-0） | fixed | Plugin enable, disable, update, and uninstall actions now route reliably …／Native chats can start and finish while optional managed plugin downloads continue …／Managed plugins update activation in existing sessions … | プラグインの管理 | なし |
+| 1.0.100（1.0.100-0） | fixed | Gemini tool calls no longer fail when array parameters define enum values | ツールの呼び出し（`ask_user` を含む） | hearing.md 14章 H16 の前提 |
+| 1.0.101（1.0.101-0） | added | Add native structured output for dynamic workflow subagents on supported models | エクステンションの動的なワークフロー | なし |
+| 1.0.101（1.0.101-1） | fixed | Switching only reasoning effort no longer forces compaction in over-budget sessions. | コンパクション | なし |
+| 1.0.101（1.0.101-1） | fixed | Extension capability requests use explicit approval instead of the Assisted judge | エクステンションの読み込みのときの確認 | Assisted の許可のモードでも、エクステンションの確認は自動で判定されず、人の承認を求める。設計（生成プラグインの構造 4.1、クリエイターの構造 4.3）の「読み込みのときに確認が出る」と合う |
+| 1.0.101（1.0.101-1） | fixed | Install Team-assigned plugins from Team-defined GitHub marketplaces | プラグイン | なし |
+| 1.0.101（1.0.101-0） | fixed | Switching to HydraFusion compacts only when the routed model actually needs it | コンパクション | なし |
+| 1.0.101（1.0.101-0） | fixed | Switching from GPT models to Gemini no longer fails when earlier turns include custom tool calls | ツールの呼び出し | なし |
+| 1.0.102（1.0.102-1） | fixed | Subagents honor custom and MCP tool approvals, avoiding duplicate permission prompts and allowing inherited workflows to run | サブエージェント、エクステンションのツールの許可 | 親のセッションで許可したエクステンションと MCP のツールは、サブエージェントが呼んでも確認が重ならない。生成プラグインの構造 4.14（実行中の確認）と 11章 #21 の前提が、1.0.101 以前と変わりうる（実測していない） |
+| 1.0.102（1.0.102-0） | fixed | Plugin marketplaces accept git-subdir sources and long plugin descriptions | プラグイン、マーケットプレイス | なし |
+| 1.0.102（1.0.102-0） | fixed | Chats no longer get blocked by organization plugin preparation while sending messages | プラグイン | なし |
+| 1.0.102（1.0.102-1） | fixed | Prompt mode now honors managed Auto model selection for -p and piped stdin runs | `-p` とモデル | なし |
+| 1.0.103-0（先行版） | fixed | Gemini tool calls now avoid 400 schema validation errors for nullable and enum fields | ツールの定義の形 | エクステンションのツールの引数に nullable や enum を使うと、1.0.102 までは Gemini で失敗しうる |
+| 1.0.103-0（先行版） | fixed | Model-specific default Responses verbosity now applies correctly for GPT-5 models unless session verbosity is explicitly set | モデルの応答の長さ | なし |
+
+- 1.0.98〜1.0.103-0 の間に、スキルの載り方、`skill` ツールの説明、カスタムエージェントのフロントマターの項目、`ask_user`、コンパクションの後に残るものを変える項目はない。
+- 実装の文字列でも、`skill` ツールの説明、`<skill-context>`、「Base directory for this skill」、「Related files (use view tool to read)」、エージェントの項目名の並び、「model-policy: required has no effect without a model」は、1.0.98・1.0.101・1.0.102 で同じだった。
+- 設計の前提を崩す変更は見つからなかった。変わりうるのは、サブエージェントの許可の確認の出方（1.0.102）だけである。
