@@ -716,22 +716,21 @@ stateDiagram-v2
 | ツール（例） | 中身 | 要件 |
 | --- | --- | --- |
 | 画面を開く（`<クリエイターの名前>_open`。生成プラグインの `<名前>_open` と取り違えない名前にする） | サーバーを起動し、合言葉つきの URL を返す | REQ-043 |
-| 状態を読む（`<クリエイターの名前>_state`） | ヒアリングの状態と画面の URL を返す。画面のサーバーが止まっていれば起動し直す。返すものと説明の文は [ヒアリングの設計](hearing.md) 7.5 | REQ-015、REQ-043 |
-| 段階と項目の状態を知らせる | 今の段階と、項目ごとの状態（[ヒアリングの設計](hearing.md) 7.2） | REQ-015、REQ-043 |
+| 状態取得（`<クリエイターの名前>_state`） | ヒアリングの状態と画面の URL を返す。画面のサーバーが止まっていれば起動し直す。返すものと説明の文は [ヒアリングの設計](hearing.md) 7.5 | REQ-015、REQ-043、REQ-049 |
+| 段階と項目の状態を知らせる | 今の段階と、項目ごとの状態（[ヒアリングの設計](hearing.md) 7.2）。生成前の確認を受け付ける前は、段階を「生成」に進めない（同 6.3） | REQ-015、REQ-020、REQ-043 |
 | 決まったことを知らせる | 引き出したナレッジ（欄は [ヒアリングの設計](hearing.md) 7.3）、流用する資産 | REQ-043 |
 | 生成前の確認で示すものを知らせる | ナレッジの一覧（番号と種類つき）、振る舞いの案、Web管理画面の見本にする作業の定義の案、EVAL の課題と合否の基準（基準の案と、入力のファイルの一覧を含む）。未着手の項目が残っていれば受け付けず、残りの項目を返す | REQ-020、REQ-044 |
 | 試験の結果を知らせる | 試験の入口と EVAL の実行が書いた結果のファイルの場所。画面はそのファイルを読んで出す | REQ-044 |
 | 文書をテキストにする（`<クリエイターの名前>_doc_text`） | docx・xlsx・pptx の場所を受け、中の文字を返す。読み取り役が呼ぶ | REQ-017、REQ-018、REQ-033 |
 
+- 表の「知らせる」ツールを、まとめてクリエイターの記録のツールと呼ぶ。記録のツールの確かめと返り値、ヒアリングの状態の置き場所は、[ヒアリングの設計](hearing.md) 7章にある。
 - まだ聞いていない項目（REQ-043）は、エクステンションが項目の状態から計算して画面に出す。
-- 記録のツールは、項目の名前、状態の移り方、ナレッジの欄を確かめ、誤りには使える値を返す。返り値は画面にも出るので、平易な日本語の短い文にする（[ヒアリングの設計](hearing.md) 7.5）。
-- ヒアリングの状態は、ファイル（`<COPILOT_HOME>/plugin-data/<クリエイターの名前>/hearings/<セッションの番号>/`）に置く（[ヒアリングの設計](hearing.md) 7.1）。
 - クリエイターのエクステンションは、次のフックを登録する。どれもヒアリングの最中だけ動く。
   - `onPostToolUse`（ツールが `ask_user` のとき）と `onUserPromptSubmitted`：問答の記録（[ヒアリングの設計](hearing.md) 7.4）
   - `onPreToolUse`：コンパクションの後の1回の差し込み（[ヒアリングの設計](hearing.md) 8章）
 - 生成前の確認で知らせたナレッジの一覧が、構造の検査で突き合わせるナレッジの一覧になる（[試験の設計](testing.md) 10.3）。画面の一覧と確認の一覧を同じにするためである（REQ-043）。
 - 会話例は、ファイルを開くリンクで出す（[クリエイターの構造](creator-structure.md) 4.4）。質問の改善案の起票（REQ-049）も、クリエイターのエクステンションのツールで行う（同 4.5）。
-- 表の画面を開くツール、状態を読むツール、知らせるツールは、画面とヒアリングの状態を書くだけなので、記録のツール（4.14）と同じく確認を省いて（`skipPermission`）登録する。文書をテキストにするツールを確認を省いて登録するかは未決である（[ヒアリングの設計](hearing.md) 9章）。
+- 表の画面を開くツール、状態取得ツール、記録のツールは、画面とヒアリングの状態を書くだけなので、生成プラグインの記録のツール（4.14）と同じく確認を省いて（`skipPermission`）登録する。文書をテキストにするツールを確認を省いて登録するかは未決である（[ヒアリングの設計](hearing.md) 9章）。
 - 確認を省くツールとフックを登録するので、読み込みのときに確認（4.1）が出る（「This extension wants to: skip tool permission prompts, register hooks.」）。生成プラグインと同じ案内をする（[クリエイターの構造](creator-structure.md) 4.3）。起票のツールは確認を省かない（同 4.5）。
 - 土台を変えると、クリエイターの画面も変わる。そのため、クリエイターの2段目で、画面も試験する（[試験の設計](testing.md) 3章）。
 - Web管理画面の見本（REQ-027）：
@@ -882,6 +881,7 @@ Playwright で、偽物のつなぎ口からイベントを流して、次を確
 | 21 | 裏の統括とその下のエージェントの、確認の待ち（許可の求め、返事・利用の上限の待ち）と待ちの終わりのイベントが、エクステンションに届くか（ほかは注） | 4.1、4.4、4.14、6.1 | —（確かめた。`onPermissionRequest` を登録しないと `permission.requested` は届かず、見るためだけに登録すると届く。4.14。残りは注） |
 | 22 | 1つの Copilot CLI で複数のセッションを並べたとき、生きている印で、ほかのセッションの動いている実行を誤って途中で切れたにしないか | 6.5 | 決めた時間を長くする。それでも誤るなら、ほかのセッションの実行は途中で切れたにせず、画面で前の実行を開いたときに、切れているかもしれないと示す |
 | 23 | 同じセッションを2つの Copilot CLI で開いたとき、両方でエクステンションが読み込まれるか | 6.5 | 読み込まれるなら、自分のセッションの実行も生きている印で見分ける |
+| 24 | カスタムエージェントの `tools` に別名 `search`・`web` を書くと、対応するツール（grep・glob、Web の取得と検索）が渡るか。更新履歴では、1.0.100 で「Custom agents that declare the documented `search`, `web` or `todo` tool aliases … now receive the matching tools」と直った | 4.7、[クリエイターの構造](creator-structure.md) 3.3、[ヒアリングの設計](hearing.md) 9章 | 渡らないときの書き方は、確かめてから決める |
 
 注：
 
@@ -929,7 +929,7 @@ Playwright で、偽物のつなぎ口からイベントを流して、次を確
 - [GitHub Copilot CLI plugin reference](https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-plugin-reference)（`com.github.copilot/` の中、`PLUGIN_ROOT`・`PLUGIN_DATA`）
 - [GitHub Copilot hooks reference](https://docs.github.com/en/copilot/reference/hooks-configuration)（フックの時間切れは通す側、コマンドのフックのエラーは拒む側に倒れること）
 - [Configuring local sandbox settings](https://docs.github.com/en/copilot/how-tos/cloud-and-local-sandboxes/configuring-local-sandbox-settings)（サンドボックスの対象、ローカルネットワークの許可）
-- [Copilot CLI changelog](https://github.com/github/copilot-cli/blob/main/changelog.md)（1.0.6 エクステンションのツールと許可、1.0.18 `preToolUse` のフックが許可すると、ツールの許可の確認が出ない、1.0.55 1つの実行ファイルで動かすときのエクステンションの起動、1.0.57 インストールしたプラグインに `.git` が残らない・`preToolUse` のフックのエラーで拒む、1.0.62 プラグインがエクステンションを同梱できる、1.0.67 フックの時間切れで通す、1.0.71 サブエージェントの深さの既定を4に下げた、1.0.72 サブエージェントにメッセージを送り続けられる、1.0.79（`com.github.copilot/extensions/` にエクステンションを置ける）、1.0.80-0（パッケージの changelog.json にある先行版。Agent Plugins の形式では `com.github.copilot/` の中だけを読む）、1.0.85 `allowManagedHooksOnly` がエクステンションのフックも止める、1.0.92 裏で動くエージェントへのメッセージが手番を導く）
+- [Copilot CLI changelog](https://github.com/github/copilot-cli/blob/main/changelog.md)（1.0.6 エクステンションのツールと許可、1.0.18 `preToolUse` のフックが許可すると、ツールの許可の確認が出ない、1.0.55 1つの実行ファイルで動かすときのエクステンションの起動、1.0.57 インストールしたプラグインに `.git` が残らない・`preToolUse` のフックのエラーで拒む、1.0.62 プラグインがエクステンションを同梱できる、1.0.67 フックの時間切れで通す、1.0.71 サブエージェントの深さの既定を4に下げた、1.0.72 サブエージェントにメッセージを送り続けられる、1.0.79（`com.github.copilot/extensions/` にエクステンションを置ける）、1.0.80-0（パッケージの changelog.json にある先行版。Agent Plugins の形式では `com.github.copilot/` の中だけを読む）、1.0.85 `allowManagedHooksOnly` がエクステンションのフックも止める、1.0.92 裏で動くエージェントへのメッセージが手番を導く、1.0.100 カスタムエージェントの別名 `search`・`web` にツールが渡る）
 - [Agent Plugins Specification 1.0.0](https://github.com/agentplugins/agent-plugins-spec/blob/main/spec/1.0.0.md)（マニフェストの `repository`、ベンダーのフォルダ、`PLUGIN_DATA`）
 - Copilot CLI 1.0.98 の npm パッケージ（`@github/copilot`）に含まれるプログラム：`copilot-sdk/docs/extensions.md`・`agent-author.md`（エクステンションの起動と終了、`/clear` での読み込み直し、ツールとフックの登録）、`copilot-sdk/types.d.ts`・`extension.d.ts`・`docs/examples.md`（`JoinSessionConfig` の `onPermissionRequest`、`ToolInvocation.agentId`、フックの入力の `agentId`・`parentAgentId`、`requestExtensions`、`requestedEnvironmentVariables` を断るとエクステンションが読み込まれないこと）、`copilot-sdk/generated/rpc.d.ts`（`tasks.startAgent`・`cancel`・`list`、`TasksStartAgentRequest.name` と `displayName`、`TaskStatus` の `idle`、`TaskShellInfo`、`tools.updateSubagentSettings` と `SubagentSettings`・`UpdateSubagentSettingsRequest`、`cancelAllBackgroundAgents`、`model.getCurrent`、`models.list`）、`copilot-sdk/generated/session-events.d.ts`（`subagent.*` と `cancelled`・`executionMode`、`permission.requested` と許可の求めの `PermissionRequestShell`・`requestSandboxBypass`・`extension-permission-access`、`permission.completed`、`user_input.*` と質問の `question`、`session_limits_exhausted.*` と待ちの終わりの `response.action`、`system.notification` の `agent_idle` のイベント）、`schemas/api.schema.json`（`hooks.invoke`）、`preloads/extension_bootstrap.mjs`（親のプロセスの見張り）、`cli-main.js`（エクステンションを読み込む条件、`launcherProgram`、読み込みのときの `extension-permission-access` の確認と断ったときの扱い）、`index.js`・`extension.js`（起動用のファイルの読み込み、許可の求めをすべての相手に届けて最初の答えを使う `_handleBroadcastEvent`）、`definitions/explore.agent.yaml`（`model` のリスト）、`runtime.node`（`model` のリストを求める文字列、`model-policy`、`task` の `mode` と `agent_type`）
 - [Web Content Accessibility Guidelines (WCAG) 2.2](https://www.w3.org/TR/WCAG22/)
