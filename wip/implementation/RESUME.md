@@ -120,8 +120,12 @@
 | A2 | a4dd7b3736f4dd2a9（完了） |
 | A3 | a6ae7ad9d3151a163（完了） |
 | A4 | afd1d4ef4c0e6d043（完了） |
-| C1 | ad77758fe8b6dfff7 |
-| B3 | ワークフロー wf_3c0c1bb4-188。台本は ~/.claude/projects/-home-user-plugin-creater/f6e65e0d-9c94-5351-8ee1-475927b3b43e/workflows/scripts/b3-creator-nl-parts-wf_3c0c1bb4-188.js。止まったら Workflow の scriptPath と resumeFromRunId で続ける（書き終えた段は使い回される） |
+| C1 | ad77758fe8b6dfff7（23:15 に再開） |
+| B3（書く） | a85fc7bf7ada9e044（23:15 に始めた。指示は briefs/B3.md） |
+| B2 | ae0285d8193b30123（指示は briefs/B2.md） |
+| B1 | a7b491f44bb4b21eb（指示は briefs/B1.md） |
+| C2 | ab07d1229ed5e8971（指示は briefs/C2.md） |
+| C3 | ad65681a2d31da659（指示は briefs/C3.md） |
 
 ## 再開のしかた
 
