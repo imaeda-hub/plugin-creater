@@ -47,6 +47,7 @@
 12. description の言語：日本語。ユーザーが頼むときの言い方を入れる。
 14. エクステンションが同じセッションのまま再起動したとき（/clear なし。extensions_reload、/extensions mode の切り替え）：前の実行の統括・作業・検証エージェントがまだ動いていれば、tasks.list で探して tasks.cancel で取り消し、実行を「途中で終わった（エクステンションが再起動した）」にする（generated-plugin-structure.md 4.13・6.5 を直す必要がある。今の設計のままだと、動き続けるエージェントが画面に出ず止められず、憲章 第21条に反する）。
 15. 文書をテキストにするツール（plugin-creator_doc_text）は skipPermission で登録する（hearing.md 9章の未決が決まった。作業フォルダの外の文書も確認なしで読める）。
+16. 試験の道具の置き場所：1・2段目の道具（Python の仮想環境と PyYAML・jsonschema、Node.js の playwright）は生成プラグインの tests/.venv と tests/node_modules（git に入れない）。EVAL の @github/copilot-sdk と playwright は <COPILOT_HOME>/plugin-data/plugin-creator/tools/ に1つ。ブラウザーは手元の Chrome・Edge、なければ Playwright の共通の場所（testing.md 11.2 の要確認が決まった）。
 13. ユーザーが「質問しないで作って」とはっきり頼んだとき：聞かないと仕事の決まりが入らない理由を1文で伝え、急ぎのときと同じ3つ（ここでやめて後で続ける〔おすすめ〕／残りを手早く聞く／このまま続ける）から選ばせる。推測で埋めて作らない（仕様 REQ-015 に足す必要がある）。
 
 ## 報告すること（最後にまとめて示す）
@@ -81,6 +82,8 @@
 - A4：生成プラグインの憲章のひな形は、クリエイター憲章の第2章・第4章を写したので、条番号に欠番がある。クリエイター憲章の第2章・第4章を改訂したら、ひな形も直す必要がある（追跡の仕組みはない）。
 - A4：REQ-042（直した後の試験）は生成プラグインの仕様書に入れていない（内容は README と REQ-001 で受ける）。入れるかは判断が要る。
 - A4：入口のスキルの「エクステンションのツールがないときの直し方」に、3つ目の原因（/extensions mode が Disabled）を足すよう、generated-plugin-structure.md 4.7 と creator-structure.md 4.3 に足す提案。
+- A1：窓口の tasks.list はエージェントだけで、シェルの処理を課題にできない。generated-plugin-structure.md 4.10 の表と 11章 #14 に効く。
+- A1：設計書 4.13・6.5・10章の「自分のセッションの終わっていない実行はすぐ途中で切れた」を、ユーザーの答え14に合わせて直す。
 - R2：`requestSandboxPermissive` を「サンドボックスの外で動かす」と示さない（generated-plugin-structure.md 6.3）。tasks.list には shell と client のタスクも入る。
 
 ## 後の仕事に渡すこと（作業のエージェントの報告から）
@@ -97,11 +100,16 @@
 - A2：画面は明るい配色だけ（暗い配色は作っていない）。表示の値の形（text は文字、kv は {見出し: 値}、table は {columns, rows}、progress は 0〜100 か {value, max, label}、image・file は {fileId, name}）は A1 の show の説明と同じ。
 - A2：server.mjs の staticDir は配列でもよく、クリエイターの画面が自分の部品とひな形の部品を一緒に出せる。
 
+- A1→B1：`core.toolDefinitions` を登録する。`agent.started.agentType` は `<プラグイン>:orchestrator` の形で渡す。`tool.started` に `arguments` を付ける（同じ呼び出しの繰り返しの課題に要る）。許可の求めの `detail.sandboxPermissive` を渡す。`createCore` に `startUi: (core) => startApp({ core, cwd })` を渡す。
+- A1→画面：`endReason.detail` に `extension_restarted`（エクステンションが再起動した）が加わった。ui/static の `ABORT_DETAILS` に足す（B1 に頼む）。`setup.taskDisplays` と `previous.canFile` は core が必ず持つので、ui/app.mjs の task.json を読み直す補いと `taskPath` を消す（B1 に頼む）。
+- A1：窓口の listTasks がエージェントだけなので、「止めても止まらなかったシェルの処理」（4.10）は課題にできない（報告すること）。まとめ中のフェーズは null。開始は最大30秒かかりうる（各10秒×3）。
+- A1：記録のツールの説明の文は仮（【仮】）。B2 が仕上げる。
+
 ## 動いているサブエージェント（同じセッションなら SendMessage で続けられる）
 
 | 仕事 | ID |
 | --- | --- |
-| A1 | a53fe02c46a87994d |
+| A1 | a53fe02c46a87994d（完了） |
 | A2 | a4dd7b3736f4dd2a9（完了） |
 | A3 | a6ae7ad9d3151a163（完了） |
 | A4 | afd1d4ef4c0e6d043（完了） |

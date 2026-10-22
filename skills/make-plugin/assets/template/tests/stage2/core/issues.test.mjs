@@ -40,6 +40,15 @@ test('REQ-013 わざと失敗させたイベントの流れで、その失敗が
   assert.ok(run.issues.every((i) => i.source === 'mechanical'));
 });
 
+test('REQ-013 記録のツールの断りは、ふつうの動きなので、ツールの失敗の課題にしない', async (t) => {
+  const h = await makeHarness(t);
+  await h.begin();
+  await h.event({ type: 'tool.started', agentId: h.root, toolCallId: 'r1', toolName: `${PLUGIN}_plan` });
+  await h.event({ type: 'tool.completed', agentId: h.root, toolCallId: 'r1', toolName: `${PLUGIN}_plan`, success: false, error: '評価基準が足りません' });
+  await h.rootIdle();
+  assert.ok(!h.run().issues.some((i) => i.title.includes('ツール「')), titles(h.run()).join(' / '));
+});
+
 test('REQ-013 課題の案は、番号つきで、題と本文が平易な日本語になっている（英語の役割名を使わない）', async (t) => {
   const h = await makeHarness(t);
   await h.begin();

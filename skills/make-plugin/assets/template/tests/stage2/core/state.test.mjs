@@ -270,3 +270,30 @@ test('REQ-005 状態の全体に、実行中は /clear しないことと、確�
   assert.ok(notices.some((n) => n.includes('/clear')));
   assert.ok(notices.some((n) => n.includes('チャットで答えてください')));
 });
+
+test('REQ-031 作業ごとの表示の定義（displays）は、状態の全体の setup.taskDisplays に必ず入る', async (t) => {
+  const h = await makeHarness(t);
+  assert.deepEqual(h.state().setup.taskDisplays, TASK.displays, '画面を開く前から');
+  await h.core.open({ requestText: 'x' });
+  assert.deepEqual(h.state().setup.taskDisplays, TASK.displays);
+  await h.begin();
+  assert.deepEqual(h.state().setup.taskDisplays, TASK.displays, '実行中も');
+});
+
+test('REQ-014 準備中に開ける前の結果（previous）にも、起票できるかとその理由と手順（canFile）が入る', async (t) => {
+  const h = await makeHarness(t); // gh が入っていない環境
+  await h.toSummarizing();
+  await h.tool('finish', { summary: 'まとめ' }, h.root);
+  await h.rootIdle();
+  await h.core.open({ requestText: '次の依頼' });
+  const { previous } = h.state();
+  assert.ok(previous.canFile, 'canFile がある');
+  for (const key of ['ok', 'reason', 'steps']) assert.ok(key in previous.canFile, key);
+  assert.equal(typeof previous.canFile.ok, 'boolean');
+  assert.ok(Array.isArray(previous.canFile.steps));
+  // 実行中の run.canFile も同じ形
+  const p = h.core.start(h.settings());
+  await h.settle();
+  await p;
+  assert.deepEqual(Object.keys(h.run().canFile).sort(), Object.keys(previous.canFile).sort());
+});

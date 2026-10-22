@@ -1,4 +1,5 @@
 import { ABORT_REASON_TEXT, LIMITS, PHASE_LABELS, ROLE_LABELS } from './constants.mjs';
+import { RECORD_TOOL_NAMES } from './tools.mjs';
 import { stableStringify, summarizeText } from './util.mjs';
 
 // 記録（log.jsonl の行）から、課題とまとめを機械的に作る（4.10）。
@@ -229,7 +230,9 @@ export function analyzeEntries(entries, opts) {
       }
       case 'tool.completed': {
         touch(e.agentId, at);
-        if (e.success === false) {
+        // 記録のツールの断りは、決まりを守らせるふつうの動き。続けて断られた場合は、やり直しの上限の課題になる
+        const isRecordTool = RECORD_TOOL_NAMES.some((n) => String(e.toolName).endsWith(`${pluginName}_${n}`));
+        if (e.success === false && !isRecordTool) {
           const role = roleOf(e.agentId);
           const key = `${role}|${e.toolName}`;
           const f = toolFailures.get(key) ?? { role, tool: e.toolName, count: 0, firstError: e.error ?? '' };

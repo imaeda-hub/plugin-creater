@@ -18,7 +18,7 @@ import { viewRun } from './run.mjs';
 import { handleEvent } from './events.mjs';
 import { applyRecord, checkFileInsideCwd, isRecordTool, RecordRefusal, refuseWithoutQueue } from './records.mjs';
 import { startRun, stopRun } from './lifecycle.mjs';
-import { fileIssue, refreshCanFile } from './filing.mjs';
+import { fileIssue, startCanFileCheck } from './filing.mjs';
 import { logEntry } from './log.mjs';
 import { recoverOnStartup, refreshPrevious, viewPrevious } from './recovery.mjs';
 
@@ -138,11 +138,7 @@ async function open(ctx, api, args) {
   }
   const url = await ensureUi(ctx, api);
   // 起票できるかは、画面を開いたときに確かめる（待たない）
-  ctx.canFilePromise ??= refreshCanFile(ctx)
-    .catch(() => {})
-    .finally(() => {
-      ctx.canFilePromise = null;
-    });
+  startCanFileCheck(ctx);
   const notices = [CLEAR_NOTICE, CHAT_CONFIRM_NOTICE];
   if (!active && ctx.endedAtStartup.length > 0) {
     notices.push('前の実行が途中で終わっていました。画面で結果を見られます。');

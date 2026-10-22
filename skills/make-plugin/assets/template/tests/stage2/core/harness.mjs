@@ -1,5 +1,5 @@
 // 中心の処理（core）の試験の道具。偽物の窓口と偽物の時計で core を動かし、イベントと記録のツールの呼び出しを組み立てる。
-import { chmodSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -128,7 +128,6 @@ export function createFakeGh(dir) {
   return gh;
 }
 
-import { readFileSync } from 'node:fs';
 function readFileSyncLines(path) {
   return readFileSync(path, 'utf8')
     .split('\n')

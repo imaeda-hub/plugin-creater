@@ -14,12 +14,20 @@ export async function refreshCanFile(ctx) {
   return result;
 }
 
+// 起票できるかの確かめを始める（すでに動いていれば、それを待つ）
+export function startCanFileCheck(ctx) {
+  ctx.canFilePromise ??= refreshCanFile(ctx)
+    .catch(() => ctx.canFile)
+    .finally(() => {
+      ctx.canFilePromise = null;
+    });
+  return ctx.canFilePromise;
+}
+
 export async function ensureCanFile(ctx) {
   if (ctx.canFileChecked) return ctx.canFile;
-  ctx.canFilePromise ??= refreshCanFile(ctx).finally(() => {
-    ctx.canFilePromise = null;
-  });
-  return ctx.canFilePromise;
+  await startCanFileCheck(ctx);
+  return ctx.canFile;
 }
 
 // 二重の起票を見分けるための、案ごとに一意の印。本文の終わりに入れる。

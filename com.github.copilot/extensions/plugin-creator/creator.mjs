@@ -1,0 +1,354 @@
+// クリエイターのエクステンションの中心。ツール、フック、イベントの受け口をまとめる。
+// Copilot CLI（@github/copilot-sdk/extension）には依らない。つなぎ口は extension.mjs（joinSession を呼ぶだけ）。
+// 試験では、偽物のセッション（tests/creator/extension/fake-session.mjs）をつなぐ。
+//
+// ツールの一覧は BLUEPRINT 7章、設計書は generated-plugin-structure.md 9章、hearing.md 7章・8章・9章。
+// 標準出力は JSON-RPC の通り道なので、console.log は使わない（失敗の知らせは標準エラーへ）。
+
+import fs from 'node:fs';
+import path from 'node:path';
+
+import { DRAFT_TASK_SUFFIX } from './constants.mjs';
+import { DEFAULT_PLUGIN_ROOT, createScreen, createUiLoader, listExamples } from './screen.mjs';
+import { DocTextError, documentText } from './doc-text.mjs';
+import { Refusal, createHearing } from './hearing.mjs';
+import { createHooks } from './hooks.mjs';
+import { IssueError, fileIssue, runGh as defaultRunGh } from './issue.mjs';
+import { itemIndex, kindIndex, sourceIndex } from './names.mjs';
+import { checkResultFile, createResultReader } from './results.mjs';
+import { hearingView, stateText } from './report.mjs';
+import { checkTaskDefinition, createSample, injectCriteria, readDraft } from './sample.mjs';
+import { copilotHome, createStore } from './store.mjs';
+import { TOOL_DEFS } from './tool-defs.mjs';
+
+const STATE_INCLUDES = ['最後の問答', '振り返りの材料'];
+const MAX_RESULT_FILES = 20;
+
+const errorMessage = (e) => (e && typeof e === 'object' && 'message' in e ? String(e.message) : String(e));
+
+/**
+ * @param {object} options
+ * @param {string} options.sessionId セッションの番号（記録の置き場所になる）
+ * @param {string} options.home COPILOT_HOME
+ * @param {string} [options.cwd] 作業フォルダ
+ * @param {{ now: () => number }} [options.clock]
+ * @param {string} [options.pluginRoot] クリエイターのプラグインの根
+ * @param {string} [options.examplesDir] 会話例のフォルダ（既定は <プラグインの根>/examples）
+ * @param {Function} [options.loadUi] ひな形の画面の部品を読み込む関数（試験で差し替える）
+ * @param {Function} [options.runGh] gh を動かす関数（試験で差し替える）
+ * @param {(text: string) => void} [options.warn]
+ */
+export function createCreator({
+  sessionId,
+  home,
+  cwd = process.cwd(),
+  clock = { now: () => Date.now() },
+  pluginRoot = DEFAULT_PLUGIN_ROOT,
+  examplesDir = path.join(pluginRoot, 'examples'),
+  loadUi = createUiLoader({ pluginRoot }),
+  runGh = defaultRunGh,
+  warn = (text) => console.error(`[plugin-creator] ${text}`),
+}) {
+  if (!sessionId) throw new Error('セッションの番号がありません。Copilot CLI のエクステンションとして動かしてください。');
+
+  let workDir = cwd;
+  const store = createStore({ home, sessionId });
+  const hearing = createHearing({ store, sessionId, clock });
+  const readResult = createResultReader();
+  const sample = createSample({ loadUi, clock });
+  const { hooks, onSessionEvent } = createHooks({ hearing, store, clock, warn });
+
+  // ---- 画面に出す状態 ------------------------------------------------------------------------
+
+  function resultFiles() {
+    return store.readResults().map((file) => readResult(file));
+  }
+
+  function confirmationView() {
+    const state = hearing.state;
+    const c = state?.confirmation;
+    if (!c) return null;
+    const byId = new Map(state.knowledge.map((k) => [k.id, k]));
+    const row = (k) => ({
+      id: k.id,
+      kind: kindIndex.nameOf(k.kind),
+      item: itemIndex.nameOf(k.item),
+      text: k.text,
+      source: sourceIndex.nameOf(k.source),
+      quote: k.quote,
+      example: k.example ?? null,
+      exception: k.exception ?? null,
+    });
+    const knowledge = c.knowledgeIds.map((id) => byId.get(id)).filter(Boolean);
+    const criteria = knowledge.filter((k) => k.kind === 'criterion').map((k, i) => ({ id: `C-${String(i + 1).padStart(2, '0')}`, text: k.text, knowledge: k.id }));
+    return {
+      at: c.at,
+      behavior: c.behavior,
+      knowledge: knowledge.map(row),
+      criteria,
+      evalTasks: c.evalTasks.map((t) => ({
+        prompt: t.prompt,
+        inputs: t.inputs,
+        criteria: t.criteria.map((id) => ({ id, text: byId.get(id)?.text ?? '' })),
+      })),
+      rebuild: c.rebuild ?? null,
+      sampleUrl: sample.url,
+    };
+  }
+
+  function buildView() {
+    const notices = [];
+    if (hearing.loadError) notices.push(hearing.loadError.message);
+    return {
+      title: 'クリエイターの画面',
+      sessionId,
+      hearing: hearingView(hearing),
+      confirmation: confirmationView(),
+      results: resultFiles(),
+      examples: listExamples(examplesDir),
+      notices,
+    };
+  }
+
+  const screen = createScreen({ getView: buildView, loadUi, examplesDir });
+
+  // ---- 生成前の確認 ----------------------------------------------------------------------------
+
+  /** 作業の定義の案を読み、合否の基準を差し込み、決まりで確かめて、見本を作り直す。見本の URL を返す */
+  async function prepareSample({ taskPath, knowledgeRows }) {
+    const draft = readDraft(taskPath);
+    const criterionRows = knowledgeRows.filter((k) => k.kind === 'criterion');
+    if (criterionRows.length === 0) {
+      throw new Refusal('「合否の決め方」のナレッジがありません。合否の基準は、種類が「合否の決め方」のナレッジから作るので、基準にするナレッジを plugin-creator_record で「合否の決め方」にしてください。');
+    }
+    const task = injectCriteria(draft, criterionRows);
+    const ui = await loadUi();
+    let schema;
+    try {
+      schema = JSON.parse(fs.readFileSync(ui.taskSchemaPath, 'utf8'));
+    } catch (error) {
+      throw new Error(`作業の定義の決まり（task.schema.json）を読めません：${errorMessage(error)}`);
+    }
+    const problems = checkTaskDefinition(task, schema);
+    if (problems.length) {
+      const shown = problems.slice(0, 8).join('\n');
+      throw new Refusal(
+        `作業の定義の案が決まりに合いません（${taskPath}）。直してから、もう一度知らせてください。\n${shown}${problems.length > 8 ? `\nほか${problems.length - 8}件` : ''}`,
+      );
+    }
+    try {
+      return await sample.update(task);
+    } catch (error) {
+      throw new Error(`Web管理画面の見本を開けません：${errorMessage(error)}`);
+    }
+  }
+
+  function validateConfirmArgs(args) {
+    const a = args && typeof args === 'object' && !Array.isArray(args) ? args : {};
+    const text = (v) => (typeof v === 'string' ? v.trim() : '');
+    if (!Array.isArray(a.knowledgeIds) || a.knowledgeIds.length === 0) throw new Refusal('示すナレッジの番号の一覧（knowledgeIds）を渡してください。');
+    if (!text(a.behavior)) throw new Refusal('生成プラグインの振る舞いの案（behavior）を渡してください。');
+    if (!text(a.taskPath)) throw new Refusal(`作業の定義の案のパス（taskPath）を渡してください。置き場所は ${DRAFT_TASK_SUFFIX} です。`);
+    if (!Array.isArray(a.evalTasks) || a.evalTasks.length === 0) throw new Refusal('EVAL の課題の案（evalTasks）を、1つ以上渡してください。');
+    const evalTasks = a.evalTasks.map((t, i) => {
+      if (!t || typeof t !== 'object' || !text(t.prompt)) throw new Refusal(`EVAL の課題 ${i + 1} に、頼むときの言葉（prompt）がありません。`);
+      const inputs = (Array.isArray(t.inputs) ? t.inputs : []).map((f) => {
+        const p = typeof f === 'string' ? f : f?.path;
+        if (!text(p)) throw new Refusal(`EVAL の課題 ${i + 1} の入力のファイルに、場所（path）がありません。`);
+        return { path: text(p), provisional: typeof f === 'object' && f?.provisional === true };
+      });
+      return { prompt: text(t.prompt), inputs, criteria: (Array.isArray(t.criteria) ? t.criteria : []).map(String) };
+    });
+    let rebuild = null;
+    if (a.rebuild !== undefined) {
+      const strings = (v) => (Array.isArray(v) ? v.map(String).filter((s) => s.trim() !== '') : []);
+      rebuild = { keep: strings(a.rebuild?.keep), change: strings(a.rebuild?.change) };
+    }
+    return { knowledgeIds: a.knowledgeIds.map(String), behavior: text(a.behavior), taskPath: text(a.taskPath), evalTasks, rebuild };
+  }
+
+  async function confirm(args) {
+    hearing.checkConfirmable(); // 未着手の項目が残っていれば、残りを返して断る
+    const a = validateConfirmArgs(args);
+    const normalized = path.resolve(workDir, a.taskPath);
+    if (!normalized.split(path.sep).join('/').endsWith(`/${DRAFT_TASK_SUFFIX}`)) {
+      throw new Refusal(`作業の定義の案は、作業フォルダの ${DRAFT_TASK_SUFFIX} に置いてください（今のパス：${a.taskPath}）。`);
+    }
+    if (hearing.state.rebuild && a.rebuild === null) {
+      throw new Refusal('作り直しのときは、引き継ぐことと変わること（rebuild）も知らせてください。');
+    }
+    const rows = hearing.knowledgeByIds(a.knowledgeIds);
+    const known = new Map(rows.map((k) => [k.id, k]));
+    for (const task of a.evalTasks) {
+      for (const id of task.criteria) {
+        const k = known.get(id);
+        if (!k) throw new Refusal(`EVAL の課題の基準にしたナレッジ ${id} が、示すナレッジの一覧（knowledgeIds）にありません。`);
+        if (k.kind !== 'criterion') throw new Refusal(`ナレッジ ${id} は「合否の決め方」ではないので、EVAL の課題の基準にできません。`);
+      }
+    }
+    const sampleUrl = await prepareSample({ taskPath: normalized, knowledgeRows: rows });
+    hearing.commitConfirmation({ ...a, taskPath: normalized });
+    return `生成前の確認で示すものを受け付けました。画面で見られます。Web管理画面の見本：${sampleUrl}`;
+  }
+
+  /** 止まっている見本を作り直す。再開（--continue）のあと、生成前の確認が残っているときのため。失敗しても黙る */
+  async function restoreSample() {
+    const c = hearing.state?.confirmation;
+    if (!c || sample.url) return;
+    try {
+      const rows = hearing.knowledgeByIds(c.knowledgeIds);
+      await prepareSample({ taskPath: c.taskPath, knowledgeRows: rows });
+    } catch (error) {
+      warn(`Web管理画面の見本を作り直せませんでした：${errorMessage(error)}`);
+    }
+  }
+
+  // ---- ツール --------------------------------------------------------------------------------------
+
+  // 状態を変えるツールは、順に1つずつ動かす（確認の途中で、別の記録が割り込まないように）
+  let queue = Promise.resolve();
+  const serialize = (fn) => (...args) => {
+    const run = queue.then(() => fn(...args));
+    queue = run.catch(() => {});
+    return run;
+  };
+
+  const handlers = {
+    async open() {
+      let url;
+      try {
+        url = await screen.ensure();
+      } catch (error) {
+        throw new Error(`クリエイターの画面を起動できません：${errorMessage(error)}`);
+      }
+      try {
+        hearing.setUrl(url);
+      } catch (error) {
+        warn(`画面の URL を記録できませんでした：${errorMessage(error)}`);
+      }
+      return `クリエイターの画面を開きました。次の URL をブラウザーで開いてください：${url}`;
+    },
+
+    async state(args) {
+      const include = args?.include;
+      if (include !== undefined && !STATE_INCLUDES.includes(include)) {
+        throw new Refusal(`include の値が違います：「${String(include)}」。使える値：${STATE_INCLUDES.join('、')}`);
+      }
+      const before = hearing.state?.url ?? null;
+      let url = null;
+      let problem = '';
+      try {
+        url = await screen.ensure(); // 止まっていれば起動し直す
+      } catch (error) {
+        problem = `画面を起動できませんでした：${errorMessage(error)}`;
+      }
+      if (url) {
+        try {
+          hearing.setUrl(url);
+        } catch (error) {
+          warn(`画面の URL を記録できませんでした：${errorMessage(error)}`);
+        }
+        await restoreSample();
+      }
+      let out = stateText(hearing, { url, sessionId, statePath: store.statePath, qaPath: store.qaPath, readQa: () => store.readQa() }, include);
+      if (problem) out += `\n${problem}`;
+      if (url && before && before !== url) out += '\n画面の URL が前と変わりました。チャットでユーザーに示してください。';
+      return out;
+    },
+
+    progress: serialize(async (args) => hearing.applyProgress(args)),
+
+    record: serialize(async (args) => hearing.applyRecord(args)),
+
+    confirm: serialize((args) => confirm(args)),
+
+    async results(args) {
+      const list = args?.paths;
+      if (!Array.isArray(list) || list.length === 0) throw new Refusal('結果のファイルの場所の一覧（paths）を渡してください。');
+      const files = list.map((p) => path.resolve(workDir, String(p)));
+      const problems = files.map(checkResultFile).filter(Boolean);
+      if (problems.length) throw new Refusal(problems.join('\n'));
+      const merged = [...store.readResults().filter((p) => !files.includes(p)), ...new Set(files)].slice(-MAX_RESULT_FILES);
+      store.writeResults(merged);
+      return `試験の結果${files.length}件を、クリエイターの画面に出します。`;
+    },
+
+    async doc_text(args) {
+      if (typeof args?.path !== 'string' || args.path.trim() === '') throw new Refusal('文書の場所（path）を渡してください。');
+      const file = path.resolve(workDir, args.path);
+      const doc = documentText(file);
+      const head = `ファイル：${path.basename(file)}（${doc.format}、全体で${doc.totalChars}文字）`;
+      const tail = doc.truncated ? `\n\n（長いため、先頭の${[...doc.text].length}文字で切りました。全体は${doc.totalChars}文字です。残りは読めません）` : '';
+      return `${head}\n\n${doc.text}${tail}`;
+    },
+
+    async issue(args) {
+      return fileIssue({ title: args?.title, body: args?.body }, { run: runGh });
+    },
+  };
+
+  /** 画面に出る返り値と失敗の文を、平易な日本語にそろえる。想定外の失敗は、内部の事情を足して返す */
+  const guard = (handler) => async (args, invocation) => {
+    try {
+      return await handler(args ?? {}, invocation);
+    } catch (error) {
+      if (error instanceof Refusal || error instanceof IssueError || error instanceof DocTextError) throw error;
+      if (error?.name === 'RecordUnreadable') throw new Refusal(error.message);
+      warn(`${error?.stack ?? error}`);
+      throw new Error(`うまくいきませんでした：${errorMessage(error)}`);
+    }
+  };
+
+  const tools = TOOL_DEFS.map((def) => ({
+    name: def.fullName,
+    description: def.description,
+    parameters: def.parameters,
+    ...(def.skipPermission ? { skipPermission: true } : {}),
+    defer: 'never', // ツール検索の裏に回さない（状態取得ツールの説明がモデルに見えなくなるのを避ける。hearing.md 14章 H4）
+    handler: guard(handlers[def.name]),
+  }));
+
+  return {
+    tools,
+    hooks,
+    onSessionEvent,
+    hearing,
+    store,
+    screen,
+    sample,
+    handlers,
+    get cwd() {
+      return workDir;
+    },
+    setCwd(next) {
+      if (typeof next === 'string' && next) workDir = next;
+    },
+    /** joinSession の返り値（セッション）につなぐ。コンパクションのイベントを受け、作業フォルダを知る */
+    async attach(session) {
+      session.on('session.compaction_complete', onSessionEvent);
+      try {
+        const info = await session.rpc?.workspaces?.getWorkspace?.();
+        if (info?.workspace?.cwd) workDir = info.workspace.cwd;
+      } catch {
+        // 分からなければ、起動したときの作業フォルダのまま
+      }
+    },
+    async shutdown() {
+      await Promise.allSettled([screen.close(), sample.close()]);
+    },
+  };
+}
+
+/**
+ * エクステンションを始める。extension.mjs から呼ぶ。
+ * @param {object} options
+ * @param {Function} options.joinSession @github/copilot-sdk/extension の joinSession
+ */
+export async function startCreator({ joinSession, env = process.env, cwd = process.cwd(), ...rest }) {
+  const creator = createCreator({ sessionId: env.SESSION_ID, home: copilotHome(env), cwd, ...rest });
+  // 確認を省くツールとフックを登録するので、Copilot CLI は読み込みのときに確認を出す（generated-plugin-structure.md 4.1）
+  // 許可の求めには答えない（onPermissionRequest は登録しない。creator-structure.md 4.5）
+  const session = await joinSession({ tools: creator.tools, hooks: creator.hooks });
+  await creator.attach(session);
+  return creator;
+}
