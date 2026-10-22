@@ -39,6 +39,10 @@ except ImportError as _e:  # 道具が足りないときは、足りないもの
     )
     raise SystemExit(2)
 
+if not hasattr(jsonschema, "Draft202012Validator"):   # 公式スキーマは JSON Schema 2020-12。jsonschema 4.0 から読める
+    sys.stderr.write("jsonschema が古い（4.0 以上が要る）。仮想環境の中で次を実行してください: python3 -m pip install -U jsonschema\n")
+    raise SystemExit(2)
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 SCHEMA_DIR = os.path.join(HERE, "schemas", "agent-plugins-1.0.0")
 

@@ -255,6 +255,14 @@ export function loadPrevious(ctx) {
   return sameCwd;
 }
 
+// 前の実行を読み直す必要があれば読み直す（準備中のときだけ）
+export function refreshPrevious(ctx) {
+  if (ctx.previousDirty && !ctx.run) {
+    ctx.previous = loadPrevious(ctx);
+    ctx.previousDirty = false;
+  }
+}
+
 export function viewPrevious(ctx, previous) {
   if (!previous) return null;
   const { runId, result } = previous;

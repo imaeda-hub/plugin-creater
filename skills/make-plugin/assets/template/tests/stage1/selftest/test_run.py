@@ -68,6 +68,18 @@ class Tools(unittest.TestCase):
         self.assertEqual(sys.version_info >= (3, 9), ok)
         self.assertTrue(found.startswith("%d.%d" % sys.version_info[:2]))
 
+    def test_REQ_048_old_jsonschema_counts_as_missing(self):
+        from unittest import mock
+        with mock.patch("importlib.metadata.version", return_value="3.2.0"):
+            self.assertEqual((False, "3.2.0"), entry.jsonschema_found())
+        with mock.patch("importlib.metadata.version", return_value="4.26.0"):
+            self.assertEqual((True, "4.26.0"), entry.jsonschema_found())
+
+    @unittest.skipUnless(HAS_NODE, "node がない")
+    def test_REQ_048_playwright_is_missing_in_a_folder_that_does_not_have_it(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertEqual((False, ""), entry.playwright_found(tmp))
+
     def test_REQ_048_node_and_playwright_are_needed_only_when_such_tests_exist(self):
         with tempfile.TemporaryDirectory() as tmp:
             self.assertEqual((["python", "pyyaml", "jsonschema"], tmp), entry.gather_needs(tmp, []))
@@ -254,17 +266,17 @@ class Entry(Plugin):
             self.assertEqual("none", self.stage(json.load(f), "stage2")["status"])
 
     def test_REQ_048_missing_tools_stop_the_run_and_are_listed_with_how_to_install(self):
-        original = entry.module_found
-        entry.module_found = lambda name: (False, "") if name == "jsonschema" else original(name)
+        original = entry.jsonschema_found
+        entry.jsonschema_found = lambda: (False, "")
         try:
             result = self.run_entry()
         finally:
-            entry.module_found = original
+            entry.jsonschema_found = original
         self.assertEqual("stopped", result["status"])
         self.assertEqual(2, result["exitCode"])
         self.assertEqual([], result["stages"])
         self.assertEqual(["jsonschema"], [m["id"] for m in result["tools"]["missing"]])
-        self.assertIn("pip install jsonschema", result["tools"]["missing"][0]["howToInstall"])
+        self.assertIn("pip install -U jsonschema", result["tools"]["missing"][0]["howToInstall"])
         self.assertIn("足りない道具があるので止まりました", entry.format_text(result))
         with open(self.results, encoding="utf-8") as f:
             self.assertEqual("stopped", json.load(f)["status"])

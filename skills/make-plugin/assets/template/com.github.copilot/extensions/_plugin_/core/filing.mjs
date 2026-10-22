@@ -1,5 +1,6 @@
 import { LIMITS } from './constants.mjs';
 import { checkCanFile, runCommand } from './github.mjs';
+import { refreshPrevious } from './recovery.mjs';
 import { newAttemptId, summarizeText } from './util.mjs';
 
 // Issue の起票（4.11）。画面で案ごとに承認すると、gh で起票する。
@@ -28,6 +29,7 @@ export function issueMarkerText(ctx, runId, issueId) {
 
 // 承認する案を探す。実行が終わった後の実行か、準備中に開ける前の実行。
 function findTarget(ctx, issueId) {
+  refreshPrevious(ctx);
   const run = ctx.run;
   if (run && run.status === 'finished') {
     const issue = run.issues.find((i) => i.id === issueId);

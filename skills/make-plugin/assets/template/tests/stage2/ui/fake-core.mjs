@@ -141,6 +141,102 @@ export function finishedState(endReason = { kind: 'all_passed', detail: null, un
   return base;
 }
 
+// ---- 崩れ・色・書き方の試験で使う、長い文字や全部の部品を含む状態 ----
+
+// ---- 試験用の状態 --------------------------------------------------------------------------------
+
+export const LONG = 'あ'.repeat(10) + 'x'.repeat(150); // 途中で切れない長い文字
+export const LONG_COMMAND = `curl -s https://example.com/${'path/'.repeat(30)}file.tar.gz -o /tmp/${'a'.repeat(120)} && tar xzf /tmp/${'a'.repeat(120)}`;
+
+/** 作業の定義の表示を、いつでも出るようにしたもの（崩れと色の試験で、全部の部品を同時に出すため） */
+export const ALL_DISPLAYS_TASK = { ...SAMPLE_TASK, displays: SAMPLE_TASK.displays.map((d) => ({ ...d, when: 'both' })) };
+
+export function richRunning() {
+  const state = runState('do');
+  const agent = (slot, role, label, status, extra = {}) => ({ slot, role, label, status, task: '', selectedModel: 'claude-haiku-5-5', actualModel: 'claude-haiku-5-5', lastActiveAt: Date.UTC(2026, 9, 22, 3, 4, 5), replySummary: '', agentId: null, ...extra });
+  state.run.agents = [
+    agent('orchestrator', 'orchestrator', '統括', 'completed', { task: '計画を立てる', replySummary: LONG, agentId: 'ag-orch' }),
+    agent('worker', 'worker', '週報を書く係', 'running', { task: LONG, selectedModel: 'claude-opus-5-5', actualModel: 'gpt-6-luna', agentId: 'ag-work', replySummary: '下書きを書いています。\n'.repeat(5) }),
+    agent('worker-b', 'worker', '集計をする係', 'waiting', { task: '集計する', agentId: 'ag-work-b' }),
+    agent('verifier', 'verifier', '検証', 'standby', {}),
+  ];
+  state.run.isAuto = true;
+  state.run.waits = [
+    { requestId: 'r1', slot: 'worker-b', kind: 'permission', detail: { permissionKind: 'shell', toolKind: 'shell', command: LONG_COMMAND, paths: [`/work/${'dir/'.repeat(30)}file`], urls: [`https://example.com/${'p'.repeat(100)}`], warning: '外のファイルを消すかもしれません。', sandboxBypass: true } },
+    { requestId: 'r2', slot: 'worker', kind: 'question', detail: { question: `どちらの形式で保存しますか？ ${LONG}` } },
+    { requestId: 'r3', slot: null, kind: 'limit', detail: {} },
+  ];
+  state.run.iterations = [
+    {
+      n: 1,
+      criteria: [
+        { id: 'C-01', text: LONG, fromUser: true },
+        { id: 'C-02', text: '来週の予定に担当者が書いてある', fromUser: true },
+        { id: 'C-03', text: '誤字がない', fromUser: false },
+      ],
+      plan: `先週の記録を読み、3行にまとめる。${LONG}`,
+      verdicts: [
+        { criterionId: 'C-01', pass: true, note: '' },
+        { criterionId: 'C-02', pass: false, note: `担当者が書かれていません。${LONG}` },
+      ],
+      agentIds: ['ag-work', 'ag-work-b'],
+    },
+    { n: 2, criteria: [{ id: 'C-01', text: '先週の実績が3行以内にまとまっている', fromUser: true }], plan: '直す', verdicts: [], agentIds: [] },
+  ];
+  state.run.iteration = 2;
+  state.run.displays = {
+    draft: `下書きの本文です。${'長い文章が続きます。'.repeat(60)}`,
+    meta: { [`見出し${LONG}`]: LONG, 週: '2026-W42' },
+    stats: { columns: ['項目', '件数', '備考', '担当', '期限', '状態', '詳細'], rows: [['A', 1, LONG, 'x', 'y', 'z', 'w'], ['B', 2, '', '', '', '', '']] },
+    progress: { value: 3, max: 8, label: '進み具合' },
+    chart: { fileId: 'f1', name: 'chart.png' },
+    report: { fileId: 'f2', name: '週報.md' },
+  };
+  state.run.summary = `まとめの文です。${'まとめが続きます。'.repeat(50)}`;
+  state.run.issues = [
+    { id: 'i1', title: `課題の題 ${LONG}`, body: '本文\n2行目', source: 'mechanical', filing: { state: 'none', url: null, reason: null } },
+    { id: 'i2', title: '振り返りの案', body: '本文', source: 'orchestrator', filing: { state: 'filed', url: 'https://github.com/o/r/issues/1', reason: null } },
+  ];
+  state.setup.isAuto = true;
+  state.notices = ['このセッションでは、記録を手元のフォルダに書いています。'];
+  return state;
+}
+
+export function richFinished() {
+  const state = richRunning();
+  state.run.status = 'finished';
+  state.run.phase = null;
+  state.run.waits = [];
+  state.run.endReason = { kind: 'aborted', detail: 'credit_limit', unstoppable: true };
+  state.run.agents = state.run.agents.map((a, i) => ({ ...a, status: ['completed', 'failed', 'stopped', 'unstopped'][i] }));
+  state.run.unstopped = [{ agentId: 'ag-work-b', role: 'worker', howTo: 'チャットで Esc を2回押すか、Copilot CLI を終えてください。' }];
+  state.run.canFile = { ok: false, reason: 'gh にログインしていません。', steps: ['gh auth login を実行する。', 'プラグインを入れ直す。'] };
+  state.run.issues = [
+    { id: 'i1', title: '未起票の案', body: '本文', source: 'mechanical', filing: { state: 'none', url: null, reason: null } },
+    { id: 'i2', title: '起票済みの案', body: '本文', source: 'orchestrator', filing: { state: 'filed', url: 'https://github.com/o/r/issues/2', reason: null } },
+    { id: 'i3', title: '失敗した案', body: '本文', source: 'mechanical', filing: { state: 'failed', url: null, reason: '時間切れです。' } },
+    { id: 'i4', title: '分からない案', body: '本文', source: 'mechanical', filing: { state: 'unknown', url: null, reason: '起票できたか分かりません。' } },
+    { id: 'i5', title: '起票中の案', body: '本文', source: 'mechanical', filing: { state: 'filing', url: null, reason: null } },
+  ];
+  return state;
+}
+
+export function richPrep() {
+  return prepState({
+    setup: { ...prepState().setup, isAuto: true, autoNotice: null, overrideNotice: null },
+    notices: ['前回の実行は途中で切れました。'],
+    previous: {
+      endReason: { kind: 'aborted', detail: 'cut_off', unstoppable: false },
+      summary: `前回のまとめ ${LONG}`,
+      finishedAt: Date.UTC(2026, 9, 21, 12, 0, 0),
+      issues: [
+        { id: 'p1', title: `前の案 ${LONG}`, body: '本文', source: 'mechanical', filing: { state: 'none', url: null, reason: null } },
+        { id: 'p2', title: '起票済みの前の案', body: '本文', source: 'orchestrator', filing: { state: 'filed', url: 'https://github.com/o/r/issues/3', reason: null } },
+      ],
+    },
+  });
+}
+
 /**
  * 偽物の core。
  * - set(関数 か 部分): 状態を変えて版の番号を上げる。setSilently は版の番号を上げない。

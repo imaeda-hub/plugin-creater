@@ -20,7 +20,7 @@ import { applyRecord, checkFileInsideCwd, isRecordTool, RecordRefusal, refuseWit
 import { startRun, stopRun } from './lifecycle.mjs';
 import { fileIssue, refreshCanFile } from './filing.mjs';
 import { logEntry } from './log.mjs';
-import { loadPrevious, recoverOnStartup, viewPrevious } from './recovery.mjs';
+import { recoverOnStartup, refreshPrevious, viewPrevious } from './recovery.mjs';
 
 // 生成プラグインの中心の処理（BLUEPRINT 3.3）。Copilot CLI に依らない。
 // つなぎ口とは、窓口 port（BLUEPRINT 3.2）と中立のイベント（3.1）だけでやり取りする。画面は startUi(core) で起こす。
@@ -92,10 +92,7 @@ async function ensureUi(ctx, api) {
 }
 
 function buildState(ctx) {
-  if (ctx.previousDirty) {
-    ctx.previous = ctx.run ? ctx.previous : loadPrevious(ctx);
-    ctx.previousDirty = false;
-  }
+  refreshPrevious(ctx);
   const run = ctx.run;
   const view = run ? viewRun(ctx, run) : null;
   const previous = run ? null : viewPrevious(ctx, ctx.previous);

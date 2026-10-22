@@ -15,7 +15,7 @@ import { after, before, describe, test } from 'node:test';
 import { pathToFileURL } from 'node:url';
 import zlib from 'node:zlib';
 
-import { MODELS, SAMPLE_TASK, createFakeCore, finishedState, locateUi, prepState, runState } from './fake-core.mjs';
+import { ALL_DISPLAYS_TASK, LONG, LONG_COMMAND, MODELS, SAMPLE_TASK, createFakeCore, finishedState, locateUi, prepState, richFinished, richPrep, richRunning, runState } from './fake-core.mjs';
 
 // ---- Playwright を見つける（見つからなければ、直し方を示して止まる） -------------------------------
 
@@ -108,7 +108,8 @@ const EVIL = {
 
 /**
  * 画面を起動してブラウザーで開き、fn に渡す。終わったら片付ける。
- * options：state（初めの状態）、viewport、task（作業の定義）、setup(core, { work })、allowErrors（通信の失敗を試すとき）、contextOptions
+ * options：state（初めの状態）、viewport、task（作業の定義）、setup(core, { work })、contextOptions、
+ * allowErrors（わざと断られる操作を試すときに、出てよいエラーの形。true なら何でも、正規表現の配列ならその形だけ）
  */
 async function withScreen(options, fn) {
   const { state = prepState(), viewport = { width: 1280, height: 720 }, task = SAMPLE_TASK, setup, allowErrors = false, contextOptions = {} } = options;
@@ -139,7 +140,8 @@ async function withScreen(options, fn) {
   try {
     await open();
     const result = await fn({ page, core, app, work, errors, requests, open, context });
-    if (!allowErrors) assert.deepEqual(errors, [], '画面にエラーが出た');
+    const allowed = (message) => allowErrors === true || (Array.isArray(allowErrors) && allowErrors.some((pattern) => pattern.test(message)));
+    assert.deepEqual(errors.filter((message) => !allowed(message)), [], '画面にエラーが出た');
     return result;
   } finally {
     await context.close();
@@ -148,6 +150,20 @@ async function withScreen(options, fn) {
 }
 
 const until = (page, fn, arg) => page.waitForFunction(fn, arg, { timeout: 6000 });
+const HTTP_400 = /status of 400/;
+const HTTP_403 = /status of 403/;
+const HTTP_404 = /status of 404/;
+const openAllFolds = (page) => page.evaluate(() => document.querySelectorAll('details').forEach((d) => (d.open = true)));
+
+/** ブラウザーの外（試験の側）の条件を、決めた時間まで待つ */
+async function eventually(check, message, timeout = 6000) {
+  const startedAt = Date.now();
+  for (;;) {
+    if (await check()) return;
+    if (Date.now() - startedAt > timeout) assert.fail(message);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+}
 const textOf = (page, selector) => page.locator(selector).first().innerText();
 const visibleText = (page) => page.locator('body').innerText();
 
@@ -253,100 +269,6 @@ function contrastProblems(minimum) {
     if (value < minimum) problems.push(`${value.toFixed(2)}:1 ${el.tagName.toLowerCase()}.${String(el.className).split(' ')[0]}「${(el.textContent ?? '').trim().slice(0, 20)}」`);
   }
   return { problems, checked };
-}
-
-// ---- 試験用の状態 --------------------------------------------------------------------------------
-
-const LONG = 'あ'.repeat(10) + 'x'.repeat(150); // 途中で切れない長い文字
-const LONG_COMMAND = `curl -s https://example.com/${'path/'.repeat(30)}file.tar.gz -o /tmp/${'a'.repeat(120)} && tar xzf /tmp/${'a'.repeat(120)}`;
-
-/** 作業の定義の表示を、いつでも出るようにしたもの（崩れと色の試験で、全部の部品を同時に出すため） */
-const ALL_DISPLAYS_TASK = { ...SAMPLE_TASK, displays: SAMPLE_TASK.displays.map((d) => ({ ...d, when: 'both' })) };
-
-function richRunning() {
-  const state = runState('do');
-  const agent = (slot, role, label, status, extra = {}) => ({ slot, role, label, status, task: '', selectedModel: 'claude-haiku-5-5', actualModel: 'claude-haiku-5-5', lastActiveAt: Date.UTC(2026, 9, 22, 3, 4, 5), replySummary: '', agentId: null, ...extra });
-  state.run.agents = [
-    agent('orchestrator', 'orchestrator', '統括', 'completed', { task: '計画を立てる', replySummary: LONG, agentId: 'ag-orch' }),
-    agent('worker', 'worker', '週報を書く係', 'running', { task: LONG, selectedModel: 'claude-opus-5-5', actualModel: 'gpt-6-luna', agentId: 'ag-work', replySummary: '下書きを書いています。\n'.repeat(5) }),
-    agent('worker-b', 'worker', '集計をする係', 'waiting', { task: '集計する', agentId: 'ag-work-b' }),
-    agent('verifier', 'verifier', '検証', 'standby', {}),
-  ];
-  state.run.isAuto = true;
-  state.run.waits = [
-    { requestId: 'r1', slot: 'worker-b', kind: 'permission', detail: { permissionKind: 'shell', toolKind: 'shell', command: LONG_COMMAND, paths: [`/work/${'dir/'.repeat(30)}file`], urls: [`https://example.com/${'p'.repeat(100)}`], warning: '外のファイルを消すかもしれません。', sandboxBypass: true } },
-    { requestId: 'r2', slot: 'worker', kind: 'question', detail: { question: `どちらの形式で保存しますか？ ${LONG}` } },
-    { requestId: 'r3', slot: null, kind: 'limit', detail: {} },
-  ];
-  state.run.iterations = [
-    {
-      n: 1,
-      criteria: [
-        { id: 'C-01', text: LONG, fromUser: true },
-        { id: 'C-02', text: '来週の予定に担当者が書いてある', fromUser: true },
-        { id: 'C-03', text: '誤字がない', fromUser: false },
-      ],
-      plan: `先週の記録を読み、3行にまとめる。${LONG}`,
-      verdicts: [
-        { criterionId: 'C-01', pass: true, note: '' },
-        { criterionId: 'C-02', pass: false, note: `担当者が書かれていません。${LONG}` },
-      ],
-      agentIds: ['ag-work', 'ag-work-b'],
-    },
-    { n: 2, criteria: [{ id: 'C-01', text: '先週の実績が3行以内にまとまっている', fromUser: true }], plan: '直す', verdicts: [], agentIds: [] },
-  ];
-  state.run.iteration = 2;
-  state.run.displays = {
-    draft: `下書きの本文です。${'長い文章が続きます。'.repeat(60)}`,
-    meta: { [`見出し${LONG}`]: LONG, 週: '2026-W42' },
-    stats: { columns: ['項目', '件数', '備考', '担当', '期限', '状態', '詳細'], rows: [['A', 1, LONG, 'x', 'y', 'z', 'w'], ['B', 2, '', '', '', '', '']] },
-    progress: { value: 3, max: 8, label: '進み具合' },
-    chart: { fileId: 'f1', name: 'chart.png' },
-    report: { fileId: 'f2', name: '週報.md' },
-  };
-  state.run.summary = `まとめの文です。${'まとめが続きます。'.repeat(50)}`;
-  state.run.issues = [
-    { id: 'i1', title: `課題の題 ${LONG}`, body: '本文\n2行目', source: 'mechanical', filing: { state: 'none', url: null, reason: null } },
-    { id: 'i2', title: '振り返りの案', body: '本文', source: 'orchestrator', filing: { state: 'filed', url: 'https://github.com/o/r/issues/1', reason: null } },
-  ];
-  state.setup.isAuto = true;
-  state.notices = ['このセッションでは、記録を手元のフォルダに書いています。'];
-  return state;
-}
-
-function richFinished() {
-  const state = richRunning();
-  state.run.status = 'finished';
-  state.run.phase = null;
-  state.run.waits = [];
-  state.run.endReason = { kind: 'aborted', detail: 'credit_limit', unstoppable: true };
-  state.run.agents = state.run.agents.map((a, i) => ({ ...a, status: ['completed', 'failed', 'stopped', 'unstopped'][i] }));
-  state.run.unstopped = [{ agentId: 'ag-work-b', role: 'worker', howTo: 'チャットで Esc を2回押すか、Copilot CLI を終えてください。' }];
-  state.run.canFile = { ok: false, reason: 'gh にログインしていません。', steps: ['gh auth login を実行する。', 'プラグインを入れ直す。'] };
-  state.run.issues = [
-    { id: 'i1', title: '未起票の案', body: '本文', source: 'mechanical', filing: { state: 'none', url: null, reason: null } },
-    { id: 'i2', title: '起票済みの案', body: '本文', source: 'orchestrator', filing: { state: 'filed', url: 'https://github.com/o/r/issues/2', reason: null } },
-    { id: 'i3', title: '失敗した案', body: '本文', source: 'mechanical', filing: { state: 'failed', url: null, reason: '時間切れです。' } },
-    { id: 'i4', title: '分からない案', body: '本文', source: 'mechanical', filing: { state: 'unknown', url: null, reason: '起票できたか分かりません。' } },
-    { id: 'i5', title: '起票中の案', body: '本文', source: 'mechanical', filing: { state: 'filing', url: null, reason: null } },
-  ];
-  return state;
-}
-
-function richPrep() {
-  return prepState({
-    setup: { ...prepState().setup, isAuto: true, autoNotice: null, overrideNotice: null },
-    notices: ['前回の実行は途中で切れました。'],
-    previous: {
-      endReason: { kind: 'aborted', detail: 'cut_off', unstoppable: false },
-      summary: `前回のまとめ ${LONG}`,
-      finishedAt: Date.UTC(2026, 9, 21, 12, 0, 0),
-      issues: [
-        { id: 'p1', title: `前の案 ${LONG}`, body: '本文', source: 'mechanical', filing: { state: 'none', url: null, reason: null } },
-        { id: 'p2', title: '起票済みの前の案', body: '本文', source: 'orchestrator', filing: { state: 'filed', url: 'https://github.com/o/r/issues/3', reason: null } },
-      ],
-    },
-  });
 }
 
 // ---- 実行中の表示 ----------------------------------------------------------------------------------
@@ -642,8 +564,15 @@ describe('止める（REQ-009、REQ-012）', () => {
           return s;
         });
       const startedAt = Date.now();
-      await page.click('#stop', { clickCount: 2, delay: 0 });
-      assert.equal(await page.locator('#stop').isDisabled().catch(() => true), true, '押したらすぐ押せなくなる');
+      // 続けて2回押す。1回目の直後に押せなくなっていれば、2回目は効かない
+      const disabledRightAfter = await page.evaluate(() => {
+        const button = document.getElementById('stop');
+        button.click();
+        const disabled = button.disabled;
+        button.click();
+        return disabled;
+      });
+      assert.equal(disabledRightAfter, true, '押したらすぐ押せなくなる');
       await until(page, () => document.querySelector('#run-status')?.textContent.trim() === '終了（ユーザーが止めた）');
       assert.ok(Date.now() - startedAt < 10_000, '10秒のうちに終了の表示になる');
       assert.equal(core.callsOf('stop').length, 1, '2回押しても1回');
@@ -680,7 +609,7 @@ describe('止める（REQ-009、REQ-012）', () => {
   });
 
   test('REQ-009 止められなかったときは、断りの文が出て、もう一度押せる', async () => {
-    await withScreen({ state: runState('do') }, async ({ page, core }) => {
+    await withScreen({ state: runState('do'), allowErrors: [HTTP_400] }, async ({ page, core }) => {
       core.refusals.stop = new Error('いま止められません。少し待ってください。');
       await page.click('#stop');
       await until(page, () => document.querySelector('.top-message'));
@@ -688,9 +617,7 @@ describe('止める（REQ-009、REQ-012）', () => {
       assert.equal(await page.locator('#stop').isDisabled(), false);
       delete core.refusals.stop;
       await page.click('#stop');
-      await until(page, () => core.callsOf ? true : true);
-      await page.waitForTimeout(300);
-      assert.equal(core.callsOf('stop').length, 2);
+      await eventually(() => core.callsOf('stop').length === 2, '2回目の止めるが届かない');
     });
   });
 
@@ -857,7 +784,7 @@ describe('結果の確認（REQ-011、REQ-012、REQ-013）', () => {
   });
 
   test('REQ-012 返事の全文を取れなかったときは、そのことが出る', async () => {
-    await withScreen({ state: finishedState() }, async ({ page, core }) => {
+    await withScreen({ state: finishedState(), allowErrors: [HTTP_404] }, async ({ page, core }) => {
       delete core.replies['ag-work'];
       await page.locator('.agent[data-slot="worker"] details summary').click();
       await until(page, () => document.querySelector('.agent[data-slot="worker"] .reply-full')?.innerText.includes('取得できませんでした'));
@@ -957,9 +884,11 @@ describe('Issue の起票の承認（REQ-014）', () => {
       const box = await textOf(page, '#cannot-file');
       assert.match(box, /今は Issue を起票できません/);
       assert.match(box, /gh にログインしていません。/);
-      assert.match(box, /1\. 生成プラグインを GitHub に公開する。/);
-      assert.match(box, /2\. plugin\.json の repository にそのリポジトリを書き、生成プラグインを入れ直す。/);
-      assert.match(box, /3\. gh（GitHub の公式のコマンド）を入れて、ログインする。/);
+      assert.deepEqual(await page.locator('#cannot-file ol li').allInnerTexts(), [
+        '生成プラグインを GitHub に公開する。',
+        'plugin.json の repository にそのリポジトリを書き、生成プラグインを入れ直す。',
+        'gh（GitHub の公式のコマンド）を入れて、ログインする。',
+      ]);
       assert.equal(core.callsOf('fileIssue').length, 0);
       // 中心の処理が手順を決めているときは、その手順を出す
       core.set((s) => {
@@ -967,7 +896,7 @@ describe('Issue の起票の承認（REQ-014）', () => {
         return s;
       });
       await until(page, () => document.getElementById('cannot-file')?.innerText.includes('リポジトリを書く。'));
-      assert.ok(!(await textOf(page, '#cannot-file')).includes('gh（GitHub'));
+      assert.deepEqual(await page.locator('#cannot-file ol li').allInnerTexts(), ['リポジトリを書く。', '入れ直す。']);
       // 起票できるようになったら、手順は消えてボタンが押せる
       core.set((s) => {
         s.run.canFile = { ok: true, reason: null, steps: [] };
@@ -981,7 +910,7 @@ describe('Issue の起票の承認（REQ-014）', () => {
   test('REQ-014 中心の処理が起票を断ると、その文が出て、もう一度承認できる', async () => {
     const state = finishedState();
     state.run.issues = [issue('i1', 'none')];
-    await withScreen({ state }, async ({ page, core }) => {
+    await withScreen({ state, allowErrors: [HTTP_400] }, async ({ page, core }) => {
       core.refusals.fileIssue = new Error('この案は、もう起票されています。');
       await page.click('.approve');
       await until(page, () => document.querySelector('.issue .alert-error'));
@@ -989,8 +918,7 @@ describe('Issue の起票の承認（REQ-014）', () => {
       await until(page, () => !document.querySelector('.approve').disabled);
       delete core.refusals.fileIssue;
       await page.click('.approve');
-      await page.waitForTimeout(300);
-      assert.equal(core.callsOf('fileIssue').length, 2);
+      await eventually(() => core.callsOf('fileIssue').length === 2, '2回目の承認が届かない');
     });
   });
 
@@ -1039,7 +967,7 @@ describe('準備中に開ける前の結果（REQ-008、REQ-012、REQ-014）', (
       assert.equal(await page.locator('.issue[data-issue-id="p1"] .approve').isEnabled(), true);
       assert.equal(await page.locator('.issue[data-issue-id="p2"] .approve').isDisabled(), true);
       await page.click('.issue[data-issue-id="p1"] .approve');
-      await until(page, () => core.callsOf('fileIssue').length === 1);
+      await eventually(() => core.callsOf('fileIssue').length === 1, '承認が届かない');
       assert.deepEqual(core.callsOf('fileIssue')[0].args, ['p1']);
       assert.equal(await page.locator('#s-previous details').getAttribute('open'), '', '操作の後も開いたまま');
     });
@@ -1125,8 +1053,7 @@ describe('開始前の設定（REQ-005、REQ-007、REQ-031）', () => {
     await withScreen({ state: prepState() }, async ({ page, core }) => {
       await page.fill('#setting-week', '2026-W42');
       await page.click('#start');
-      await until(page, () => true);
-      await page.waitForTimeout(300);
+      await eventually(() => core.callsOf('start').length === 1, '開始が届かない');
       assert.deepEqual(core.callsOf('start')[0].args[0], {
         models: { orchestrator: 'claude-opus-5-5', worker: 'claude-haiku-5-5', verifier: 'claude-opus-5-5' },
         maxIterations: 3,
@@ -1151,7 +1078,7 @@ describe('開始前の設定（REQ-005、REQ-007、REQ-031）', () => {
   });
 
   test('REQ-007 中心の処理が開始を断ると、その文が出て、設定は残り、もう一度開始できる', async () => {
-    await withScreen({ state: prepState() }, async ({ page, core }) => {
+    await withScreen({ state: prepState(), allowErrors: [HTTP_400] }, async ({ page, core }) => {
       core.refusals.start = new Error('選んだモデルが使えません。別のモデルを選んでください。');
       await page.fill('#setting-week', '2026-W42');
       await page.selectOption('#setting-model-worker', 'gpt-6-luna');
@@ -1163,8 +1090,7 @@ describe('開始前の設定（REQ-005、REQ-007、REQ-031）', () => {
       assert.equal(await page.inputValue('#setting-model-worker'), 'gpt-6-luna');
       delete core.refusals.start;
       await page.click('#start');
-      await page.waitForTimeout(300);
-      assert.equal(core.callsOf('start').length, 2);
+      await eventually(() => core.callsOf('start').length === 2, '2回目の開始が届かない');
       assert.equal(core.callsOf('start')[1].args[0].models.worker, 'gpt-6-luna');
     });
   });
@@ -1207,7 +1133,7 @@ describe('開始前の設定（REQ-005、REQ-007、REQ-031）', () => {
       await page.selectOption('#setting-model-worker', 'gpt-6-luna');
       await page.fill('#setting-week', 'w');
       await page.click('#start');
-      await page.waitForTimeout(300);
+      await eventually(() => core.callsOf('start').length === 1, '開始が届かない');
       assert.equal(core.callsOf('start')[0].args[0].models.worker, 'gpt-6-luna');
     });
     await withScreen({ state: prepState() }, async ({ page }) => {
@@ -1428,7 +1354,7 @@ describe('エージェントや記録から来た文字（REQ-005、REQ-006）',
   });
 
   test('REQ-006 画面の応答の CSP が、インラインのスクリプトを止める（画面の側に穴があっても動かない）', async () => {
-    await withScreen({ state: runState('do') }, async ({ page, app }) => {
+    await withScreen({ state: runState('do'), allowErrors: [/Refused to execute inline/] }, async ({ page, app }) => {
       const policy = (await page.request.get(app.url)).headers()['content-security-policy'];
       assert.match(policy, /script-src 'self'/);
       // 実際にインラインのスクリプトを足そうとしても、動かない
@@ -1536,10 +1462,10 @@ describe('見た目（REQ-030）', () => {
     });
 
     test(`REQ-030 ${name}の画面の、文字と背景の色の差が 4.5:1 以上（WCAG 2.2）`, async () => {
-      await withScreen({ state: makeState(), task }, async ({ page }) => {
+      await withScreen({ state: makeState(), task, allowErrors: [HTTP_404] }, async ({ page }) => {
         if (name === '準備中') await page.click('#s-previous summary');
         // 畳みを全部開いて、中の文字も調べる
-        await page.evaluate(() => document.querySelectorAll('details').forEach((d) => (d.open = true)));
+        await openAllFolds(page);
         const { problems, checked } = await page.evaluate(contrastProblems, 4.5);
         assert.ok(checked > 40, `調べた文字の数が少なすぎる（${checked}）`);
         assert.deepEqual(problems, [], `${name} の色の差が足りない文字`);
@@ -1619,9 +1545,9 @@ describe('分かりやすい表示（REQ-025）', () => {
     ['終了後', () => richFinished(), ALL_DISPLAYS_TASK],
   ]) {
     test(`REQ-025 ${name}の画面に、状態の記号（英語）や undefined・null が出ない`, async () => {
-      await withScreen({ state: makeState(), task }, async ({ page }) => {
+      await withScreen({ state: makeState(), task, allowErrors: [HTTP_404] }, async ({ page }) => {
         if (name === '準備中') await page.click('#s-previous summary');
-        await page.evaluate(() => document.querySelectorAll('details').forEach((d) => (d.open = true)));
+        await openAllFolds(page);
         const text = (await visibleText(page)).replace(/claude-[\w.-]+|gpt-[\w.-]+/g, '');
         const found = SYMBOLS.filter((symbol) => new RegExp(`(^|[^A-Za-z_])${symbol}($|[^A-Za-z_])`).test(text));
         assert.deepEqual(found, [], `${name} に出ている記号`);
@@ -1640,7 +1566,7 @@ describe('分かりやすい表示（REQ-025）', () => {
 
 describe('画面を開く（REQ-005、REQ-006）', () => {
   test('REQ-006 合言葉のない URL や、違う合言葉の URL では、画面が開かない', async () => {
-    await withScreen({ state: runState('do') }, async ({ page, app }) => {
+    await withScreen({ state: runState('do'), allowErrors: [HTTP_403] }, async ({ page, app }) => {
       const base = `http://127.0.0.1:${app.port}`;
       for (const url of [`${base}/`, `${base}/?k=wrong`, `${base}/api/state`, `${base}/app.js`]) {
         const response = await page.goto(url);

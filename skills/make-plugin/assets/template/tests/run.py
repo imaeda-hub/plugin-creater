@@ -54,7 +54,7 @@ BROWSER_PATHS = [
 HOWTO = {
     "python": "Python 3.9 以上を入れる（https://www.python.org/downloads/）",
     "pyyaml": "Python の仮想環境の中で `python3 -m pip install PyYAML` を実行する",
-    "jsonschema": "Python の仮想環境の中で `python3 -m pip install jsonschema` を実行する",
+    "jsonschema": "Python の仮想環境の中で `python3 -m pip install -U jsonschema` を実行する",
     "tiktoken": "Python の仮想環境の中で `python3 -m pip install tiktoken` を実行する",
     "node": "Node.js %s を入れる（https://nodejs.org/）" % NODE_NEED,
     "playwright": "試験のフォルダで `npm install playwright` を実行する（全体に入れたものは使えない）",
@@ -68,6 +68,18 @@ def python_version() -> Tuple[bool, str]:
 
 def module_found(module: str) -> Tuple[bool, str]:
     return importlib.util.find_spec(module) is not None, ""
+
+
+def jsonschema_found() -> Tuple[bool, str]:
+    """公式スキーマは JSON Schema 2020-12 なので、jsonschema 4.0 以上が要る。"""
+    if importlib.util.find_spec("jsonschema") is None:
+        return False, ""
+    try:
+        from importlib.metadata import version
+        found = version("jsonschema")
+    except Exception:   # 版を調べられなくても、あるものとして進める
+        return True, ""
+    return found.split(".")[0].isdigit() and int(found.split(".")[0]) >= 4, found
 
 
 def node_version() -> Tuple[bool, str]:
@@ -139,7 +151,7 @@ def check_tools(needs: List[str], probe_dir: str) -> List[Dict[str, Any]]:
     checks = {
         "python": ("Python（3.9 以上）", python_version),
         "pyyaml": ("PyYAML", lambda: module_found("yaml")),
-        "jsonschema": ("jsonschema", lambda: module_found("jsonschema")),
+        "jsonschema": ("jsonschema（4.0 以上）", jsonschema_found),
         "tiktoken": ("tiktoken", lambda: module_found("tiktoken")),
         "node": ("Node.js（%s）" % NODE_NEED, node_version),
         "playwright": ("Playwright", lambda: playwright_found(probe_dir)),

@@ -19,7 +19,7 @@
 | 0 | 準備（このファイル、ユーザーへの質問） | 進行中 |
 | 1 | 調べる：R1 自然言語の部品の書き方（Opus）、R2 エクステンションと SDK の API（Opus）、R3 マニフェストとスキーマ（Sonnet）、R4 試作の流用（Sonnet） | 進行中。2026-10-22 02:23 に利用枠の上限で4つとも止まり、06:18 に再開。R1〜R4 すべて完了 |
 | 2 | 実装の設計図（ファイルの配置、部品の間の窓口、データの形） | 完了：`BLUEPRINT.md` |
-| 3 | 実装（部品ごとにサブエージェントへ。分担は BLUEPRINT 5章） | 進行中：波 A（A1〜A4、Sonnet）を 2026-10-22 に始めた。各自のメモは `tasks/A1.md`〜`A4.md` |
+| 3 | 実装（部品ごとにサブエージェントへ。分担は BLUEPRINT 5章） | 進行中：波 A（A1〜A4、Sonnet）。A4 は完了。C1（Sonnet）と B3（Opus のワークフロー：書く→5つの観点で点検→確かめて直す→最後の確かめ）を 12:10 ごろ始めた。各自のメモは `tasks/<番号>.md` |
 | 4 | 点検（作った者と別のエージェントが、仕様・設計と照らす）と1・2段目の試験 | 未着手 |
 | 5 | EVAL と会話例（範囲はユーザーの答え次第） | 未着手 |
 | 6 | 報告 | 未着手 |
@@ -87,12 +87,12 @@
 
 | 仕事 | ID |
 | --- | --- |
-| R1 | a2beaf8eb5012e98b |
-| R2 | a9cf1ff28ea9efdde |
 | A1 | a53fe02c46a87994d |
 | A2 | a4dd7b3736f4dd2a9 |
 | A3 | a6ae7ad9d3151a163 |
-| A4 | afd1d4ef4c0e6d043 |
+| A4 | afd1d4ef4c0e6d043（完了） |
+| C1 | ad77758fe8b6dfff7 |
+| B3 | ワークフロー wf_3c0c1bb4-188。台本は ~/.claude/projects/-home-user-plugin-creater/f6e65e0d-9c94-5351-8ee1-475927b3b43e/workflows/scripts/b3-creator-nl-parts-wf_3c0c1bb4-188.js。止まったら Workflow の scriptPath と resumeFromRunId で続ける（書き終えた段は使い回される） |
 
 ## 再開のしかた
 
