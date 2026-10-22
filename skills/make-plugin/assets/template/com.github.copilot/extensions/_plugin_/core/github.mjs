@@ -1,0 +1,115 @@
+import { spawn } from 'node:child_process';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { LIMITS } from './constants.mjs';
+
+// gh（GitHub の公式のコマンド）を呼ぶ部品と、起票できるかの確かめ（4.11）。
+
+// マニフェストの repository（URL）から OWNER/REPO を取り出す。GitHub の URL でなければ null。
+export function parseGithubRepo(value) {
+  const raw = typeof value === 'string' ? value : value && typeof value === 'object' ? value.url : null;
+  if (typeof raw !== 'string') return null;
+  const s = raw.trim().replace(/^git\+/, '');
+  let m = /^https?:\/\/(?:[^@/]+@)?github\.com\/([^/\s]+)\/([^/\s?#]+?)(?:\.git)?\/?(?:[?#].*)?$/i.exec(s);
+  if (!m) m = /^(?:ssh:\/\/)?git@github\.com[:/]([^/\s]+)\/([^/\s]+?)(?:\.git)?\/?$/i.exec(s);
+  if (!m) return null;
+  return `${m[1]}/${m[2]}`;
+}
+
+// 短い子プロセスを、シェルを通さずに動かす。引数は配列、入力は標準入力で渡す。
+// 時間の上限（時計は clock）を超えたら止める。返り値は決して例外にならない。
+// { code, signal, stdout, stderr, timedOut, spawnError }
+export function runCommand({ command, args, input = null, timeoutMs, clock, env = process.env, cwd }) {
+  return new Promise((resolve) => {
+    let child;
+    let done = false;
+    let timer = null;
+    let stdout = '';
+    let stderr = '';
+    const finish = (result) => {
+      if (done) return;
+      done = true;
+      if (timer !== null) clock.clearTimeout(timer);
+      resolve({ code: null, signal: null, stdout, stderr, timedOut: false, spawnError: null, ...result });
+    };
+    try {
+      child = spawn(command, args, { shell: false, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'], env, cwd });
+    } catch (e) {
+      finish({ spawnError: e.code ?? String(e.message ?? e) });
+      return;
+    }
+    timer = clock.setTimeout(() => {
+      try {
+        child.kill('SIGKILL');
+      } catch {
+        // すでに終わっている
+      }
+      finish({ timedOut: true });
+    }, timeoutMs);
+    child.stdout.setEncoding('utf8');
+    child.stderr.setEncoding('utf8');
+    child.stdout.on('data', (d) => {
+      if (stdout.length < 5_000_000) stdout += d;
+    });
+    child.stderr.on('data', (d) => {
+      if (stderr.length < 1_000_000) stderr += d;
+    });
+    child.on('error', (e) => finish({ spawnError: e.code ?? String(e.message ?? e) }));
+    child.on('close', (code, signal) => finish({ code, signal }));
+    child.stdin.on('error', () => {
+      // 相手が先に終わったときの書き込みの失敗は、終わりの結果で見る
+    });
+    if (input !== null) child.stdin.write(input);
+    child.stdin.end();
+  });
+}
+
+const STEP_PUBLISH = 'GitHub にこのプラグインを公開する。';
+const STEP_REPOSITORY =
+  'プラグインの設定ファイル（plugin.json）の repository に、公開したリポジトリの GitHub の URL を書き、プラグインを入れ直す（インストールはコピーなので、入れ直さないと反映されません）。';
+const STEP_GH = 'gh（GitHub の公式のコマンド）を入れて、gh auth login でログインする。';
+const STEP_LOGIN = 'gh auth login でログインする。';
+
+// 起票できるかを確かめる。
+// 返り値：{ ok, reason, steps, repo }
+//   reason：no_repository | not_github | no_gh | not_logged_in | null
+//   steps：起票できるようにするための手順（平易な日本語）
+export async function checkCanFile({ pluginRoot, ghCommand, clock }) {
+  let manifest = null;
+  try {
+    manifest = JSON.parse(readFileSync(join(pluginRoot, 'plugin.json'), 'utf8'));
+  } catch {
+    manifest = null;
+  }
+  const rawRepo = manifest ? manifest.repository : undefined;
+  const hasRepo = typeof rawRepo === 'string' ? rawRepo.trim() !== '' : Boolean(rawRepo && rawRepo.url);
+  const repo = hasRepo ? parseGithubRepo(rawRepo) : null;
+
+  let ghMissing = false;
+  let notLoggedIn = false;
+  const v = await runCommand({ command: ghCommand, args: ['--version'], timeoutMs: LIMITS.CALL_TIMEOUT_MS, clock });
+  if (v.spawnError || v.timedOut || v.code !== 0) {
+    ghMissing = true;
+  } else {
+    const a = await runCommand({ command: ghCommand, args: ['auth', 'status'], timeoutMs: LIMITS.CALL_TIMEOUT_MS, clock });
+    if (a.spawnError || a.timedOut || a.code !== 0) notLoggedIn = true;
+  }
+
+  const steps = [];
+  let reason = null;
+  if (!hasRepo) {
+    reason = 'no_repository';
+    steps.push(STEP_PUBLISH, STEP_REPOSITORY);
+  } else if (!repo) {
+    reason = 'not_github';
+    steps.push(STEP_PUBLISH, STEP_REPOSITORY);
+  }
+  if (ghMissing) {
+    reason ??= 'no_gh';
+    steps.push(STEP_GH);
+  } else if (notLoggedIn) {
+    reason ??= 'not_logged_in';
+    steps.push(STEP_LOGIN);
+  }
+  return { ok: reason === null, reason, steps, repo };
+}
