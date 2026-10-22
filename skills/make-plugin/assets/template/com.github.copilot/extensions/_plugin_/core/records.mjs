@@ -241,7 +241,7 @@ function mechanicalDrafts(ctx, run) {
   return analyzeEntries(run.entries, {
     pluginName: ctx.pluginName,
     runId: run.id,
-    endReason: { kind: run.outcome },
+    endReason: null, // 終わる前の途中経過なので、終わったときだけ分かる課題は含めない
     endAt: ctx.clock.now(),
     unstopped: [],
     isAuto: run.isAuto,

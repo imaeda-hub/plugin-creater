@@ -939,7 +939,7 @@ describe('準備中に開ける前の結果（REQ-008、REQ-012、REQ-014）', (
   test('REQ-008 途中で切れた実行の後に画面を開くと、「途中で終わった（途中で切れた）」と出る', async () => {
     const state = prepState({ previous: { endReason: { kind: 'aborted', detail: 'cut_off', unstoppable: false }, summary: null, finishedAt: Date.UTC(2026, 9, 21, 12, 0, 0), issues: [] } });
     await withScreen({ state }, async ({ page }) => {
-      assert.equal(await page.locator('#s-previous details').getAttribute('open'), null, '最初は畳まれている');
+      assert.equal(await page.locator('#s-previous > details').getAttribute('open'), null, '最初は畳まれている');
       assert.ok(!(await visibleText(page)).includes('途中で終わった（途中で切れた）'));
       await page.click('#s-previous summary');
       assert.match(await textOf(page, '#s-previous'), /終わった理由：\s*途中で終わった（途中で切れた）/);
@@ -969,7 +969,7 @@ describe('準備中に開ける前の結果（REQ-008、REQ-012、REQ-014）', (
       await page.click('.issue[data-issue-id="p1"] .approve');
       await eventually(() => core.callsOf('fileIssue').length === 1, '承認が届かない');
       assert.deepEqual(core.callsOf('fileIssue')[0].args, ['p1']);
-      assert.equal(await page.locator('#s-previous details').getAttribute('open'), '', '操作の後も開いたまま');
+      assert.equal(await page.locator('#s-previous > details').getAttribute('open'), '', '操作の後も開いたまま');
     });
   });
 
