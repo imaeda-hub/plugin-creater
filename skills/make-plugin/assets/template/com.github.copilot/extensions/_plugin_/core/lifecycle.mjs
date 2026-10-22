@@ -486,17 +486,16 @@ async function runClose(ctx, run, userStop, state) {
   }
 
   if (needCancel && run.tree.size > 0) {
+    let knownActive = null; // 最後に一覧が取れたときの、動いているエージェント
     for (;;) {
       const ok = await refresh();
       if (ok) {
-        const active = activeTreeAgents(run, state.tasks);
-        if (active.length === 0) break;
-        if (left() <= 0) {
-          state.unstopped = describeUnstopped(run, active);
-          break;
-        }
-      } else if (left() <= 0) {
-        state.unstopped = describeUnstopped(run, unconfirmedAgents(run));
+        knownActive = activeTreeAgents(run, state.tasks);
+        if (knownActive.length === 0) break;
+      }
+      if (left() <= 0) {
+        // 決めた時間のうちに止まったと確かめられなかったエージェントは、止まっていないものとして示す
+        state.unstopped = describeUnstopped(run, knownActive ?? unconfirmedAgents(run));
         break;
       }
       await sleep(clock, Math.min(LIMITS.STOP_POLL_MS, Math.max(left(), 0)));

@@ -29,6 +29,8 @@ const coreUrl = (file) => pathToFileURL(join(located.coreDir, file)).href;
 const { createCore } = await import(coreUrl('index.mjs'));
 export const { LIMITS } = await import(coreUrl('constants.mjs'));
 export const { TOOL_DEFS, buildToolDefinitions } = await import(coreUrl('tools.mjs'));
+export const recovery = await import(coreUrl('recovery.mjs'));
+export const github = await import(coreUrl('github.mjs'));
 export { createCore };
 
 export const PLUGIN = 'weekly-report';
@@ -154,7 +156,7 @@ export async function makeHarness(t, options = {}) {
     t.after(() => rmSync(base, { recursive: true, force: true }));
   }
   const clock = options.clock ?? reuse?.clock ?? createFakeClock();
-  const port = options.port ?? createFakePort({ clock });
+  const port = options.port ?? createFakePort({ clock, idPrefix: options.idPrefix ?? '' });
   const sessionId = options.sessionId ?? reuse?.sessionId ?? 'session-1';
   const uiCalls = [];
   const startUi = options.startUi ?? (async (core) => {

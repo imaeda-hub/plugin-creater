@@ -165,14 +165,15 @@ async function endRestartedRun(ctx, runId, entries, begin) {
     }
   }
   let unstopped = [];
+  let knownActive = ordered;
   for (;;) {
     const ok = await refresh();
     if (ok) {
-      active = activeNow();
-      if (active.length === 0) break;
+      knownActive = activeNow();
+      if (knownActive.length === 0) break;
     }
     if (left() <= 0) {
-      unstopped = (ok ? active : ordered).map((agentId) => ({ agentId, role: 'worker', howTo: UNSTOPPED_HOW_TO }));
+      unstopped = knownActive.map((agentId) => ({ agentId, role: 'worker', howTo: UNSTOPPED_HOW_TO }));
       break;
     }
     await sleep(clock, Math.min(LIMITS.STOP_POLL_MS, Math.max(left(), 0)));

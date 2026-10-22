@@ -490,7 +490,9 @@
     const prep = !state.run || state.run.status === 'preparing';
     if (!prep) ui.startPending = false;
     const setup = state.setup ?? {};
-    update('setup', [prep, setup, ui.startPending, ui.startMessage], () => {
+    // 開始できなかったときの理由は、この画面から送った開始の答えか、中心の処理の状態（開き直したときも残る）から出す
+    const startMessage = ui.startMessage || state.startError?.message || '';
+    update('setup', [prep, setup, ui.startPending, startMessage], () => {
       if (!prep) return null;
       const models = (setup.models ?? []).map((m) => ({ value: m.id, label: m.name || m.id }));
       const fields = { models: {}, task: [], max: null };
@@ -521,7 +523,7 @@
         fields.task.push([def, field]);
         return field.el;
       });
-      const message = h('p', { class: 'alert alert-error', role: 'alert', id: 'start-message', hidden: !ui.startMessage }, ui.startMessage);
+      const message = h('p', { class: 'alert alert-error', role: 'alert', id: 'start-message', hidden: !startMessage }, startMessage);
 
       const start = h(
         'button',

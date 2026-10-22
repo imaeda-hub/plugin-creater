@@ -6,16 +6,18 @@
 //   port.behave('cancelAgent', { hang: true });          // 返らない
 //   port.behave('listTasks', { error: new Error('x') }); // 失敗する
 //   port.behave('listTasks', { value: () => [...] });    // 返す値を決める
+//   port.behave('listTasks', { delay: 2000, times: 1 }); // 最初の 1 回だけ
 //   port.reset('listTasks');                             // 元に戻す
 //   port.stubborn.add(agentId);                          // 取り消しても止まらないエージェント
 //   port.spawn({ agentId, parentAgentId, agentType });   // 木の下のエージェントが動いている状態にする
+//   createFakePort({ clock, idPrefix: 'b-' })            // 統括の番号に頭を付ける（窓口を 2 つ使う試験で番号を分ける）
 //
 // 既定の動き（本物の Copilot CLI で確かめた形。設計書 11章 #4・#6）：
 //   startAgent は番号を返し、一覧に running で載る。
 //   cancelAgent は、そのエージェントと下のエージェントを一覧で cancelled にする。
 //   setSubagentModels(map) は overrides に覚え、null で外す。
 
-export function createFakePort({ clock } = {}) {
+export function createFakePort({ clock, idPrefix = '' } = {}) {
   const calls = [];
   const behaviors = {};
   const logs = [];
@@ -70,6 +72,10 @@ export function createFakePort({ clock } = {}) {
   function invoke(method, args, produce) {
     calls.push({ method, args, at: clock ? clock.now() : 0 });
     const b = behaviors[method] ?? {};
+    if (b.times !== undefined) {
+      b.times -= 1;
+      if (b.times <= 0) delete behaviors[method];
+    }
     return new Promise((resolve, reject) => {
       if (b.hang) return;
       const finish = () => {
@@ -86,7 +92,7 @@ export function createFakePort({ clock } = {}) {
   port.startAgent = (args) =>
     invoke('startAgent', [args], () => {
       seq += 1;
-      const agentId = `orch-${seq}`;
+      const agentId = `${idPrefix}orch-${seq}`;
       port.tasks.push({
         agentId,
         displayName: args.name,
@@ -112,7 +118,7 @@ export function createFakePort({ clock } = {}) {
       port.overrides = map;
     });
   port.getCurrentModel = () => invoke('getCurrentModel', [], () => ({ ...port.currentModel }));
-  port.listModels = () => invoke('listModels', [], () => port.models.map((m) => ({ ...m })));
+  port.listModels = () => invoke('listModels', [], () => port.models.map((m) => (m && typeof m === 'object' ? { ...m } : m)));
   port.log = (text) =>
     invoke('log', [text], () => {
       logs.push(text);

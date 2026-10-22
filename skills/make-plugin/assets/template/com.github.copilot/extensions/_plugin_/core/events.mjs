@@ -178,7 +178,10 @@ function onWaitStarted(ctx, e, at) {
   if (e.agentId == null && e.kind !== 'limit') return; // メインのエージェント自身の確認
   if (run.waits.some((w) => w.requestId === e.requestId)) return;
   const slot = e.agentId != null ? slotNameOf(run, e.agentId) : null;
-  run.waits.push({ requestId: e.requestId, agentId: e.agentId ?? null, slot, kind: e.kind, detail: clone(detail) });
+  const safeDetail = clone(detail);
+  // サンドボックスの外に出さず、記録だけにして中で動かし直す求めは、「サンドボックスの外」と示さない（R2 #13）
+  if (safeDetail.sandboxPermissive) safeDetail.sandboxBypass = false;
+  run.waits.push({ requestId: e.requestId, agentId: e.agentId ?? null, slot, kind: e.kind, detail: safeDetail });
   if (e.kind === 'limit') run.limit = { requestId: e.requestId, answered: false, action: null };
   if (e.agentId != null) {
     const target = waitTarget(run, e.agentId);

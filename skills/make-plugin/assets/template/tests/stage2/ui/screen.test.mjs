@@ -1095,6 +1095,18 @@ describe('開始前の設定（REQ-005、REQ-007、REQ-031）', () => {
     });
   });
 
+  test('REQ-007 開始できずに準備中に戻ったときは、その理由が出る（画面を開き直しても出る）。もう一度開始できる', async () => {
+    const state = prepState({ startError: { message: '選んだモデルが使えませんでした。起動したかは分かりません。もう一度開始できます。', unknownLaunch: true } });
+    await withScreen({ state }, async ({ page, core, open }) => {
+      assert.match(await textOf(page, '#start-message'), /選んだモデルが使えませんでした。起動したかは分かりません。もう一度開始できます。/);
+      assert.equal(await page.locator('#start').isEnabled(), true);
+      await open();
+      assert.match(await textOf(page, '#start-message'), /選んだモデルが使えませんでした/);
+      core.set((s) => ({ ...s, startError: null }));
+      await until(page, () => document.getElementById('start-message').hidden);
+    });
+  });
+
   test('REQ-008 入力している途中で状態の版が変わっても、入力は消えない', async () => {
     await withScreen({ state: prepState() }, async ({ page, core }) => {
       await page.fill('#setting-week', '入力の途中');
@@ -1587,5 +1599,69 @@ describe('画面を開く（REQ-005、REQ-006）', () => {
       core.set(finishedState());
       await until(page, () => document.querySelector('#run-status')?.textContent.includes('終了'));
     });
+  });
+});
+
+// ---- クリエイターの画面での流用 ----------------------------------------------------------------------------------------------------
+
+describe('クリエイターの画面での流用（REQ-043）', () => {
+  test('REQ-043 画面のサーバーと描画の部品と見た目だけで、入力の欄のない見るだけの画面を出せる（自分の部品と、ひな形の部品を一緒に出す）', async () => {
+    const { startServer } = await import(pathToFileURL(path.join(uiDir, 'server.mjs')));
+    const own = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'ui-creator-')));
+    tempDirs.push(own);
+    fs.writeFileSync(
+      path.join(own, 'index.html'),
+      '<!doctype html><html lang="ja"><head><meta charset="utf-8"><title>決まったこと</title><link rel="stylesheet" href="style.css?k=%%K%%"></head><body><div id="app" class="page"></div><script src="render.js?k=%%K%%"></script><script src="creator.js?k=%%K%%"></script></body></html>',
+    );
+    fs.writeFileSync(
+      path.join(own, 'creator.js'),
+      `const { h, badge, displayPart } = window.PluginUi;
+const key = new URLSearchParams(location.search).get('k');
+fetch('/api/items?k=' + encodeURIComponent(key)).then((r) => r.json()).then((data) => {
+  document.getElementById('app').replaceChildren(
+    h('h1', null, '決まったこと'),
+    h('section', { class: 'panel' }, h('h2', null, '引き出したナレッジ'), badge('聞いた', 'completed'),
+      displayPart({ key: 'k', label: '一覧', type: 'table' }, data.table, { fileUrl: () => '#', open: new Set() }),
+      displayPart({ key: 'a', label: '資産', type: 'kv' }, data.kv, { fileUrl: () => '#', open: new Set() }),
+      displayPart({ key: 't', label: '注意', type: 'text' }, data.text, { fileUrl: () => '#', open: new Set() })),
+  );
+});
+`,
+    );
+    const server = await startServer({
+      preferredPort: 0,
+      staticDir: [own, path.join(uiDir, 'static')],
+      routes: {
+        'GET /api/items': () => ({
+          table: { columns: ['番号', '種類', '内容'], rows: [['K-01', '合否の決め方', '3行以内にまとめる'], ['K-02', 'その他', EVIL.img]] },
+          kv: { 流用する資産: '前回の週報', 公開のプラグイン: 'なし' },
+          text: EVIL.script,
+        }),
+      },
+    });
+    const context = await browser.newContext({ viewport: { width: 1280, height: 720 } });
+    const page = await context.newPage();
+    const errors = [];
+    page.on('pageerror', (error) => errors.push(error.message));
+    page.on('console', (message) => message.type() === 'error' && errors.push(message.text()));
+    try {
+      await page.goto(server.url);
+      await page.waitForSelector('table');
+      const text = await visibleText(page);
+      assert.match(text, /決まったこと[\s\S]*引き出したナレッジ[\s\S]*聞いた/);
+      assert.match(text, /K-01[\s\S]*合否の決め方[\s\S]*3行以内にまとめる/);
+      assert.match(text, /流用する資産\s*前回の週報/);
+      assert.ok(text.includes(EVIL.img) && text.includes(EVIL.script), 'HTML は文字として出る');
+      assert.equal(await page.evaluate(() => window.__pwned), undefined);
+      assert.equal(await page.locator('input, select, textarea, button').count(), 0, '入力の欄もボタンもない');
+      assert.equal(await page.evaluate(() => getComputedStyle(document.querySelector('h1')).fontFamily.length > 0 && getComputedStyle(document.body).backgroundColor), 'rgb(244, 246, 248)', '生成プラグインと同じ見た目（style.css）');
+      assert.deepEqual(errors, []);
+      assert.deepEqual(await page.evaluate(layoutProblems), []);
+      const { problems } = await page.evaluate(contrastProblems, 4.5);
+      assert.deepEqual(problems, []);
+    } finally {
+      await context.close();
+      await server.close();
+    }
   });
 });

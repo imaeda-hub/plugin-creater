@@ -91,12 +91,18 @@
 - A3→C2・D1：構造の検査は `run_checks(root, kind)`（kind は generated か plugin）。試験の入口 run.py は `--root`、`--stage1-script`、`--stage2-dir`、`--need` で使い回せる。
 - A3：SKILL.md のフロントマターの Agent Skills の6項目以外（user-invocable など）は不合格にした（R1 の勧め）。references の 20KB は 20,000 バイト未満と読んだ。
 
+- A2→B1：許可の求めの `detail.sandboxBypass` は `requestSandboxBypass && !requestSandboxPermissive` にする（R2 の #13）。許可の種類に path・workflow・extension-management がある。
+- A2→A3・C3：`node --test <ディレクトリ>` は Node 22 では動かない。`"…/*.test.mjs"` の形にする。画面の試験は `NODE_PATH=<playwright の node_modules> PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers`。
+- A2→A1：`previous.canFile` と `setup.taskDisplays` を core が必ず持つ（送った）。持ったら ui/app.mjs の task.json を読み直す補いと `taskPath` を消す。
+- A2：画面は明るい配色だけ（暗い配色は作っていない）。表示の値の形（text は文字、kv は {見出し: 値}、table は {columns, rows}、progress は 0〜100 か {value, max, label}、image・file は {fileId, name}）は A1 の show の説明と同じ。
+- A2：server.mjs の staticDir は配列でもよく、クリエイターの画面が自分の部品とひな形の部品を一緒に出せる。
+
 ## 動いているサブエージェント（同じセッションなら SendMessage で続けられる）
 
 | 仕事 | ID |
 | --- | --- |
 | A1 | a53fe02c46a87994d |
-| A2 | a4dd7b3736f4dd2a9 |
+| A2 | a4dd7b3736f4dd2a9（完了） |
 | A3 | a6ae7ad9d3151a163（完了） |
 | A4 | afd1d4ef4c0e6d043（完了） |
 | C1 | ad77758fe8b6dfff7 |
