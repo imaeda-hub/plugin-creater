@@ -679,15 +679,15 @@ class AgentTools(Sandbox):
         self.write("com.github.copilot/agents/worker-extra.agent.md", "---\ndescription: 2人目\ntools: [read, skill]\n---\n本文\n")
         self.assertFailsWith("agents", "worker-extra.agent.md", "skill がある")
 
-    def test_REQ_005_record_tool_prefix_in_tools_must_be_the_plugin_name(self):
+    def test_REQ_010_record_tool_prefix_in_tools_must_be_the_plugin_name(self):
         self.replace(self.VERIFIER, "sample-plugin_verdict", "other-plugin_verdict")
         self.assertFailsWith("tool-names", "other-plugin_verdict", "sample-plugin")
 
-    def test_REQ_005_record_tool_prefix_in_the_body_must_be_the_plugin_name(self):
+    def test_REQ_010_record_tool_prefix_in_the_body_must_be_the_plugin_name(self):
         self.replace(self.ORCH, "`sample-plugin_finish`", "`finish_plugin_finish`")
         self.assertFailsWith("tool-names", "finish_plugin_finish", "本文")
 
-    def test_REQ_005_other_backticked_words_are_not_mistaken_for_record_tools(self):
+    def test_REQ_010_other_backticked_words_are_not_mistaken_for_record_tools(self):
         self.replace(self.ORCH, "計画は", "`task_list` と `plan` と `sample-plugin_plan` を使う。計画は")
         self.assertPasses("tool-names")
 

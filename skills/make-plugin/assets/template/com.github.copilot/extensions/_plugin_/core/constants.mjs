@@ -59,4 +59,5 @@ export const ABORT_REASON_TEXT = Object.freeze({
   orchestrator_ended: '繰り返しを終えないまま統括エージェントが終わった',
   retry_limit: '記録のやり直しが上限を超えた',
   cut_off: '途中で切れた',
+  extension_restarted: 'エクステンションが再起動した',
 });

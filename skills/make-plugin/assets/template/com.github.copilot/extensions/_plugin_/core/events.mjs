@@ -77,7 +77,7 @@ function onAgentStarted(ctx, e, at) {
     const rec = run.tree.get(agentId);
     rec.status = rec.status === 'waiting' ? 'waiting' : 'running';
     rec.model = e.model ?? rec.model;
-    rec.description = e.description ?? rec.description;
+    rec.description = e.description || rec.description;
     rec.lastEventAt = at;
     syncSlot(run, rec);
     logEvent(ctx, run, e, at);
@@ -134,7 +134,7 @@ function rootEnded(ctx, run, cause, message) {
   if (run.status === 'summarizing') {
     // まとめ中は、きっかけによらず、合否の記録で決める。まとめの記録がなければ、課題に入る（4.10）
     run.pendingEnd = { kind: run.outcome, detail: null };
-    run.rootEndCause = { cause, message };
+    run.rootEndCause = { cause, message, creditLimit: Boolean(run.limit && (!run.limit.answered || run.limit.action === 'cancel')) };
   } else {
     let detail;
     const creditLimit = run.limit && (!run.limit.answered || run.limit.action === 'cancel');

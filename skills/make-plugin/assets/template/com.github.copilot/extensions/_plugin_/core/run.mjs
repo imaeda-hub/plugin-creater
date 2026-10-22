@@ -114,8 +114,8 @@ export function syncSlot(run, rec) {
 }
 
 // 今のフェーズは動いているエージェントで決める（4.5）。検証が動いていれば評価、作業なら実行、統括なら計画。
-export function computePhase(run) {
-  if (run.status !== 'running') return null;
+export function computePhase(run, force = false) {
+  if (!force && run.status !== 'running') return null;
   let doing = false;
   let planning = false;
   for (const rec of run.tree.values()) {

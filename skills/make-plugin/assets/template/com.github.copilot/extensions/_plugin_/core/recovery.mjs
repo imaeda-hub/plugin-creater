@@ -1,4 +1,4 @@
-import { LIMITS } from './constants.mjs';
+import { LIMITS, UNSTOPPED_HOW_TO } from './constants.mjs';
 import {
   analyzeEntries,
   buildMechanicalSummary,
@@ -7,26 +7,25 @@ import {
   phaseFromEntries,
 } from './analysis.mjs';
 import { viewEndReason, viewIssues } from './run.mjs';
+import { callWithTimeout, sleep } from './util.mjs';
 
 // エクステンションが起動したとき（セッションの始めと読み込み直し）の、記録のファイルの読み直し（4.13、6.5）。
-//   - 終わっていない実行のうち、途中で切れたものを終わらせる
-//   - 拒む一覧を、自分のセッションの終わった実行の木から作り直す
+//   - 終わっていない実行を終わらせる（下の classifyUnfinishedRun の分かれ目）
+//   - 拒む一覧を、自分のセッションの実行の木から作り直す
 //   - 古い記録を件数で消す
 //   - 準備中の画面に出す、前の実行を探す
 
 // ---- 終わっていない実行の扱いの分かれ目（ここ 1 か所） ----------------------------------------
-// 起動したときに見つけた「終わっていない実行」を、どうするかを決める。
+// 起動したときに見つけた「終わっていない実行」を、どうするかを決める。扱いを変えるときは、この関数だけを変える。
 // 返り値：
-//   'cut_off'      すぐ「途中で切れた」として終わらせる
-//   'check_later'  生きている印が新しい。決めた時間が過ぎてから、もう一度確かめる
-// 設計書 6.5 のとおり、自分のセッション（記録のセッションの番号が今と同じ）の実行は、生きている印を待たずに
-// すぐ途中で切れたとする。
-// 要確認：/clear なしで同じセッションのまま、エクステンションだけが起動し直されることがある
-// （調べもの R2 の (2)#3。`extensions_reload`）。そのときは裏の統括が動き続ける見込みなので、
-// ここの扱い（たとえば自分のセッションの実行も生きている印で見分ける、統括を探して取り消す）は
-// ユーザーの答え次第で変える。変えるのはこの関数だけにする。
+//   'cancel_and_end'  自分のセッションの実行。動いているエージェントを探して取り消し、「途中で終わった（エクステンションが再起動した）」にする。
+//                     動いているエージェントが見つからなければ、「途中で終わった（途中で切れた）」にする
+//   'cut_off'         すぐ「途中で切れた」として終わらせる（ほかのセッションの実行で、生きている印が古いもの）
+//   'check_later'     ほかのセッションの実行で、生きている印が新しい。決めた時間が過ぎてから、もう一度確かめる
+// 自分のセッションの実行を取り消すのは、/clear をしなくても、エクステンションだけが同じセッションのまま
+// 起動し直されることがあり（extensions_reload、/extensions mode の切り替え）、そのときエージェントは動き続けるため。
 export function classifyUnfinishedRun({ begin, aliveAt, now, sessionId }) {
-  if (begin && begin.sessionId === sessionId) return 'cut_off';
+  if (begin && begin.sessionId === sessionId) return 'cancel_and_end';
   if (aliveAt === null || aliveAt === undefined || now - aliveAt > LIMITS.ALIVE_STALE_MS) return 'cut_off';
   return 'check_later';
 }
@@ -39,18 +38,27 @@ function lastTimestamp(entries, fallback) {
   return fallback;
 }
 
-// 途中で切れた実行を、記録の上で終了にする（result.json を置く）
-export function markCutOff(ctx, runId, entries, begin) {
+function treeIdsOf(entries) {
+  const ids = [];
+  for (const entry of entries) {
+    if (entry.t === 'tree' && Array.isArray(entry.agentIds)) for (const id of entry.agentIds) if (!ids.includes(id)) ids.push(id);
+  }
+  return ids;
+}
+
+// 起動したときに見つけた実行を、記録の上で終了にする（result.json を置く）。
+// detail は cut_off か extension_restarted。unstopped は、取り消せなかったエージェント。
+export function finishRecoveredRun(ctx, runId, entries, begin, { detail, unstopped = [] }) {
   const now = ctx.clock.now();
   const userCriteria = begin?.criteria ?? [];
   const iterations = iterationsFromEntries(entries, userCriteria);
-  const endReason = { kind: 'aborted', detail: 'cut_off', unstoppable: false };
+  const endReason = { kind: 'aborted', detail, unstoppable: unstopped.length > 0 };
   const drafts = analyzeEntries(entries, {
     pluginName: ctx.pluginName,
     runId,
     endReason,
     endAt: lastTimestamp(entries, now),
-    unstopped: [],
+    unstopped,
     isAuto: begin?.isAuto ?? false,
     models: begin?.settings?.models ?? {},
   });
@@ -74,9 +82,9 @@ export function markCutOff(ctx, runId, entries, begin) {
     displays: {},
     summary,
     issues: numberIssues(drafts, 'M', 'mechanical'),
-    unstopped: [],
+    unstopped,
     waits: [],
-    cutOff: true,
+    recovered: true,
   };
   try {
     ctx.store.append(runId, { t: 'status', at: now, status: 'finished', endReason });
@@ -84,19 +92,18 @@ export function markCutOff(ctx, runId, entries, begin) {
     // 記録に書けなくても、終了の印は置く
   }
   ctx.store.writeResult(runId, result);
+  ctx.endedAtStartup.push(runId);
+  ctx.previousDirty = true;
 }
 
-// 拒む一覧を作り直す。元にするのは、自分のセッションの終わった実行の log.jsonl にある、木に入れたエージェントの番号。
+// 拒む一覧を作り直す。元にするのは、自分のセッションの実行の log.jsonl にある、木に入れたエージェントの番号。
 // ほかのセッションの実行は使わない（4.4、6.5）。
 export function rebuildDenyList(ctx) {
   for (const runId of ctx.store.listRuns()) {
-    if (!ctx.store.hasResult(runId)) continue;
     const entries = ctx.store.readLog(runId);
     const begin = entries.find((e) => e.t === 'begin');
     if (!begin || begin.sessionId !== ctx.sessionId) continue;
-    for (const entry of entries) {
-      if (entry.t === 'tree' && Array.isArray(entry.agentIds)) for (const id of entry.agentIds) ctx.deny.add(id);
-    }
+    for (const id of treeIdsOf(entries)) ctx.deny.add(id);
   }
 }
 
@@ -112,6 +119,67 @@ function examine(ctx, runId) {
   return { entries, begin, action };
 }
 
+const TERMINAL = new Set(['completed', 'failed', 'cancelled']);
+
+// 自分のセッションの終わっていない実行（エクステンションが再起動した）。
+// 木のエージェント（log.jsonl に書いた番号）を探し、動いているものを取り消して、「途中で終わった」にする。
+async function endRestartedRun(ctx, runId, entries, begin) {
+  const { clock, port } = ctx;
+  const ids = new Set(treeIdsOf(entries));
+  const deadline = clock.now() + LIMITS.STOP_DEADLINE_MS;
+  const left = () => deadline - clock.now();
+  const call = (fn) => callWithTimeout(clock, fn, Math.min(LIMITS.CALL_TIMEOUT_MS, left()));
+  let tasks = [];
+  const refresh = async () => {
+    const r = await call(() => port.listTasks());
+    if (r.status !== 'ok' || !Array.isArray(r.value)) return false;
+    tasks = r.value
+      .filter((t) => t && (!t.type || t.type === 'agent') && (t.agentId ?? t.id) != null)
+      .map((t) => ({ agentId: t.agentId ?? t.id, status: t.status, parentAgentId: t.parentAgentId ?? null }));
+    for (const t of tasks) {
+      if (t.parentAgentId && ids.has(t.parentAgentId) && !ids.has(t.agentId)) {
+        ids.add(t.agentId);
+        ctx.deny.add(t.agentId);
+      }
+    }
+    return true;
+  };
+  const activeNow = () => tasks.filter((t) => ids.has(t.agentId) && !TERMINAL.has(t.status)).map((t) => t.agentId);
+
+  const listed = await refresh();
+  let active = listed ? activeNow() : [];
+  if (active.length === 0) {
+    // 動いているエージェントが見つからない（/clear の後など）。今までどおり、途中で切れたことにする
+    finishRecoveredRun(ctx, runId, entries, begin, { detail: 'cut_off' });
+    return;
+  }
+  // 親が動いていないものから順に取り消す
+  const parentOf = new Map(tasks.map((t) => [t.agentId, t.parentAgentId]));
+  const ordered = [...active].sort((a, b) => Number(active.includes(parentOf.get(a))) - Number(active.includes(parentOf.get(b))));
+  for (const id of ordered) {
+    const c = await call(() => port.cancelAgent(id));
+    try {
+      ctx.store.append(runId, { t: 'note', at: clock.now(), kind: 'restart_cancel', agentId: id, status: c.status });
+    } catch {
+      // 記録に書けなくても続ける
+    }
+  }
+  let unstopped = [];
+  for (;;) {
+    const ok = await refresh();
+    if (ok) {
+      active = activeNow();
+      if (active.length === 0) break;
+    }
+    if (left() <= 0) {
+      unstopped = (ok ? active : ordered).map((agentId) => ({ agentId, role: 'worker', howTo: UNSTOPPED_HOW_TO }));
+      break;
+    }
+    await sleep(clock, Math.min(LIMITS.STOP_POLL_MS, Math.max(left(), 0)));
+  }
+  finishRecoveredRun(ctx, runId, entries, begin, { detail: 'extension_restarted', unstopped });
+}
+
 export function recoverOnStartup(ctx) {
   try {
     ctx.store.ensureRoot();
@@ -119,13 +187,16 @@ export function recoverOnStartup(ctx) {
     return; // 記録の置き場所が使えないときは、読み直すものがない
   }
   const later = [];
+  const own = [];
   for (const runId of ctx.store.listRuns()) {
     if (ctx.store.hasResult(runId)) continue;
     try {
       const { entries, begin, action } = examine(ctx, runId);
       if (action === 'cut_off') {
-        markCutOff(ctx, runId, entries, begin);
-        ctx.cutOffRuns.push(runId);
+        finishRecoveredRun(ctx, runId, entries, begin, { detail: 'cut_off' });
+      } else if (action === 'cancel_and_end') {
+        for (const id of treeIdsOf(entries)) ctx.deny.add(id); // 取り消しを待たずに、すぐ拒む
+        own.push({ runId, entries, begin });
       } else if (action === 'check_later') {
         later.push(runId);
       }
@@ -139,6 +210,21 @@ export function recoverOnStartup(ctx) {
   } catch {
     // 拒む一覧と掃除の失敗で、起動は止めない
   }
+  if (own.length > 0) {
+    // Copilot CLI を待つので、順番待ちの列の中でやる。画面は待たない
+    ctx.recoveryPromise = ctx.queue
+      .enqueue(async () => {
+        for (const { runId, entries, begin } of own) {
+          try {
+            await endRestartedRun(ctx, runId, entries, begin);
+          } catch {
+            finishRecoveredRun(ctx, runId, entries, begin, { detail: 'cut_off' });
+          }
+        }
+        ctx.bump();
+      })
+      .catch(() => {});
+  }
   if (later.length > 0) {
     ctx.recheckTimer = ctx.clock.setTimeout(() => {
       ctx.recheckTimer = null;
@@ -146,7 +232,7 @@ export function recoverOnStartup(ctx) {
         if (ctx.store.hasResult(runId)) continue;
         try {
           const { entries, begin, action } = examine(ctx, runId);
-          if (action === 'cut_off') markCutOff(ctx, runId, entries, begin);
+          if (action === 'cut_off') finishRecoveredRun(ctx, runId, entries, begin, { detail: 'cut_off' });
         } catch {
           // 読めない実行は、そのままにする
         }
@@ -178,6 +264,7 @@ export function viewPrevious(ctx, previous) {
     summary: result.summary ?? null,
     issues: viewIssues(ctx, runId, result.issues ?? []),
     finishedAt: result.finishedAt ?? null,
+    unstopped: result.unstopped ?? [],
     canFile: JSON.parse(JSON.stringify(ctx.canFile)),
   };
 }

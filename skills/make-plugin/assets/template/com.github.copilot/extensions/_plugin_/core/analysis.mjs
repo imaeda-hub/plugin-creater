@@ -114,7 +114,7 @@ function minutes(ms) {
 // 機械的に洗い出した課題。返り値は { title, body } の配列。
 // opts：{ pluginName, runId, endReason, endAt, unstopped:[{agentId, role}], isAuto, models:{orchestrator,worker,verifier}, userCriteria }
 export function analyzeEntries(entries, opts) {
-  const { pluginName, runId, endReason, endAt, unstopped = [], isAuto = false, models = {} } = opts;
+  const { pluginName, runId, endReason, endAt, unstopped = [], isAuto = false, models = {}, cause = null } = opts;
   const agents = new Map();
   const toolFailures = new Map();
   const agentFailures = [];
@@ -337,8 +337,19 @@ export function analyzeEntries(entries, opts) {
       ]);
     }
   });
-  const noSummaryEnd = (endReason?.kind === 'all_passed' || endReason?.kind === 'max_iterations') && !finishRecorded;
-  if (noSummaryEnd) {
+  const normalEnd = endReason?.kind === 'all_passed' || endReason?.kind === 'max_iterations';
+  if (normalEnd && cause?.creditLimit) {
+    add('まとめ中に AI クレジットの上限に達しました', [
+      '繰り返しが終わった後のまとめの途中で、AI クレジットの上限に達し、統括エージェントが終わりました。',
+      runLine,
+    ]);
+  } else if (normalEnd && cause?.cause === 'cancelled') {
+    add('まとめ中に統括エージェントが取り消されました', [
+      '繰り返しが終わった後のまとめの途中で、統括エージェントが取り消されて終わりました。チャットから中断された可能性があります。',
+      runLine,
+    ]);
+  }
+  if (normalEnd && !finishRecorded) {
     add('まとめを記録しないまま統括エージェントが終わりました', [
       '繰り返しが終わった後、統括エージェントが実行全体のまとめを記録しないまま終わりました。まとめは記録から機械的に作りました。',
       runLine,

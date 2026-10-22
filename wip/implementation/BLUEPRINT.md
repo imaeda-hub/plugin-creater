@@ -258,9 +258,38 @@ generated-plugin-structure.md 9章の表に名前を付けたもの。説明の�
 | `plugin-creator_record` | メイン | `knowledge`（hearing.md 7.3 の欄。番号を渡すと更新）、`assets`、`oss`（標準機能と公開のプラグインの選んだ結果） | 省く |
 | `plugin-creator_confirm` | メイン | 生成前の確認で示すもの（ナレッジの番号の一覧、振る舞いの案、作業の定義の案のパス〔`.plugin-creator-work/draft/task.json`〕、EVAL の課題と基準の案と入力のファイルの一覧、作り直しなら引き継ぐことと変わること） | 省く |
 | `plugin-creator_results` | メイン | 試験の入口と EVAL が書いた結果のファイルのパス | 省く |
-| `plugin-creator_doc_text` | 読み取り役 | `path` | 省く（エクステンションの読み込みのときの確認に含まれる。ユーザーの答え：未決のまま。C1 は省かない設定で作り、決まったら変える） |
+| `plugin-creator_doc_text` | 読み取り役 | `path` | 省く（ユーザーの答え15。作業フォルダの外の文書も確認なしで読める） |
 | `plugin-creator_issue` | メイン | `title`、`body` | 省かない（creator-structure.md 4.5） |
 
 - 段階の名前：始まり、実物を受け取る、読む、できていたことの確認（作り直しのときだけ）、前回の1回、決まりの確かめ、項目の点検、資産と公開のプラグイン、画面、生成前の確認、生成。
 - 項目の名前：作業の目的、頼む場面と言い方、受け取るもの、進め方、成果物、合否の決め方、決まった書き方やルール、守らないと困ること、使う道具と環境、いつもと違うとき、前回の1回、候補の確かめ（エクステンションが計算）、資産、標準機能と公開のプラグイン、開始前に設定したいこと、実行中に見たいこと、終わった後に見たい結果と見せ方、できていたことの確認（作り直しのときだけ）。
 - 状態の名前：未着手、聞いた、決まりなし、保留。ナレッジの状態：候補、決まった、外した。ナレッジの種類：合否の決め方、それ以外。
+
+## 8. 作業エージェントが書く部分の置き場所（クリエイターの作業エージェント・組み立て・ひな形で合わせる）
+
+```text
+<作業フォルダ>/.plugin-creator-work/
+  draft/task.json                   作業の定義の案（criteria なし）。生成前の確認の画面の見本に使う（ユーザーの答え7）
+  parts/
+    manifest.json                   組み立ての設定（下）。メインのエージェントが書く（部品の分け方と description は高い推論力が要るため。creator-structure.md 3.1）
+    task.json                       よいと答えた作業の定義（draft と同じもの。criteria なし）
+    slots/<差し込み口の名前>.md       差し込み口に入る文。作業エージェントが書く
+    files/<生成プラグインの中のパス>   そのまま足すファイル（scripts/、mcp.json、tests/stage2/task/、tests/eval/<課題>/ など）。作業エージェントが書く
+```
+
+- `manifest.json`：`{ "plugin_name", "plugin_description", "entry_skill": { "name", "description" }, "workers": [{ "agent", "label", "extra_tools": [] }], "verifier": { "extra_tools": [] }, "orchestrator": { "extra_tools": [] } }`。`extra_tools` は作業ごとの MCP のツール（`サーバー名/ツール名`）など。
+- 差し込み口の名前（ひな形が使う）：
+  - 入口のスキル：`entry-task`（作業の説明。作業エージェント）。description は `manifest.json` の `entry_skill.description`（メインのエージェント）。
+  - 統括：`orchestrator-task`。作業：`worker-task.<agent>`（作業エージェントごと）。検証：`verifier-task`。
+  - 文書：`task-requirements`、`task-design`、`task-trace`（A4）。README：`readme-task`。
+- ナレッジ（`tests/knowledge.json`）と合否の基準（task.json の criteria）と EVAL の課題の基準の写しは、組み立てのスクリプトがヒアリングの記録から書く（ユーザーの答え4）。作業エージェントは、合否の決め方以外のナレッジを入れた箇所に、その番号（`K-01` など）を書く。
+
+## 9. スクリプトの呼び方（スキルの手順と、スクリプトの担当で合わせる）
+
+- スキルのフォルダのパスは、スキルを呼んだときに示される「Base directory for this skill」から作る（R1）。
+- 組み立て：`python3 <make-plugin のフォルダ>/scripts/scaffold.py build --hearing <state.json のパス> --work <作業フォルダ>/.plugin-creator-work --out <作業フォルダ>/<生成プラグインの名前>`。終わると、作ったフォルダと結果を JSON で標準出力に出す。git のリポジトリにして最初のコミットをする。`.plugin-creator-work/` を消す。
+- 土台の確かめ：`python3 <make-plugin のフォルダ>/scripts/scaffold.py check-base --out <生成プラグインのフォルダ>`。
+- 1・2段目：`python3 <生成プラグインのフォルダ>/tests/run.py`（結果は `tests/results/latest.json`）。
+- 道具の確かめと用意：`python3 <test-plugin のフォルダ>/scripts/check_tools.py --plugin <生成プラグインのフォルダ> [--install]`。
+- EVAL：`node <test-plugin のフォルダ>/scripts/eval.mjs estimate --plugin <フォルダ> --runs <回数>`、`node <test-plugin のフォルダ>/scripts/eval.mjs run --plugin <フォルダ> --runs <回数>`（結果は `<生成プラグインのフォルダ>/tests/results/eval-<日時>/`）。
+- 細かい引数と出力の形は、スクリプトの担当（C2、C3）が決め、作業のメモに書く。スキルの担当（B3）は、この形で手順を書き、点検で突き合わせる。
