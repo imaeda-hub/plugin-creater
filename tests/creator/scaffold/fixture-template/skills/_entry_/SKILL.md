@@ -1,6 +1,6 @@
 ---
-name: {{entry_skill_name}}
-description: {{entry_skill_description}}
+name: "{{entry_skill_name}}"
+description: "{{entry_skill_description}}"
 ---
 
 # {{plugin_name}}

@@ -73,10 +73,10 @@ EVAL_REL = re.compile(r"^tests/eval/[^/]+/eval\.json$")
 YAML_PLAIN = re.compile(r"^[A-Za-z][A-Za-z0-9._-]*$")        # 引用符なしで YAML に置いてよい値
 YAML_RESERVED = {"y", "n", "yes", "no", "true", "false", "on", "off", "null"}   # YAML が真偽や null に読む言葉
 
-# ヒアリングの記録（C1 のエクステンション。names.mjs）の記号。日本語の名前でも読めるようにしておく
-STAGE_GENERATE = ("generate", "生成")
-STATUS_DECIDED = ("decided", "決まった")
-KIND_ALIASES = {"criterion": "criterion", "合否の決め方": "criterion", "other": "other", "それ以外": "other"}
+# ヒアリングの記録（state.json）の記号。C1 のエクステンションの names.mjs と同じ（記録には内部の記号を書く決まり）
+STAGE_GENERATE = "generate"             # 段階「生成」
+STATUS_DECIDED = "decided"              # ナレッジの状態「決まった」
+KINDS = ("criterion", "other")          # ナレッジの種類「合否の決め方」「それ以外」（tests/knowledge.json の kind と同じ）
 
 MANIFEST_KEYS = ("plugin_name", "plugin_description", "entry_skill", "workers", "verifier", "orchestrator")
 DESCRIPTION_MAX = 1024
@@ -173,7 +173,7 @@ def load_state(path: str) -> Dict[str, Any]:
         raise Refusal(problems)
     if not isinstance(state, dict):
         raise Refusal("ヒアリングの記録（%s）の形が違います（項目の集まりではありません）。" % path)
-    if state.get("stage") not in STAGE_GENERATE:
+    if state.get("stage") != STAGE_GENERATE:
         raise Refusal(
             "ヒアリングの記録の段階が「生成」ではありません（今は %s）。生成前の確認でユーザーがよいと答え、"
             "記録のツールで段階を「生成」に進めてから、組み立ててください。" % show(state.get("stage")))
@@ -194,7 +194,7 @@ def decided_knowledge(state: Dict[str, Any], problems: List[str]) -> List[Dict[s
     found: List[Dict[str, str]] = []
     seen: Set[str] = set()
     for index, row in enumerate(rows, 1):
-        if not isinstance(row, dict) or row.get("status") not in STATUS_DECIDED:
+        if not isinstance(row, dict) or row.get("status") != STATUS_DECIDED:
             continue
         where = "ヒアリングの記録のナレッジ（%d 件目）" % index
         ident = row.get("id")
@@ -202,9 +202,9 @@ def decided_knowledge(state: Dict[str, Any], problems: List[str]) -> List[Dict[s
             problems.append("%sの番号 %s が K-数字 の形ではありません。" % (where, show(ident)))
             continue
         where = "ナレッジ %s" % ident
-        kind = KIND_ALIASES.get(row.get("kind")) if isinstance(row.get("kind"), str) else None
-        if kind is None:
-            problems.append("%sの種類 %s は、合否の決め方（criterion）かそれ以外（other）のどちらかにしてください。" % (where, show(row.get("kind"))))
+        kind = row.get("kind")
+        if kind not in KINDS:
+            problems.append("%sの種類 %s は、合否の決め方（criterion）かそれ以外（other）のどちらかにしてください。" % (where, show(kind)))
             continue
         text = row.get("text")
         if not isinstance(text, str) or not text.strip():
@@ -316,8 +316,8 @@ def load_manifest(work: str, problems: List[str]) -> Optional[Dict[str, Any]]:
                 problems.append("%sの agent %s が重なっています。" % (where, agent))
                 continue
             seen.add(agent)
-            if not isinstance(tag, str) or not tag.strip():
-                problems.append("%sの label（画面での呼び名）が空です。" % where)
+            if not isinstance(tag, str) or not tag.strip() or "\n" in tag or "\r" in tag:
+                problems.append("%sの label（画面での呼び名）は、1行の文字にしてください。" % where)
             workers.append({"agent": agent, "label": tag, "extra_tools": check_tools(worker.get("extra_tools"), "%sの extra_tools" % where, problems)})
 
     roles: Dict[str, List[str]] = {}
@@ -407,11 +407,16 @@ def load_task(work: str, template: str, manifest: Optional[Dict[str, Any]], crit
 
     listed = task.get("workers")
     if manifest is not None and isinstance(listed, list) and all(isinstance(w, dict) for w in listed):
-        in_task = sorted(str(w.get("agent")) for w in listed)
-        in_manifest = sorted(w["agent"] for w in manifest["workers"])
-        if in_task != in_manifest:
+        in_task = {str(w.get("agent")): w.get("label") for w in listed}
+        in_manifest = {w["agent"]: w["label"] for w in manifest["workers"]}
+        if sorted(in_task) != sorted(in_manifest):
             problems.append("作業エージェントの名前が、parts/manifest.json の workers（%s）と parts/task.json の workers（%s）で合っていません。"
-                            % ("、".join(in_manifest), "、".join(in_task)))
+                            % ("、".join(sorted(in_manifest)), "、".join(sorted(in_task))))
+        else:
+            for agent in sorted(in_manifest):
+                if in_task[agent] != in_manifest[agent]:
+                    problems.append("作業エージェント %s の呼び名が、parts/manifest.json（%s）と parts/task.json（%s）で違います。同じにしてください。"
+                                    % (agent, show(in_manifest[agent]), show(in_task[agent])))
     return task
 
 
@@ -613,44 +618,35 @@ def apply_slots(text: str, slots: Dict[str, str], used: Set[str]) -> str:
     return "".join(out)
 
 
-def apply_tool_lists(text: str, lists: Dict[str, List[str]], consumed: Set[str]) -> str:
-    """tools の作業ごとの分。単独の行なら '- 名前' の行（なければ行ごと消す）、行の途中なら ', 名前' をつなげたもの。"""
-    if not lists:
+def apply_line_tokens(text: str, tokens: Dict[str, Tuple[str, List[str], str]], consumed: Set[str]) -> str:
+    """行ごと置き換える差し込み口（tools の作業ごとの分、統括の定義に入れる作業エージェントの一覧。B2 の取り決め）。
+    その字だけの行を、行の一覧に置き換える。その行に字下げがあればそれを、なければ既定の字下げを付ける。
+    行の一覧が空なら、行ごと消える。"""
+    if not tokens:
         return text
-
-    def inline(m: "re.Match[str]") -> str:
-        name = m.group(2)
-        if m.group(1) or name not in lists:
-            return m.group(0)
-        consumed.add(name)
-        return "".join(", " + tool for tool in lists[name])
-
     out: List[str] = []
     for line in text.splitlines(keepends=True):
         body = line.rstrip("\r\n")
         newline = line[len(body):] or "\n"
         m = PLACEHOLDER.fullmatch(body.strip())
-        if m and not m.group(1) and m.group(2) in lists:
+        if m and not m.group(1) and m.group(2) in tokens:
+            default_indent, items, _required = tokens[m.group(2)]
             consumed.add(m.group(2))
-            indent = body[: len(body) - len(body.lstrip())]
-            out.extend("%s- %s%s" % (indent, tool, newline) for tool in lists[m.group(2)])
-        elif "{{" in line:
-            out.append(PLACEHOLDER.sub(inline, line))
+            indent = body[: len(body) - len(body.lstrip())] or default_indent
+            out.extend(indent + item + newline for item in items)
         else:
             out.append(line)
     return "".join(out)
 
 
 def yaml_value(text: str, m: "re.Match[str]", value: str) -> str:
-    """YAML のフロントマターの中の値。二重引用符の中なら中身だけ、`キー: {{名前}}` の形なら二重引用符つきの文字列、
-    それ以外（長い文字の一部など）はそのまま入れる。"""
-    before = text[m.start() - 1] if m.start() > 0 else ""
-    after = text[m.end()] if m.end() < len(text) else ""
-    if before == '"' and after == '"':
-        return json_escape(value)
+    """YAML のフロントマターの中の値。二重引用符の中なら中身だけ（JSON の文字列の書き方）、`キー: {{名前}}` の形なら
+    名前などは引用符なし・それ以外は二重引用符つきの文字列、行の途中のそれ以外はそのまま入れる。"""
     line_start = text.rfind("\n", 0, m.start()) + 1
     line_end = text.find("\n", m.end())
     line = text[line_start:(len(text) if line_end < 0 else line_end)]
+    if len(re.findall(r'(?<!\\)"', text[line_start:m.start()])) % 2 == 1:
+        return json_escape(value)
     if re.fullmatch(r"[ \t]*[A-Za-z_][\w-]*:[ \t]+" + re.escape(m.group(0)) + r"[ \t]*\r?", line):
         if YAML_PLAIN.match(value) and value.lower() not in YAML_RESERVED:
             return value   # 名前など。引用符なしでも、数や真偽に読まれない
@@ -677,7 +673,7 @@ def apply_values(text: str, rel: str, values: Dict[str, str]) -> str:
 
 
 def fill_template(out: str, plugin_name: str, slots: Dict[str, str], values: Dict[str, str],
-                  tool_lists: Dict[str, Dict[str, List[str]]], problems: List[str], warnings: List[str]) -> None:
+                  line_tokens: Dict[str, Dict[str, Tuple[str, List[str], str]]], problems: List[str], warnings: List[str]) -> None:
     """ひな形から写したファイルの差し込み口を埋める。土台のファイル（エクステンションのフォルダ）は書き換えない。"""
     base_prefix = "%s/%s/" % ("/".join(EXT_PARENT), plugin_name)
     used: Set[str] = set()
@@ -698,7 +694,7 @@ def fill_template(out: str, plugin_name: str, slots: Dict[str, str], values: Dic
             if not rel.startswith(base_prefix):
                 done: Set[str] = set()
                 new = apply_slots(text, slots, used)
-                new = apply_tool_lists(new, tool_lists.get(rel, {}), done)
+                new = apply_line_tokens(new, line_tokens.get(rel, {}), done)
                 new = apply_values(new, rel, values)
                 consumed.update((rel, token) for token in done)
                 if new != text:
@@ -724,24 +720,34 @@ def fill_template(out: str, plugin_name: str, slots: Dict[str, str], values: Dic
         else:
             problems.append("差し込み口 %s（%s の %d 行目）に入れる値が決まっていません。ひな形が使う名前と、組み立てのスクリプトが入れる名前が合っていません。"
                             % (token, rel, line))
-    for rel, lists in sorted(tool_lists.items()):
-        for token, tools in lists.items():
-            if tools and (rel, token) not in consumed:
-                problems.append("%s に、parts/manifest.json の extra_tools（%s）を入れる場所 {{%s}} がありません。ひな形のエージェントの定義を直してください。"
-                                % (rel, "、".join(tools), token))
+    for rel, tokens in sorted(line_tokens.items()):
+        for token, (_indent, _items, required) in tokens.items():
+            if required and (rel, token) not in consumed:
+                problems.append("%s に、parts/manifest.json の %s を入れる場所 {{%s}} がありません。ひな形のエージェントの定義を直してください。"
+                                % (rel, required, token))
     for name in sorted(set(slots) - used):
         warnings.append("parts/slots/%s.md は、ひな形のどの差し込み口にも使われていません（文は入っていません）。" % name)
 
 
-def tool_list_map(manifest: Dict[str, Any]) -> Dict[str, Dict[str, List[str]]]:
-    """エージェントの定義のファイル -> {tools の差し込み口の名前: 足すツール}。"""
-    lists = {
-        "%s/orchestrator.agent.md" % AGENTS_REL: {TOOL_TOKENS["orchestrator"]: manifest["orchestrator_tools"]},
-        "%s/verifier.agent.md" % AGENTS_REL: {TOOL_TOKENS["verifier"]: manifest["verifier_tools"]},
+def line_token_map(manifest: Dict[str, Any]) -> Dict[str, Dict[str, Tuple[str, List[str], str]]]:
+    """エージェントの定義のファイル -> {行ごと置き換える差し込み口の名前: (字下げの既定, 行の一覧, 必須のときの言い方)}。
+    tools の作業ごとの分は `- "名前"` の行。ツールがあるのにひな形に置き場所がなければ断る（必須）。
+    統括の定義には、作業エージェントの一覧（1行ごとに、プラグインの名前:agent をバッククォートで囲み、：と呼び名を続ける）を入れる。"""
+    def tools(items: List[str]) -> Tuple[str, List[str], str]:
+        required = "extra_tools（%s）" % "、".join(items) if items else ""
+        return "  ", ["- " + json.dumps(tool, ensure_ascii=False) for tool in items], required
+
+    plugin = manifest["plugin_name"]
+    tokens = {
+        "%s/orchestrator.agent.md" % AGENTS_REL: {
+            TOOL_TOKENS["orchestrator"]: tools(manifest["orchestrator_tools"]),
+            "worker_agents": ("", ["- `%s:%s`：%s" % (plugin, w["agent"], w["label"]) for w in manifest["workers"]], ""),
+        },
+        "%s/verifier.agent.md" % AGENTS_REL: {TOOL_TOKENS["verifier"]: tools(manifest["verifier_tools"])},
     }
     for worker in manifest["workers"]:
-        lists["%s/%s.agent.md" % (AGENTS_REL, worker["agent"])] = {TOOL_TOKENS["worker"]: worker["extra_tools"]}
-    return lists
+        tokens["%s/%s.agent.md" % (AGENTS_REL, worker["agent"])] = {TOOL_TOKENS["worker"]: tools(worker["extra_tools"])}
+    return tokens
 
 
 # ---------------------------------------------------------------- 土台の確かめ
@@ -950,7 +956,7 @@ def build(hearing: str, work: str, out: str, template: Optional[str] = None, tod
             os.remove(source)
 
         # 差し込み口を埋める：文、tools の作業ごとの分、決まった値の順
-        fill_template(out, plugin_name, slots, values, tool_list_map(manifest), problems, warnings)
+        fill_template(out, plugin_name, slots, values, line_token_map(manifest), problems, warnings)
         if problems:
             raise Refusal(problems)
 

@@ -177,6 +177,11 @@ export function createCreator({
         if (k.kind !== 'criterion') throw new Refusal(`ナレッジ ${id} は「合否の決め方」ではないので、EVAL の課題の基準にできません。`);
       }
     }
+    // 決まったナレッジは、すべて示す（画面の「決まったこと」の一覧と、生成前の確認の一覧を、同じにする。REQ-043）
+    const omitted = hearing.state.knowledge.filter((k) => k.status === 'decided' && !known.has(k.id)).map((k) => k.id);
+    if (omitted.length) {
+      throw new Refusal(`決まったナレッジのすべてを、示すナレッジの一覧（knowledgeIds）に入れてください。入っていないもの：${omitted.join('、')}`);
+    }
     const sampleUrl = await prepareSample({ taskPath: normalized, knowledgeRows: rows });
     hearing.commitConfirmation({ ...a, taskPath: normalized });
     return `生成前の確認で示すものを受け付けました。画面で見られます。Web管理画面の見本：${sampleUrl}`;

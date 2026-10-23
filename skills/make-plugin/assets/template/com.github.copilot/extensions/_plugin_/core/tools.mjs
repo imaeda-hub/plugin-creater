@@ -1,6 +1,6 @@
 // 記録のツールの定義（6.2）。つなぎ口は、これを登録するだけにする。
 // name は名前の後ろの部分。登録する名前は toolFullName() で作る（例：weekly-report_plan）。
-// description は仮の文。モデルの振る舞いを決める自然言語の部品なので、別の担当が仕上げる（BLUEPRINT 6章）。
+// description は、モデルの振る舞いを決める自然言語の部品である（BLUEPRINT 6章。R1 の決まりに沿って書いた）。
 // 記録のツールは、画面の状態を書くだけで外を変えないので、許可の確認を省いて登録する（4.14）。
 
 const integerSchema = { type: 'integer', minimum: 1 };
@@ -11,7 +11,7 @@ export const TOOL_DEFS = Object.freeze([
     caller: 'main',
     skipPermission: true,
     description:
-      '【仮】ユーザーから作業を頼まれたときに呼ぶ。Web管理画面を開き、その URL を返す。実行中なら、新しく始めず今の URL を返す。',
+      'ユーザーから、このプラグインの作業を頼まれたときに呼ぶ。作業の Web管理画面（ブラウザーで開く画面）を用意し、その URL と、ユーザーに伝える注意を返す。作業はまだ始まらず、ユーザーが画面で設定して開始ボタンを押すと始まる。実行中に呼ぶと、新しくは始めず、今の画面の URL を返す。実行が終わった後に呼ぶと、画面が次の実行の準備に戻る（前の結果も画面で開ける）。',
     parameters: {
       type: 'object',
       properties: {
@@ -26,7 +26,7 @@ export const TOOL_DEFS = Object.freeze([
     caller: 'orchestrator',
     skipPermission: true,
     description:
-      '【仮】統括エージェントが、試行ごとの計画を記録する。評価基準には、ユーザーと確かめた基準を番号と文のまま、すべて入れる。',
+      '統括エージェントが、試行ごとに、作業エージェントに頼む前に呼ぶ。試行の番号、評価基準、計画を記録し、画面に出す。番号は 1 から順に、繰り返しの上限まで。評価基準には、ユーザーと確かめた合否の基準を、番号と文を受け取ったとおりに、すべて入れる（足す基準は、重ならない番号で入れてよい）。2回目からは、前の試行の指摘への対応を計画に書く。決まりに合わない記録は、理由を返して断るので、理由に沿って直して呼び直す。すべての評価基準を満たした後と、上限の回数の試行の合否が記録された後は、まとめに進むよう返して断る。',
     parameters: {
       type: 'object',
       properties: {
@@ -56,7 +56,7 @@ export const TOOL_DEFS = Object.freeze([
     caller: 'verifier',
     skipPermission: true,
     description:
-      '【仮】検証エージェントが、評価基準ごとの合否と指摘を記録する。その試行の評価基準のすべてについて記録する。',
+      '検証エージェントが、試行の成果物を評価基準で確かめた後に呼ぶ。その試行の評価基準のすべてについて、合否と指摘を1回にまとめて記録し、画面に出す。番号は評価基準の番号をそのまま使い、その試行にない番号は入れない。不合格の指摘には、何をどう直せばよいかを書く。検証エージェント以外からの記録と、その試行の作業エージェントが終わる前の記録は断る。決まりに合わない記録は、理由を返して断るので、直せるときは直して呼び直す。',
     parameters: {
       type: 'object',
       properties: {
@@ -85,7 +85,7 @@ export const TOOL_DEFS = Object.freeze([
     caller: 'orchestrator,worker',
     skipPermission: true,
     description:
-      '【仮】作業ごとの画面の表示に、値を送る。key は作業の定義にある表示の番号。画像とファイルは、作業フォルダの中の場所を渡す。',
+      '統括エージェントか作業エージェントが、作業ごとの指示に書かれた表示（key）に、値を送る。値の形は表示の種類で決まる：text は文字列、kv は { 見出し: 値 }、table は { columns: [見出し], rows: [[値, …]] }、progress は 0〜100 の数か { value, max, label }（label はなくてよい）、image と file は作業フォルダの中のファイルの場所（画像として出すのは png・jpeg・gif・webp）。同じ key にまた送ると、表示が新しい値に変わる。作業の定義にない key と、形の合わない値は、理由を返して断る。',
     parameters: {
       type: 'object',
       properties: {
@@ -104,7 +104,7 @@ export const TOOL_DEFS = Object.freeze([
     caller: 'orchestrator',
     skipPermission: true,
     description:
-      '【仮】繰り返しが終わった後に、統括エージェントが呼ぶ。機械的に洗い出した課題と、記録の要点を返す。',
+      '統括エージェントが、繰り返しを終えた後（すべての評価基準を満たしたか、上限の回数まで試行した後）に、まとめの最初に呼ぶ。記録から機械的に洗い出した課題と、試行ごとの合否の要点を返す。返った課題は、何もしなくても課題の一覧に入る。繰り返しの途中では断る。',
     parameters: { type: 'object', properties: {}, additionalProperties: false },
   },
   {
@@ -112,7 +112,7 @@ export const TOOL_DEFS = Object.freeze([
     caller: 'orchestrator',
     skipPermission: true,
     description:
-      '【仮】振り返りで見つけた、このプラグイン自身を改善する Issue の案（題と本文）を足す。起票はユーザーが画面で承認したときだけ行われる。',
+      '統括エージェントが、繰り返しの後の振り返りで、このプラグイン自身を直せば防げる課題を見つけたときに呼ぶ。Issue の案（題と本文）を1件足す。案は終わった後の画面の課題の一覧に並び、ユーザーが承認した案だけが、このプラグインの GitHub リポジトリに起票される。題と本文は、平易な日本語で簡潔に書き、説明のない専門用語を使わない。名前の終わりが _review の記録のツールが返した課題と同じものは足さない。繰り返しの途中では断る。',
     parameters: {
       type: 'object',
       properties: {
@@ -127,7 +127,8 @@ export const TOOL_DEFS = Object.freeze([
     name: 'finish',
     caller: 'orchestrator',
     skipPermission: true,
-    description: '【仮】実行全体のまとめを記録する。最後に 1 回だけ呼ぶ。',
+    description:
+      '統括エージェントが、振り返りの最後に1回だけ呼ぶ。実行全体のまとめ（何回の試行で、どの評価基準を満たしたか、成果物の場所）を記録し、画面に出す。記録できたら、作業を終える。繰り返しの途中と、2回目の記録は断る。',
     parameters: {
       type: 'object',
       properties: { summary: { type: 'string', minLength: 1, description: '実行全体のまとめ' } },

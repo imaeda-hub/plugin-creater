@@ -17,7 +17,6 @@ import {
   beginRun,
   cleanupAll,
   createFakeSdk,
-  delay,
   holdAfterJoin,
   importAdapter,
   makePlugin,
@@ -28,6 +27,7 @@ import {
   startPlugin,
   tempDir,
   until,
+  withTimeout,
 } from './harness.mjs';
 
 after(cleanupAll);
@@ -212,7 +212,7 @@ describe('セッションに加わった直後の動き（REQ-005）', () => {
     const starting = prepared.launch();
     await until(() => prepared.fake.config !== null);
     const call = prepared.fake.callTool(`${PLUGIN}_open`, { requestText: '週報を作る' });
-    assert.equal(await Promise.race([call, delay(150).then(() => 'まだ返らない')]), 'まだ返らない');
+    assert.equal(await withTimeout(call, 150, 'まだ返らない'), 'まだ返らない');
     release();
     prepared.finish(await starting);
     const result = await call;

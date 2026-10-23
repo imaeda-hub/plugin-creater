@@ -563,6 +563,71 @@ describe('生成前の確認（plugin-creator_confirm）と、段階「生成」
     });
   });
 
+  test('REQ-020 REQ-043 決まったナレッジは、すべて示す。示す一覧に入っていないものがあれば、断る（画面の一覧と確認の一覧を同じにする）', async () => {
+    await withRun(async (run) => {
+      await readyToConfirm(run);
+      await run.call('record', { knowledge: [knowledge({ text: '3つ目の決まり' }), knowledge({ text: '4つ目の決まり' })] });
+      const refused = await run.callSafe('confirm', confirmArgs({ knowledgeIds: ['K-01', 'K-02'] }));
+      assert.equal(refused.ok, false);
+      assert.match(refused.error, /決まったナレッジのすべてを、示すナレッジの一覧（knowledgeIds）に入れてください。入っていないもの：K-03、K-04/);
+      assert.equal(run.readState().confirmation, null);
+      // 外したものは、入れなくてよい
+      await run.call('record', { knowledge: [{ id: 'K-04', status: '外した', quote: '違った' }] });
+      const ok = await run.call('confirm', confirmArgs({ knowledgeIds: ['K-01', 'K-02', 'K-03'] }));
+      assert.match(ok, /受け付けました/);
+    });
+  });
+
+  test('REQ-020 確認で示したあとに、決まったナレッジが変わったら（足した・直した・外した）、示し直すまで「生成」に進めない', async () => {
+    await withRun(async (run) => {
+      await readyToConfirm(run);
+      await run.call('confirm', confirmArgs());
+      const approve = () => run.callSafe('progress', { stage: '生成', approvalQuote: 'はい、作ってください' });
+      const reconfirm = (ids) => run.call('confirm', confirmArgs({ knowledgeIds: ids }));
+
+      // 足した
+      await run.call('record', { knowledge: [knowledge({ text: '確認のあとで足した決まり', source: '生成前の確認で足した' })] });
+      let r = await approve();
+      assert.equal(r.ok, false);
+      assert.match(r.error, /生成前の確認で示したナレッジの一覧と、今の「決まった」ナレッジが違います（示していない：K-03）。plugin-creator_confirm で示し直して、ユーザーによいと答えてもらってください。/);
+      assert.deepEqual(internalSymbolsIn(r.error), []);
+      assert.equal(run.readState().stage, 'start');
+      await reconfirm(['K-01', 'K-02', 'K-03']);
+
+      // 直した（文、例、例外のどれでも）
+      await run.call('record', { knowledge: [{ id: 'K-01', text: '直した文', quote: '直して' }] });
+      r = await approve();
+      assert.match(r.error, /（直した：K-01）/);
+      await reconfirm(['K-01', 'K-02', 'K-03']);
+      await run.call('record', { knowledge: [{ id: 'K-01', exception: '祝日は翌営業日', quote: '例外があった' }] });
+      assert.match((await approve()).error, /（直した：K-01）/);
+      await reconfirm(['K-01', 'K-02', 'K-03']);
+
+      // 外した
+      await run.call('record', { knowledge: [{ id: 'K-03', status: '外した', quote: 'やっぱり要らない' }] });
+      assert.match((await approve()).error, /（決まったものでなくなった：K-03）/);
+      await reconfirm(['K-01', 'K-02']);
+
+      // ユーザーの言葉の抜き書きや出どころの直しは、ユーザーが確かめる中身ではないので、示し直さなくてよい
+      await run.call('record', { knowledge: [{ id: 'K-01', quote: '言い直した', source: 'ユーザーが自分から話した' }] });
+      const done = await approve();
+      assert.equal(done.ok, true, done.error);
+      assert.equal(run.readState().stage, 'generate');
+    });
+  });
+
+  test('REQ-020 確認で示した中身の写しを、記録に残す（番号、種類、項目、文、例、例外）', async () => {
+    await withRun(async (run) => {
+      await readyToConfirm(run);
+      await run.call('record', { knowledge: [{ id: 'K-02', example: '実績、予定の順', quote: '例を足す' }] });
+      await run.call('confirm', confirmArgs());
+      assert.deepEqual(run.readState().confirmation.knowledge, [
+        { id: 'K-01', kind: 'other', item: 'procedure', text: '毎週金曜日の17時までに提出する', example: null, exception: null },
+        { id: 'K-02', kind: 'criterion', item: 'criteria', text: '見出しが「今週の実績」「来週の予定」の順に並んでいれば合格', example: '実績、予定の順', exception: null },
+      ]);
+    });
+  });
+
   test('REQ-020 示し直すと（直したあと）、確認の中身が新しいものに替わる。ユーザーの指摘の文言は残さない', async () => {
     await withRun(async (run) => {
       await readyToConfirm(run);

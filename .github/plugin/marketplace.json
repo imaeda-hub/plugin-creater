@@ -1,0 +1,12 @@
+{
+  "name": "plugin-creator",
+  "owner": {
+    "name": "imaeda-hub"
+  },
+  "plugins": [
+    {
+      "name": "plugin-creator",
+      "source": "./"
+    }
+  ]
+}

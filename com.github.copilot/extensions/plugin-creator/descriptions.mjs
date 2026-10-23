@@ -39,7 +39,7 @@ export const PARAM_DESCRIPTIONS = Object.freeze({
     'knowledge.item': 'ナレッジの項目。仕様の10項目のどれか。',
     'knowledge.text': 'ナレッジの文。1件に1つの決まりを書く。固有の言葉、数、書式、名前は、ユーザーの言葉のまま書く。',
     'knowledge.source': 'ナレッジの出どころ',
-    'knowledge.quote': 'ユーザーの言葉の抜き書き。ファイルから読んだときは、ファイル名と箇所。',
+    'knowledge.quote': 'ユーザーの言葉の抜き書き。更新のときも必要。ファイルから読んだときは、ファイル名と箇所。',
     'knowledge.example': '例（あれば）',
     'knowledge.exception': '例外（あれば）',
     'knowledge.status': 'ナレッジの状態。ファイルや頼みの文から推し量っただけで、まだユーザーが確かめていないものは「候補」。',

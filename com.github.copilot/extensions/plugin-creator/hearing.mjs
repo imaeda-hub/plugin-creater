@@ -202,6 +202,10 @@ export function createHearing({ store, sessionId, clock }) {
         if (!state?.confirmation) {
           throw new Refusal('段階を「生成」に進める前に、生成前の確認で示すものを plugin-creator_confirm で知らせて、ユーザーによいと答えてもらってください。');
         }
+        const changed = changesSinceConfirmation();
+        if (changed) {
+          throw new Refusal(`生成前の確認で示したナレッジの一覧と、今の「決まった」ナレッジが違います（${changed}）。plugin-creator_confirm で示し直して、ユーザーによいと答えてもらってください。`);
+        }
         if (!has(input.approvalQuote)) {
           throw new Refusal('段階を「生成」に進めるには、よいと答えたユーザーの言葉の抜き書き（approvalQuote）を添えてください。');
         }
@@ -382,11 +386,32 @@ export function createHearing({ store, sessionId, clock }) {
     return rows;
   }
 
+  /** 確認で示すナレッジの1行（画面に出す欄のうち、生成に使う中身。ユーザーが確かめるのは、これ） */
+  const shownRow = (k) => ({ id: k.id, kind: k.kind, item: k.item, text: k.text, example: k.example ?? null, exception: k.exception ?? null });
+
+  /**
+   * 生成前の確認を受け付ける。示したナレッジの中身の写し（knowledge）も残す。
+   * ユーザーがよいと答えたナレッジと、生成に使うナレッジが、食い違わないようにするため（REQ-020）。
+   */
   function commitConfirmation(confirmation) {
     assertWritable();
     const next = working();
-    next.confirmation = { ...confirmation, at: iso() };
+    next.confirmation = { ...confirmation, knowledge: knowledgeByIds(confirmation.knowledgeIds).map(shownRow), at: iso() };
     commit(next);
+  }
+
+  /** 確認で示したあとに、「決まった」ナレッジが、足された・外れた・直された、のどれかがあれば、その文。なければ null */
+  function changesSinceConfirmation() {
+    const shown = new Map((state?.confirmation?.knowledge ?? []).map((r) => [r.id, JSON.stringify(r)]));
+    const now = new Map((state?.knowledge ?? []).filter((k) => k.status === 'decided').map((k) => [k.id, JSON.stringify(shownRow(k))]));
+    const added = [...now.keys()].filter((id) => !shown.has(id));
+    const gone = [...shown.keys()].filter((id) => !now.has(id));
+    const edited = [...now.keys()].filter((id) => shown.has(id) && shown.get(id) !== now.get(id));
+    const parts = [];
+    if (added.length) parts.push(`示していない：${added.join('、')}`);
+    if (gone.length) parts.push(`決まったものでなくなった：${gone.join('、')}`);
+    if (edited.length) parts.push(`直した：${edited.join('、')}`);
+    return parts.length ? parts.join('。') : null;
   }
 
   // ---- そのほか -----------------------------------------------------------------

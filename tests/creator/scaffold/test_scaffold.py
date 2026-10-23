@@ -5,7 +5,7 @@
 
   - 差し込み口の働きは、小さなひな形（fixture-template/）で確かめる。本物のひな形の中身には依らない。
   - 本物のひな形（skills/make-plugin/assets/template/）では、組み立てたものが 1段目の構造の検査（kind=generated）に
-    通ることを見る。本物のひな形にまだない部品（B1・B2 が作る入口のスキル、エージェントの定義、extension.mjs）は、
+    通ることを見る。本物のひな形にまだない部品（B2 が作る作業・検証のエージェントの定義）は、
     試験の中で仮のファイルで補う。補った部品は試験の出力（標準エラー）に出る。
 
 動かし方（リポジトリの根で）:
@@ -32,7 +32,7 @@ except ImportError:   # PyYAML がない環境では、YAML を読む試験を�
 sys.dont_write_bytecode = True
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-REPO = os.path.dirname(os.path.dirname(HERE))
+REPO = os.path.dirname(os.path.dirname(os.path.dirname(HERE)))
 SCRIPT = os.path.join(REPO, "skills", "make-plugin", "scripts", "scaffold.py")
 REAL_TEMPLATE = os.path.join(REPO, "skills", "make-plugin", "assets", "template")
 CHECK_STRUCTURE = os.path.join(REAL_TEMPLATE, "tests", "stage1", "check_structure.py")
@@ -99,6 +99,10 @@ class Base(unittest.TestCase):
 
     def read(self, rel):
         with open(self.at(rel), encoding="utf-8") as f:
+            return f.read()
+
+    def read_bytes(self, rel):
+        with open(self.at(rel), "rb") as f:
             return f.read()
 
     def json(self, rel):
@@ -183,16 +187,6 @@ class Gate(Base):
         self.assertMentions(self.refusal(), "JSON として読めません")
         self.write(self.state, "[]")
         self.assertMentions(self.refusal(), "形が違います")
-
-    def test_REQ_020_the_japanese_names_of_the_record_are_read_too(self):
-        def change(s):
-            s["stage"] = "生成"
-            for k in s["knowledge"]:
-                k["status"] = {"decided": "決まった"}.get(k["status"], k["status"])
-                k["kind"] = {"criterion": "合否の決め方", "other": "それ以外"}[k["kind"]]
-        self.edit_state(change)
-        result = self.build()
-        self.assertEqual([c["knowledge"] for c in result["criteria"]], ["K-01", "K-03"])
 
 
 class Place(Base):
@@ -379,23 +373,26 @@ class Values(Base):
         self.assertEqual(frontmatter(self.read("skills/weekly-report/SKILL.md")), {"name": "weekly-report", "description": self.HARD})
         note = frontmatter(self.read("skills/weekly-report/references/note.md"))
         self.assertEqual(note["quoted"], self.HARD)                          # "…" の中では、中身だけが入る
-        self.assertEqual(note["embedded"], "説明は weekly-report です")        # 長い文字の一部には、そのまま入る
+        self.assertEqual(note["longer"], "前置き " + self.HARD + " 後ろ")      # 二重引用符で囲んだ長い文字の一部でも、壊れない
+        self.assertEqual(note["bare"], self.HARD)                            # 値の位置に単独なら、二重引用符つきの文字列になる
+        self.assertEqual(note["embedded"], "説明は weekly-report です")        # 名前は、長い文字の一部にそのまま入る
         self.assertIn(self.HARD, self.read("README.md"))                     # 本文はそのまま
 
-    def test_a_safe_name_is_written_without_quotes(self):
+    @unittest.skipIf(yaml is None, "PyYAML がない")
+    def test_a_name_in_the_value_position_is_written_without_quotes(self):
         self.build()
-        self.assertIn("\nname: weekly-report\n", self.read("skills/weekly-report/SKILL.md"))
+        self.assertIn("\nbare_name: weekly-report\n", self.read("skills/weekly-report/references/note.md"))
 
     @unittest.skipIf(yaml is None, "PyYAML がない")
     def test_a_name_that_yaml_would_read_as_a_number_or_a_boolean_is_quoted(self):
         for name in ("2026", "true", "no"):
             with self.subTest(name=name):
                 self.setUp()
-                self.edit_manifest(lambda m: m["entry_skill"].update(name=name))
+                self.edit_manifest(lambda m: m.update(plugin_name=name))
                 self.build()
-                text = self.read("skills/%s/SKILL.md" % name)
-                self.assertIn('\nname: "%s"\n' % name, text)
-                self.assertEqual(frontmatter(text)["name"], name)
+                text = self.read("skills/weekly-report/references/note.md")
+                self.assertIn('\nbare_name: "%s"\n' % name, text)
+                self.assertEqual(frontmatter(text)["bare_name"], name)
 
     def test_the_entry_skill_folder_takes_the_name_of_the_entry_skill(self):
         self.edit_manifest(lambda m: m["entry_skill"].update(name="make-weekly"))
@@ -497,9 +494,22 @@ class Workers(Base):
         self.edit_manifest(change)
         self.build()
         agents = "com.github.copilot/agents/"
-        self.assertEqual(frontmatter(self.read(agents + "orchestrator.agent.md"))["tools"], ["agent", "read", "weekly-report_plan", "srv/a"])
+        orchestrator = self.read(agents + "orchestrator.agent.md")
+        self.assertEqual(frontmatter(orchestrator)["tools"], ["agent", "read", "weekly-report_plan", "srv/a"])
+        self.assertIn('  - "weekly-report_plan"\n  - "srv/a"\n---\n', orchestrator)       # 行頭に空白のない差し込み口は、2つの空白の字下げになる
         self.assertEqual(frontmatter(self.read(agents + "worker.agent.md"))["tools"], ["read", "edit", "weekly-report_show", "srv/b", "srv/c"])
-        self.assertEqual(frontmatter(self.read(agents + "verifier.agent.md"))["tools"], ["read", "weekly-report_verdict", "srv/d"])
+        verifier = self.read(agents + "verifier.agent.md")
+        self.assertEqual(frontmatter(verifier)["tools"], ["read", "weekly-report_verdict", "srv/d"])
+        self.assertIn('  - "srv/d"\n---\n', verifier)                                     # 字下げのある差し込み口は、その字下げを引き継ぐ
+
+    @unittest.skipIf(yaml is None, "PyYAML がない")
+    def test_the_extra_tools_of_a_second_worker_go_to_its_own_file_only(self):
+        self.two_workers()
+        self.edit_manifest(lambda m: m["workers"][1].update(extra_tools=["srv/summary"]))
+        self.build()
+        agents = "com.github.copilot/agents/"
+        self.assertEqual(frontmatter(self.read(agents + "worker-summary.agent.md"))["tools"], ["read", "edit", "weekly-report_show", "srv/summary"])
+        self.assertEqual(frontmatter(self.read(agents + "worker.agent.md"))["tools"], ["read", "edit", "weekly-report_show"])
 
     @unittest.skipIf(yaml is None, "PyYAML がない")
     def test_without_extra_tools_the_lists_are_clean(self):
@@ -507,6 +517,7 @@ class Workers(Base):
         agents = "com.github.copilot/agents/"
         self.assertEqual(frontmatter(self.read(agents + "orchestrator.agent.md"))["tools"], ["agent", "read", "weekly-report_plan"])
         self.assertEqual(frontmatter(self.read(agents + "worker.agent.md"))["tools"], ["read", "edit", "weekly-report_show"])
+        self.assertEqual(frontmatter(self.read(agents + "verifier.agent.md"))["tools"], ["read", "weekly-report_verdict"])
         self.assertNotIn("{{", self.read(agents + "verifier.agent.md"))
 
     def test_extra_tools_with_no_place_in_the_template_are_refused(self):
@@ -514,8 +525,26 @@ class Workers(Base):
         path = self.tmpl("com.github.copilot/agents/orchestrator.agent.md")
         with open(path, encoding="utf-8") as f:
             text = f.read()
-        self.write(path, text.replace("  {{orchestrator_extra_tools}}\n", ""))
+        self.write(path, text.replace("{{orchestrator_extra_tools}}\n", ""))
         self.assertMentions(self.refusal(), "orchestrator.agent.md", "extra_tools", "srv/a")
+
+    def test_the_orchestrator_gets_the_list_of_its_worker_agents(self):
+        self.build()
+        orchestrator = self.read("com.github.copilot/agents/orchestrator.agent.md")
+        self.assertIn("## 作業エージェント\n\n- `weekly-report:worker`：週報を書く係\n\n## 作業ごとの指示", orchestrator)
+        self.setUp()   # 組み立てに成功すると一時フォルダが消えるので、用意し直す
+        self.two_workers()
+        self.build()
+        orchestrator = self.read("com.github.copilot/agents/orchestrator.agent.md")
+        self.assertIn("- `weekly-report:worker`：週報を書く係\n- `weekly-report:worker-summary`：まとめる係\n", orchestrator)
+
+    def test_the_labels_of_the_workers_must_agree_between_the_manifest_and_the_task(self):
+        self.edit_task(lambda t: t["workers"][0].update(label="別の呼び名"))
+        self.assertMentions(self.refusal(), "worker", "呼び名", "週報を書く係", "別の呼び名")
+
+    def test_a_label_must_be_one_line(self):
+        self.edit_manifest(lambda m: m["workers"][0].update(label="一行目\n二行目"))
+        self.assertMentions(self.refusal(), "label", "1行")
 
     def test_bad_tool_names_are_refused(self):
         self.edit_manifest(lambda m: m["workers"][0].update(extra_tools=["srv a", 5, "x,y"]))
@@ -717,8 +746,8 @@ class PartsFiles(Base):
     def test_the_files_are_copied_as_they_are(self):
         self.build()
         for rel in ("scripts/summarize.py", "tests/stage2/task/test_summarize.py", "tests/eval/T-01/inputs/memo.txt"):
-            with open(os.path.join(SAMPLE, "parts", "files", *rel.split("/")), "rb") as a, open(self.at(rel), "rb") as b:
-                self.assertEqual(a.read(), b.read(), rel)
+            with open(os.path.join(SAMPLE, "parts", "files", *rel.split("/")), "rb") as a:
+                self.assertEqual(a.read(), self.read_bytes(rel), rel)
 
     @unittest.skipIf(os.name == "nt", "実行の許可の印は Windows にない")
     def test_the_executable_mark_of_a_file_is_kept(self):
@@ -814,7 +843,7 @@ class BaseCheck(Base):
 
     def test_REQ_039_restore_puts_the_template_back_and_removes_the_extra_files(self):
         self.build()
-        original = {rel: open(self.at(self.EXT + rel), "rb").read() for rel in ("core/index.mjs", "ui/app.mjs", "extension.mjs")}
+        original = {rel: self.read_bytes(self.EXT + rel) for rel in ("core/index.mjs", "ui/app.mjs", "extension.mjs")}
         self.append(self.at(self.EXT + "core/index.mjs"), "// 書き換え\n")
         os.remove(self.at(self.EXT + "ui/app.mjs"))
         self.write(self.at(self.EXT + "ui/new/deep/extra.js"), "x")
@@ -824,7 +853,7 @@ class BaseCheck(Base):
         self.assertEqual(sorted(result["restored"]), sorted(d["file"] for d in result["differences"]))
         self.assertEqual(result["remaining"], [])
         for rel, content in original.items():
-            self.assertEqual(open(self.at(self.EXT + rel), "rb").read(), content)
+            self.assertEqual(self.read_bytes(self.EXT + rel), content)
         self.assertFalse(os.path.exists(self.at(self.EXT + "ui/new")))   # 空になったフォルダも片付ける
         self.assertTrue(self.check()["ok"])
 
@@ -925,39 +954,20 @@ class Cli(Base):
 
 # ---------------------------------------------------------------- 本物のひな形
 
-STUB_ENTRY = """---
-name: {{entry_skill_name}}
-description: {{entry_skill_description}}
----
-
-# {{plugin_name}}
-
-{{slot:entry-task}}
-"""
-
-STUB_ORCHESTRATOR = """---
-description: 統括エージェント（試験で補った仮のファイル）
-tools:
-  - agent
-  - read
-  - search
-  - {{plugin_name}}_plan
-  - {{plugin_name}}_review
-  - {{plugin_name}}_issue
-  - {{plugin_name}}_finish
-  - {{plugin_name}}_show
-  {{orchestrator_extra_tools}}
----
-
-{{slot:orchestrator-task}}
-"""
-
 STUB_WORKER = """---
 description: 作業エージェント（試験で補った仮のファイル）
-tools: [read, edit, execute, search, "{{plugin_name}}_show"{{worker_extra_tools}}]
+tools:
+  - read
+  - edit
+  - execute
+  - search
+  - "{{plugin_name}}_show"
+{{worker_extra_tools}}
 ---
 
-{{slot:worker-task.worker}}
+## 作業ごとの指示
+
+{{slot:worker-task}}
 """
 
 STUB_VERIFIER = """---
@@ -965,19 +975,18 @@ description: 検証エージェント（試験で補った仮のファイル）
 tools:
   - read
   - search
-  - {{plugin_name}}_verdict
-  {{verifier_extra_tools}}
+  - "{{plugin_name}}_verdict"
+{{verifier_extra_tools}}
 ---
+
+## 作業ごとの指示
 
 {{slot:verifier-task}}
 """
 
 STUBS = {
-    "skills/_entry_/SKILL.md": STUB_ENTRY,
-    "com.github.copilot/agents/orchestrator.agent.md": STUB_ORCHESTRATOR,
     "com.github.copilot/agents/worker.agent.md": STUB_WORKER,
     "com.github.copilot/agents/verifier.agent.md": STUB_VERIFIER,
-    "com.github.copilot/extensions/_plugin_/extension.mjs": "// 入口（試験で補った仮のファイル）\n",
 }
 
 
@@ -986,7 +995,7 @@ def missing_parts():
 
 
 class RealTemplate(Base):
-    """本物のひな形で組み立て、1段目の構造の検査に通ることを見る。まだない部品は、仮のファイルで補う。"""
+    """本物のひな形で組み立て、1段目の構造の検査に通ることを見る。まだない部品（B2 が作る作業・検証のエージェント）は、仮のファイルで補う。"""
 
     @classmethod
     def setUpClass(cls):
@@ -1064,7 +1073,7 @@ class RealTemplate(Base):
         self.assertEqual((code, data["ok"], len(data["restored"])), (0, True, 1))
         self.assertEqual(run()[0], 0)
 
-    @unittest.skipIf(missing_parts(), "本物のひな形に、入口のスキル・エージェントの定義・extension.mjs がまだない（B1・B2 の後に動く）")
+    @unittest.skipIf(missing_parts(), "本物のひな形に、作業・検証のエージェントの定義がまだない（B2 の後に動く）")
     def test_the_real_script_builds_with_the_real_template(self):
         done = subprocess.run([sys.executable, "-I", SCRIPT, "build", "--hearing", self.state, "--work", self.work, "--out", self.out],
                               capture_output=True, text=True, encoding="utf-8")

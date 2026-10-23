@@ -185,6 +185,15 @@ export function readRunLog(p) {
 
 export const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+/** promise を ms ミリ秒まで待つ。間に合わなければ value を返す。使わなかったタイマーは片づける（プロセスが終わるのを遅らせない）。 */
+export function withTimeout(promise, ms, value = 'time-out') {
+  let timer;
+  const timeout = new Promise((resolve) => {
+    timer = setTimeout(() => resolve(value), ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
 /** condition が真になるまで待つ。なったらすぐ返る。timeout ミリ秒たってもならなければ失敗する。 */
 export async function until(condition, { timeout = 3000, step = 5 } = {}) {
   const limit = Date.now() + timeout;

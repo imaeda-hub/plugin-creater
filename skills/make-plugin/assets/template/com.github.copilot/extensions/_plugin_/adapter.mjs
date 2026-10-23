@@ -61,8 +61,9 @@ const strings = (list) => (Array.isArray(list) ? list.filter((v) => typeof v ===
 
 // 使おうとしているツール。ツールの名前がある求めは、その名前を添える。
 function toolKindOf(request, kind) {
-  if (kind === 'mcp') return `${request.serverName ?? ''}/${request.toolName ?? ''}`;
-  if ((kind === 'custom-tool' || kind === 'hook') && typeof request.toolName === 'string' && request.toolName !== '') return request.toolName;
+  const named = (...names) => names.filter((name) => typeof name === 'string' && name !== '').join('/');
+  if (kind === 'mcp') return named(request.serverName, request.toolName) || kind;
+  if (kind === 'custom-tool' || kind === 'hook') return named(request.toolName) || kind;
   return kind;
 }
 
@@ -378,6 +379,10 @@ export async function startAdapter({ joinSession }) {
       process.off('SIGINT', onSignal);
       try {
         unsubscribe();
+      } catch {
+        // セッションがもう切れているときは、受け取りをやめられなくてよい
+      }
+      try {
         await core.shutdown();
       } catch (error) {
         console.error('[つなぎ口] 終わる処理に失敗しました：', error);

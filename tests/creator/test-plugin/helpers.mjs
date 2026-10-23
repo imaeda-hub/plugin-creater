@@ -7,7 +7,8 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 export const REPO_ROOT = path.resolve(here, '..', '..', '..');
-export const SCRIPTS_DIR = path.join(REPO_ROOT, 'skills', 'test-plugin', 'scripts');
+// C3_SCRIPTS_DIR：わざと壊した写しを試験にかけて、試験が壊れを見つけられるかを確かめるときだけ使う（ふだんは使わない）
+export const SCRIPTS_DIR = process.env.C3_SCRIPTS_DIR || path.join(REPO_ROOT, 'skills', 'test-plugin', 'scripts');
 export const TEMPLATE_DIR = path.join(REPO_ROOT, 'skills', 'make-plugin', 'assets', 'template');
 
 /** scripts/ の中の .mjs を読み込む */
