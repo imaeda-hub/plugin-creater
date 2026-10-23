@@ -71,8 +71,13 @@ const escapeRegExp = (c) => c.replace(/[.*+?^${}()|[\]\\\/]/g, '\\$&');
 
 /**
  * 作業フォルダの根からの相対のグロブを、正規表現にする。
- * 使える書き方：* （/ 以外の0文字以上）、** （/ も含む0文字以上。**/ は0個以上のフォルダ）、? （/ 以外の1文字）、
- * [abc] [a-z] [!abc]、{md,txt}（入れ子は不可）。大文字小文字は区別する。
+ * 使える書き方：
+ *   アスタリスク1つ  / 以外の0文字以上
+ *   アスタリスク2つ  / も含む0文字以上（アスタリスク2つと / が続くときは、0個以上のフォルダ）
+ *   ?  / 以外の1文字
+ *   [abc] [a-z] [!abc]  文字の集まり
+ *   {md,txt}  どれか（入れ子は不可）
+ * 大文字小文字は区別する。
  */
 export function globToRegExp(pattern) {
   const p = normalizeRelPath(pattern);
@@ -427,9 +432,10 @@ export async function collectArtifacts(criterion, files, { readText = readArtifa
   const selected = files.filter((f) => !f.unchangedInput && (!matchers || matchers.some((m) => m.test(f.path))));
   const artifacts = [];
   let used = 0;
+  let omittedFiles = 0;
   for (const file of selected) {
     if (artifacts.length >= limits.files) {
-      artifacts.push({ path: file.path, size: file.size, kind: 'omitted', text: null, truncated: false, omitted: true, note: 'ファイルが多いので渡していない' });
+      omittedFiles += 1;
       continue;
     }
     const read = await readText(file.absPath, { maxChars: limits.perFileChars });
@@ -444,6 +450,9 @@ export async function collectArtifacts(criterion, files, { readText = readArtifa
       used += [...text].length;
       artifacts.push({ path: file.path, size: file.size, kind: read.kind, text, truncated: read.truncated || text.length < read.text.length });
     }
+  }
+  if (omittedFiles > 0) {
+    artifacts.push({ path: `（ほか${omittedFiles}件）`, size: 0, kind: 'omitted', text: null, truncated: false, omitted: true, note: 'ファイルが多いので渡していない' });
   }
   return artifacts;
 }
@@ -528,7 +537,12 @@ export async function gradeCriterion({ criterion, task, files, judge, readText =
     const artifacts = await collectArtifacts(criterion, files, { readText });
     const out = await judge({ criterion: { id: criterion.id, text: criterion.text, check: criterion.check }, task: { id: task?.id, prompt: task?.prompt }, artifacts });
     if (!isObject(out) || typeof out.pass !== 'boolean') throw new Error('判定の関数が { pass, reason } を返さなかった');
-    return { ...base, pass: out.pass, reason: clip(typeof out.reason === 'string' ? out.reason : '', REASON_MAX_CHARS) };
+    const result = { ...base, pass: out.pass, reason: clip(typeof out.reason === 'string' ? out.reason : '', REASON_MAX_CHARS) };
+    if (out.error === true) result.error = true;
+    // 判定にモデルを使った分の AI クレジット（判定の関数が数えて返す。見込みと使った分に入れる）
+    if (Number.isFinite(out.credits)) result.credits = out.credits;
+    if (typeof out.creditsStatus === 'string' && out.creditsStatus !== 'complete') result.creditsStatus = out.creditsStatus;
+    return result;
   } catch (error) {
     return { ...base, pass: false, error: true, reason: `採点できなかった: ${clip(error?.message ?? String(error), 200)}` };
   }
@@ -541,7 +555,9 @@ export function scoreOf(results) {
 
 /**
  * 実行1回の成果物を、課題のすべての基準で採点する。
- * @returns {Promise<{ results: Array, passed: number, total: number, score: number|null, errors: number }>}
+ * @returns {Promise<{ results: Array, passed: number, total: number, score: number|null, errors: number,
+ *   judgments: number, judgeCredits: number, judgeCreditsStatus: string }>}
+ *   judgments は model の基準の数、judgeCredits はその判定にモデルを使った AI クレジットの合計。
  */
 export async function gradeRun({ task, workDir, inputs = new Map(), judge, readText = readArtifactText }) {
   const files = listFiles(workDir, { inputs });
@@ -549,11 +565,15 @@ export async function gradeRun({ task, workDir, inputs = new Map(), judge, readT
   for (const criterion of task.criteria) {
     results.push(await gradeCriterion({ criterion, task, files, judge, readText }));
   }
+  const modelResults = results.filter((r) => r.grading === 'model');
   return {
     results,
     passed: results.filter((r) => r.pass).length,
     total: results.length,
     score: scoreOf(results),
     errors: results.filter((r) => r.error).length,
+    judgments: modelResults.length,
+    judgeCredits: modelResults.reduce((sum, r) => sum + (r.credits ?? 0), 0),
+    judgeCreditsStatus: modelResults.some((r) => r.creditsStatus || r.credits === undefined) ? 'partial' : 'complete',
   };
 }

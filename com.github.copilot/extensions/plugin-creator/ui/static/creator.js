@@ -31,10 +31,10 @@
 
   // ---- 小さな部品 --------------------------------------------------------------------------------
 
-  function table(columns, rows, label) {
+  function table(columns, rows, label, className = '') {
     return h(
       'div',
-      { class: 'table-wrap', tabindex: '0', role: 'region', 'aria-label': label },
+      { class: `table-wrap ${className}`.trim(), tabindex: '0', role: 'region', 'aria-label': label },
       h(
         'table',
         null,
@@ -53,6 +53,7 @@
       ['番号', '種類', '項目', '文', '出どころ', '例', '例外', 'ユーザーの言葉'],
       rows.map((k) => [k.id, k.kind, k.item, textCell(k.text), k.source, k.example ?? '', k.exception ?? '', textCell(k.quote ?? '')]),
       label,
+      'knowledge-table',
     );
   }
 
@@ -208,7 +209,9 @@
                   h('ul', { class: 'plain-list' }, t.inputs.map((f) => h('li', null, f.path, f.provisional ? [' ', badge('仮のファイル', 'warn')] : null))),
                 )
               : h('p', { class: 'help' }, '入力のファイルはありません'),
-            t.criteria.length ? h('ul', { class: 'plain-list' }, t.criteria.map((x) => h('li', null, `${x.id}：${x.text}`))) : null,
+            t.criteria.length
+              ? h('div', null, h('p', { class: 'help' }, 'この課題の合否の基準'), h('ul', { class: 'plain-list' }, t.criteria.map((x) => h('li', null, `${x.id}：${x.text}`))))
+              : null,
           ),
         ),
       ),

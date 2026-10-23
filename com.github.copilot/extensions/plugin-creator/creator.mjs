@@ -153,7 +153,9 @@ export function createCreator({
       const strings = (v) => (Array.isArray(v) ? v.map(String).filter((s) => s.trim() !== '') : []);
       rebuild = { keep: strings(a.rebuild?.keep), change: strings(a.rebuild?.change) };
     }
-    return { knowledgeIds: a.knowledgeIds.map(String), behavior: text(a.behavior), taskPath: text(a.taskPath), evalTasks, rebuild };
+    // ナレッジの番号は、重なりを除き、番号の小さい順にそろえる。見本の基準の番号（C-01 から）と、生成のときに組み立てのスクリプトが付ける番号を、同じ並びにするため
+    const knowledgeIds = [...new Set(a.knowledgeIds.map((id) => String(id).trim()))].sort((x, y) => (Number(x.replace(/^\D+/, '')) || 0) - (Number(y.replace(/^\D+/, '')) || 0) || x.localeCompare(y));
+    return { knowledgeIds, behavior: text(a.behavior), taskPath: text(a.taskPath), evalTasks, rebuild };
   }
 
   async function confirm(args) {
@@ -183,7 +185,7 @@ export function createCreator({
   /** 止まっている見本を作り直す。再開（--continue）のあと、生成前の確認が残っているときのため。失敗しても黙る */
   async function restoreSample() {
     const c = hearing.state?.confirmation;
-    if (!c || sample.url) return;
+    if (!c || sample.url || !hearing.active) return; // 生成に進んだ後は、作業の定義の案が消えている（組み立てのスクリプトが消す）ので、作り直さない
     try {
       const rows = hearing.knowledgeByIds(c.knowledgeIds);
       await prepareSample({ taskPath: c.taskPath, knowledgeRows: rows });
@@ -215,7 +217,7 @@ export function createCreator({
       } catch (error) {
         warn(`画面の URL を記録できませんでした：${errorMessage(error)}`);
       }
-      return `クリエイターの画面を開きました。次の URL をブラウザーで開いてください：${url}`;
+      return `クリエイターの画面の用意ができました。次の URL をブラウザーで開いてください：${url}`;
     },
 
     async state(args) {

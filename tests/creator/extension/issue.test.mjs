@@ -71,13 +71,14 @@ process.stdin.on('end', () => {
       const title = '$(touch gh-was-here) `id` "x" ; echo hi';
       const body = '本文\n$(touch gh-was-here)\n行3';
       const env = { PATH: process.env.PATH, FAKE_GH_LOG: log };
-      const text = await fileIssue({ title, body }, { run: (args, input) => runGh(args, input, { command: gh, env }) });
+      // シェルが解釈すると、今のフォルダに touch が走る。試験用の空のフォルダで動かし、リポジトリを汚さない
+      const text = await fileIssue({ title, body }, { run: (args, input) => runGh(args, input, { command: gh, env, cwd: dir }) });
       assert.equal(text, `起票しました：${ISSUE_URL}`);
       const seen = JSON.parse(fs.readFileSync(log, 'utf8'));
       assert.deepEqual(seen.argv, ghArguments(title));
       assert.equal(seen.input, body);
       assert.deepEqual(seen.tokens, [], '環境変数（GITHUB_TOKEN など）を求めない・渡さない');
-      assert.ok(!fs.existsSync(path.join(dir, 'gh-was-here')) && !fs.existsSync('gh-was-here'), 'シェルが解釈した');
+      assert.ok(!fs.existsSync(path.join(dir, 'gh-was-here')), 'シェルが解釈した');
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
     }

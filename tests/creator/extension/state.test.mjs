@@ -161,7 +161,7 @@ describe('状態取得ツール（plugin-creator_state）', () => {
     await withRun(async (run) => {
       const a = await run.call('open');
       const b = await run.call('open');
-      assert.match(a, /^クリエイターの画面を開きました。次の URL をブラウザーで開いてください：http:\/\/127\.0\.0\.1:\d+\/\?k=/);
+      assert.match(a, /^クリエイターの画面の用意ができました。次の URL をブラウザーで開いてください：http:\/\/127\.0\.0\.1:\d+\/\?k=/);
       assert.equal(a, b);
     });
   });
@@ -268,6 +268,40 @@ describe('再開と、記録の置き場所', () => {
     }
   });
 
+  test('REQ-027 再開のとき、生成前の確認が残っていれば、状態取得ツールが見本も作り直す。生成に進んだ後は作り直さない', async () => {
+    const home = tempDir('restore-home');
+    const cwd = tempDir('restore-cwd');
+    try {
+      const first = await startForTest({ sessionId: 'session-restore', home, cwd });
+      await readyToConfirm(first);
+      await first.call('confirm', confirmArgs());
+      await first.cleanup();
+
+      // 起動し直した直後：見本のサーバーはまだない。状態取得ツールを呼ぶと、作業の定義の案から作り直す
+      const second = await startForTest({ sessionId: 'session-restore', home, cwd });
+      assert.equal(second.creator.sample.url, null);
+      await second.call('state');
+      const sampleUrl = second.creator.sample.url;
+      assert.match(sampleUrl, /^http:\/\/127\.0\.0\.1:\d+\/\?k=/);
+      assert.equal((await fetchState(sampleUrl)).status, 200);
+      const view = await (await fetchState(urlOf(await second.call('state')))).json();
+      assert.equal(view.confirmation.sampleUrl, sampleUrl);
+      await second.call('progress', { stage: '生成', approvalQuote: '作る' });
+      await second.cleanup();
+
+      // 生成に進んだ後（作業の定義の案は、組み立てのスクリプトが消す）：作り直さず、失敗の知らせも出さない
+      fs.rmSync(path.join(cwd, '.plugin-creator-work'), { recursive: true });
+      const third = await startForTest({ sessionId: 'session-restore', home, cwd });
+      await third.call('state');
+      assert.equal(third.creator.sample.url, null);
+      assert.deepEqual(third.warnings, []);
+      await third.cleanup();
+    } finally {
+      fs.rmSync(home, { recursive: true, force: true });
+      fs.rmSync(cwd, { recursive: true, force: true });
+    }
+  });
+
   test('REQ-015 記録のファイルが壊れているときは、上書きせず、直すよう知らせて断る', async () => {
     const home = tempDir('broken-home');
     const cwd = tempDir('broken-cwd');
@@ -306,16 +340,17 @@ describe('再開と、記録の置き場所', () => {
           await run.fake.askUser({ message: '質問', answer: 'User responded: はい' });
           await run.hook('onUserPromptSubmitted', { prompt: '発言' });
 
-          // 作業の定義の案だけは、確認の中で作業エージェントが書く。それ以外を、このエクステンションは作業フォルダに書かない
+          // 作業の定義の案と結果のファイルは、作業エージェントや試験の入口が書く。それ以外を、このエクステンションは作業フォルダに書かない
           const draft = writeDraft(cwd);
+          const resultFile = makeResultFile(cwd);
           const treeBefore = listTree(cwd);
-          await run.call('results', { paths: [makeResultFile(cwd)] });
-          const treeWithResult = listTree(cwd);
+          assert.ok(treeBefore.includes('.plugin-creator-work/draft/task.json') && treeBefore.includes('latest.json'));
+          await run.call('results', { paths: [resultFile] });
           await run.call('confirm', confirmArgs());
           await run.call('state', { include: '振り返りの材料' });
           await run.call('progress', { stage: '生成', approvalQuote: '作る' });
-          assert.deepEqual(listTree(cwd), treeWithResult, '作業フォルダにファイルが増えた');
-          assert.ok(treeBefore.includes('.plugin-creator-work/draft/task.json'));
+          await run.call('open');
+          assert.deepEqual(listTree(cwd), treeBefore, '作業フォルダにファイルが増えた');
           assert.ok(fs.existsSync(draft));
 
           const tree = listTree(run.home);

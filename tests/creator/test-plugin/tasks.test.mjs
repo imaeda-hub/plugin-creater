@@ -1,0 +1,112 @@
+// EVAL の課題の読み込みと、作業フォルダの用意（skills/test-plugin/scripts/tasks.mjs）の試験。
+// 確かめる要件：REQ-038（課題と基準の置き場所と形）、REQ-041（実行のたびにまっさらな作業フォルダ）。
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+import { after, describe, test } from 'node:test';
+
+import { cleanupTemp, loadScript, makeTemp, sampleTask, tempWith } from './helpers.mjs';
+
+const tasks = await loadScript('tasks.mjs');
+const grade = await loadScript('grade.mjs');
+after(cleanupTemp);
+
+const plugin = (files) => tempWith(files, 'c3-plugin-');
+const evalJson = (task) => JSON.stringify(task, null, 2);
+
+describe('課題の読み込み', () => {
+  test('REQ-038 tests/eval/<課題>/eval.json を、フォルダの名前の順に読む', () => {
+    const dir = plugin({
+      'tests/eval/T-02/eval.json': evalJson(sampleTask({ id: 'T-02' })),
+      'tests/eval/T-01/eval.json': evalJson(sampleTask({ id: 'T-01' })),
+      'tests/eval/README.md': '課題ではないファイル',
+    });
+    const out = tasks.loadTasks(dir);
+    assert.deepEqual(out.problems, []);
+    assert.deepEqual(out.tasks.map((t) => t.id), ['T-01', 'T-02']);
+    assert.equal(out.tasks[0].dir, path.join(dir, 'tests', 'eval', 'T-01'));
+    assert.equal(out.tasks[0].json.criteria.length, 2);
+  });
+
+  test('REQ-038 課題がないとき、eval.json がないとき、JSON が壊れているときは、そう伝える', () => {
+    assert.match(tasks.loadTasks(plugin({})).problems.join('\n'), /課題のフォルダがない/);
+    assert.match(tasks.loadTasks(plugin({ 'tests/eval/.keep': '' })).problems.join('\n'), /課題が1つもない/);
+    const noJson = tasks.loadTasks(plugin({ 'tests/eval/T-01/inputs/a.txt': 'x' }));
+    assert.match(noJson.problems.join('\n'), /tests\/eval\/T-01\/eval\.json がない/);
+    const broken = tasks.loadTasks(plugin({ 'tests/eval/T-01/eval.json': '{' }));
+    assert.match(broken.problems.join('\n'), /tests\/eval\/T-01\/eval\.json を JSON として読めない/);
+  });
+
+  test('REQ-038 誤りのある課題は読まず、誤りの文を返す。ほかの課題は読む', () => {
+    const bad = sampleTask({ id: 'T-02', criteria: [{ id: 'C-01', text: 'x', grading: 'program', check: { type: 'nothing' } }] });
+    const out = tasks.loadTasks(plugin({ 'tests/eval/T-01/eval.json': evalJson(sampleTask()), 'tests/eval/T-02/eval.json': evalJson(bad) }));
+    assert.deepEqual(out.tasks.map((t) => t.id), ['T-01']);
+    assert.match(out.problems.join('\n'), /tests\/eval\/T-02\/eval\.json.*type「nothing」は使えない/);
+  });
+
+  test('REQ-038 課題の id が重なっていると誤りにする', () => {
+    const out = tasks.loadTasks(plugin({ 'tests/eval/A/eval.json': evalJson(sampleTask()), 'tests/eval/B/eval.json': evalJson(sampleTask()) }));
+    assert.deepEqual(out.tasks.map((t) => t.dir.split(path.sep).at(-1)), ['A']);
+    assert.match(out.problems.join('\n'), /id「T-01」が、tests\/eval\/A\/eval\.json と重なっている/);
+  });
+
+  test('REQ-038 入力のファイルがないとき、シンボリックリンクのときは誤りにする', () => {
+    const dir = plugin({
+      'tests/eval/T-01/eval.json': evalJson(sampleTask({ inputs: ['inputs/前回.docx'] })),
+      'tests/eval/T-02/eval.json': evalJson(sampleTask({ id: 'T-02', inputs: ['inputs/link.txt'] })),
+      'tests/eval/T-03/eval.json': evalJson(sampleTask({ id: 'T-03', inputs: ['inputs'] })),
+      'tests/eval/T-03/inputs/real.txt': 'x',
+    });
+    const outside = tempWith({ 'secret.txt': 'S' });
+    fs.mkdirSync(path.join(dir, 'tests/eval/T-02/inputs'), { recursive: true });
+    fs.symlinkSync(path.join(outside, 'secret.txt'), path.join(dir, 'tests/eval/T-02/inputs/link.txt'));
+    fs.symlinkSync(path.join(outside, 'secret.txt'), path.join(dir, 'tests/eval/T-03/inputs/link2.txt'));
+    const out = tasks.loadTasks(dir);
+    const text = out.problems.join('\n');
+    assert.match(text, /T-01.*入力「inputs\/前回\.docx」が見つからない/);
+    assert.match(text, /T-02.*入力「inputs\/link\.txt」はシンボリックリンク/);
+    assert.match(text, /T-03.*入力「inputs」の中に、シンボリックリンクがある（inputs\/link2\.txt）/);
+    assert.equal(out.tasks.length, 0);
+  });
+
+  test('REQ-040 基準の数を、プログラムで採点するものとモデルが判定するものに分けて数える', () => {
+    const task = sampleTask();
+    task.criteria.push({ id: 'C-03', text: '読みやすい', grading: 'model' });
+    assert.deepEqual(tasks.countCriteria({ json: task }), { total: 3, program: 2, model: 1 });
+  });
+});
+
+describe('作業フォルダ', () => {
+  test('REQ-041 実行のたびに、課題の入力のファイルだけを写した、まっさらな作業フォルダを作る', () => {
+    const dir = plugin({
+      'tests/eval/T-01/eval.json': evalJson(sampleTask({ inputs: ['inputs/前回の週報.docx', 'refs'] })),
+      'tests/eval/T-01/inputs/前回の週報.docx': 'docx の中身',
+      'tests/eval/T-01/inputs/使わないファイル.txt': '写さない',
+      'tests/eval/T-01/refs/a.md': 'A',
+      'tests/eval/T-01/refs/sub/b.md': 'B',
+    });
+    const [task] = tasks.loadTasks(dir).tasks;
+    const target = path.join(makeTemp(), 'T-01-with-1');
+    const { workDir, inputs } = tasks.prepareWorkDir({ task, dir: target });
+    assert.equal(workDir, fs.realpathSync(target));
+    const listed = grade.listFiles(workDir).map((f) => f.path);
+    assert.deepEqual(listed, ['inputs/前回の週報.docx', 'refs/a.md', 'refs/sub/b.md']);
+    assert.deepEqual([...inputs.keys()].sort(), listed);
+    assert.equal(inputs.get('refs/sub/b.md'), grade.sha256OfFile(path.join(workDir, 'refs/sub/b.md')));
+    // 2回目は別のフォルダで、前の実行の成果物は入らない
+    fs.writeFileSync(path.join(workDir, 'out.md'), '前の実行の成果物');
+    const second = tasks.prepareWorkDir({ task, dir: path.join(makeTemp(), 'T-01-with-2') });
+    assert.equal(grade.listFiles(second.workDir).some((f) => f.path === 'out.md'), false);
+  });
+
+  test('REQ-041 入力がない課題は、空の作業フォルダになる。空でないフォルダは使わない', () => {
+    const dir = plugin({ 'tests/eval/T-01/eval.json': evalJson(sampleTask({ inputs: [] })) });
+    const [task] = tasks.loadTasks(dir).tasks;
+    const target = path.join(makeTemp(), 'w');
+    const { workDir, inputs } = tasks.prepareWorkDir({ task, dir: target });
+    assert.deepEqual(fs.readdirSync(workDir), []);
+    assert.equal(inputs.size, 0);
+    fs.writeFileSync(path.join(workDir, 'x'), '1');
+    assert.throws(() => tasks.prepareWorkDir({ task, dir: workDir }), /作業フォルダが空ではない/);
+  });
+});

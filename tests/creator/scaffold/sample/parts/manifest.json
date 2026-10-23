@@ -1,0 +1,13 @@
+{
+  "plugin_name": "weekly-report",
+  "plugin_description": "毎週の記録から、部長宛ての週報を作るプラグイン。",
+  "entry_skill": {
+    "name": "weekly-report",
+    "description": "毎週の記録から、部長宛ての週報を下書きから仕上げまで作る。「週報を作って」「先週分の週報をまとめて」と頼まれたときに使う。議事録や月報の作成には使わない。"
+  },
+  "workers": [
+    { "agent": "worker", "label": "週報を書く係", "extra_tools": [] }
+  ],
+  "verifier": { "extra_tools": [] },
+  "orchestrator": { "extra_tools": [] }
+}

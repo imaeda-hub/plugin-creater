@@ -268,6 +268,7 @@ export function createHearing({ store, sessionId, clock }) {
         throw new Refusal(`ナレッジ ${existing.id} を「候補」には戻せません。使える状態：${listNames(KNOWLEDGE_STATUSES.filter((s) => s.key !== 'candidate'))}`);
       }
       Object.assign(existing, fields, { quote: text(e.quote), updatedAt: iso() });
+      existing.itemName = itemIndex.nameOf(existing.item); // 項目を直したときも、日本語の名前をそろえる
       updated.push(existing.id);
       return;
     }

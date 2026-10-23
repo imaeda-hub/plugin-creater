@@ -283,6 +283,10 @@ describe('決まったこと（plugin-creator_record）', () => {
       assert.equal(after.itemTouchedAtRecord, before.itemTouchedAtRecord);
       assert.notEqual(after.updatedAt, before.updatedAt);
 
+      // 項目を直したときは、日本語の項目の名前もそろう
+      await run.call('record', { knowledge: [{ id: 'K-01', item: '成果物', quote: '成果物の決まりだった' }] });
+      assert.deepEqual([run.readState().knowledge[0].item, run.readState().knowledge[0].itemName], ['output', '成果物']);
+
       const back = await run.callSafe('record', { knowledge: [{ id: 'K-01', status: '候補', quote: 'x' }] });
       assert.equal(back.ok, false);
       assert.match(back.error, /ナレッジ K-01 を「候補」には戻せません/);
@@ -537,6 +541,25 @@ describe('生成前の確認（plugin-creator_confirm）と、段階「生成」
       const ok = await run.call('confirm', confirmArgs({ rebuild: { keep: ['週報の書き方'], change: ['画面を足す'] } }));
       assert.match(ok, /受け付けました/);
       assert.deepEqual(run.readState().confirmation.rebuild, { keep: ['週報の書き方'], change: ['画面を足す'] });
+    });
+  });
+
+  test('REQ-020 示すナレッジの番号は、重なりを除き、番号の小さい順にそろえて残す（見本の基準の並びと、生成の基準の並びを同じにする）', async () => {
+    await withRun(async (run) => {
+      await readyToConfirm(run);
+      await run.call('record', { knowledge: [knowledge({ kind: '合否の決め方', item: '合否の決め方', text: '二つ目の基準', quote: 'もう1つ' })] });
+      const text = await run.call('confirm', confirmArgs({ knowledgeIds: ['K-03', 'K-01', 'K-02', 'K-03'], evalTasks: [{ prompt: 'x', criteria: ['K-03', 'K-02'] }] }));
+      assert.deepEqual(run.readState().confirmation.knowledgeIds, ['K-01', 'K-02', 'K-03']);
+
+      // 見本の基準は、番号の小さい順：C-01 が K-02、C-02 が K-03
+      const sampleUrl = new URL(/見本：(\S+)/.exec(text)[1]);
+      const api = (pathname, method = 'GET') => fetch(`${sampleUrl.origin}${pathname}?k=${sampleUrl.searchParams.get('k')}`, { method, headers: { 'Content-Type': 'application/json' }, body: method === 'POST' ? '{}' : undefined });
+      await api('/api/start', 'POST');
+      const state = await (await api('/api/state')).json();
+      assert.deepEqual(
+        state.run.iterations[0].criteria.map((c) => [c.id, c.text]),
+        [['C-01', '見出しが「今週の実績」「来週の予定」の順に並んでいれば合格'], ['C-02', '二つ目の基準']],
+      );
     });
   });
 

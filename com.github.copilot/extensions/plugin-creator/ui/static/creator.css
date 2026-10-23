@@ -86,3 +86,27 @@
 .sample-link {
   font-weight: 700;
 }
+
+/* 表は、狭い画面で列がつぶれて1文字ずつ折れないよう、最小の幅を決める（入れ物の中で横に動かせる）。 */
+.table-wrap table {
+  min-width: max(100%, 36rem);
+}
+
+/* ナレッジの表：番号は折り返さない。種類・項目・出どころの列には、読める幅を残す */
+.knowledge-table table {
+  min-width: max(100%, 60rem);
+}
+
+.knowledge-table th:first-child,
+.knowledge-table td:first-child {
+  white-space: nowrap;
+}
+
+.knowledge-table th:nth-child(2),
+.knowledge-table td:nth-child(2),
+.knowledge-table th:nth-child(3),
+.knowledge-table td:nth-child(3),
+.knowledge-table th:nth-child(5),
+.knowledge-table td:nth-child(5) {
+  min-width: 7.5rem;
+}

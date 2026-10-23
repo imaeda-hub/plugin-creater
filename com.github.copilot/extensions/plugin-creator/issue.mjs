@@ -31,7 +31,7 @@ export function ghArguments(title, repository = ISSUE_REPOSITORY) {
  * gh を動かす（シェルを通さない）。標準入力に本文を書いて閉じる。
  * @returns {Promise<{ code: number|null, stdout: string, stderr: string, timedOut: boolean, notFound: boolean }>}
  */
-export function runGh(args, input, { timeoutMs = GH_TIMEOUT_MS, command = 'gh', env = process.env } = {}) {
+export function runGh(args, input, { timeoutMs = GH_TIMEOUT_MS, command = 'gh', env = process.env, cwd } = {}) {
   return new Promise((resolve) => {
     let stdout = '';
     let stderr = '';
@@ -45,7 +45,7 @@ export function runGh(args, input, { timeoutMs = GH_TIMEOUT_MS, command = 'gh', 
     };
     let child;
     try {
-      child = spawn(command, args, { shell: false, stdio: ['pipe', 'pipe', 'pipe'], env, windowsHide: true });
+      child = spawn(command, args, { shell: false, stdio: ['pipe', 'pipe', 'pipe'], env, cwd, windowsHide: true });
     } catch (error) {
       resolve({ code: null, stdout: '', stderr: String(error.message), timedOut: false, notFound: error.code === 'ENOENT' });
       return;

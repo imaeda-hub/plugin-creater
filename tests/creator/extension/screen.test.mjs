@@ -10,7 +10,7 @@ import path from 'node:path';
 import { describe, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
-import { EXTENSION_DIR, TEMPLATE_EXTENSION_DIR, answerEverything, answers, confirmArgs, internalSymbolsIn, knowledge, readyToConfirm, tempDir, withRun, writeDraft } from './helpers.mjs';
+import { EXTENSION_DIR, TEMPLATE_EXTENSION_DIR, confirmArgs, internalSymbolsIn, knowledge, readyToConfirm, tempDir, withRun } from './helpers.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 

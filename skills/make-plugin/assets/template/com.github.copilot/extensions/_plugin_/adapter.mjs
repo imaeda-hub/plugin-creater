@@ -103,6 +103,8 @@ function timeOf(event) {
   return Number.isFinite(at) ? at : Date.now();
 }
 
+const hasRequestId = (data) => typeof data.requestId === 'string' && data.requestId !== '';
+
 function createEventConverter({ pluginName, ownAgentNames }) {
   const prefix = `${pluginName}:`;
   const parents = new Map(); // エージェントの番号 → 親の番号（tasks.list に親の番号がないため、開始のイベントから覚える）
@@ -165,26 +167,23 @@ function createEventConverter({ pluginName, ownAgentNames }) {
         return { type: 'tool.completed', at, agentId, toolCallId: data.toolCallId, toolName, success: data.success, error };
       }
 
+      // 確認の待ち。始めと終わりを requestId で結ぶので、requestId がないイベントは渡さない。
       case 'permission.requested':
-        return {
-          type: 'wait.started',
-          at,
-          requestId: data.requestId,
-          agentId,
-          kind: 'permission',
-          detail: describePermission(data.permissionRequest),
-          resolvedByHook: Boolean(data.resolvedByHook),
-        };
+        return hasRequestId(data)
+          ? { type: 'wait.started', at, requestId: data.requestId, agentId, kind: 'permission', detail: describePermission(data.permissionRequest), resolvedByHook: Boolean(data.resolvedByHook) }
+          : null;
       case 'user_input.requested':
-        return { type: 'wait.started', at, requestId: data.requestId, agentId, kind: 'question', detail: { question: String(data.question ?? '') }, resolvedByHook: false };
+        return hasRequestId(data)
+          ? { type: 'wait.started', at, requestId: data.requestId, agentId, kind: 'question', detail: { question: String(data.question ?? '') }, resolvedByHook: false }
+          : null;
       case 'session_limits_exhausted.requested':
-        return { type: 'wait.started', at, requestId: data.requestId, agentId, kind: 'limit', detail: {}, resolvedByHook: false };
+        return hasRequestId(data) ? { type: 'wait.started', at, requestId: data.requestId, agentId, kind: 'limit', detail: {}, resolvedByHook: false } : null;
       case 'permission.completed':
-        return { type: 'wait.ended', at, requestId: data.requestId, kind: 'permission' };
+        return hasRequestId(data) ? { type: 'wait.ended', at, requestId: data.requestId, kind: 'permission' } : null;
       case 'user_input.completed':
-        return { type: 'wait.ended', at, requestId: data.requestId, kind: 'question' };
+        return hasRequestId(data) ? { type: 'wait.ended', at, requestId: data.requestId, kind: 'question' } : null;
       case 'session_limits_exhausted.completed':
-        return { type: 'wait.ended', at, requestId: data.requestId, kind: 'limit', action: data.response?.action };
+        return hasRequestId(data) ? { type: 'wait.ended', at, requestId: data.requestId, kind: 'limit', action: data.response?.action } : null;
       default:
         return null;
     }
