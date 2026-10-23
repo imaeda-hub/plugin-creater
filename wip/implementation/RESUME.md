@@ -91,6 +91,9 @@
 - B3：EVAL の回数の既定は、testing.md 8.2 のとおり未決（費用を測ってから）。仮に、あり・なしを3回ずつにし、承認の問いで変えられる。
 - C1：上位の文書で直すこと（tasks/C1.md の同じ節）。hearing.md 7.1 に state.json の欄の名前を書く。generated-plugin-structure.md 9章に _confirm の引数と断る順、見本が別のサーバーであることを書く。hearing.md 6.3 に「確認で示した後にナレッジが変わったら、示し直すまで生成に進めない」を足した（設計書にない確かめ）。ツールに defer: "never" を足した（BLUEPRINT 7章）。
 - C1：実機でしか確かめられないこと：ハイフンを含むツール名 plugin-creator_open の受け入れ、defer: "never"、onPostToolUse の toolArgs・toolResult の形、サブエージェントのコンパクションのイベント（H2）。
+- B2：上位の文書で直すこと（tasks/B2.md の同じ節）。設計書 4.5 と BLUEPRINT 3.1 に「担当」に入れる項目（agentDisplayName）を書く。BLUEPRINT 8章に、足した決まった値（entry_skill_name、entry_skill_description、orchestrator_extra_tools、worker_extra_tools、verifier_extra_tools、worker_agents）と worker-task の対応を書く。設計書 4.8 に「計画の記録は、その試行の作業エージェントを呼ぶ前にする」を決まりとして書く。
+- B2：土台の ui/static/render.js に JSDoc の `{{ el: … }}` があるので、土台は差し込み口の置き換えと「{{ が残っていないか」の確かめから外す（C2 に引き継ぎ済み）。
+- B2→D1：統括の本文の task の引数の名前（agent_type、mode）は、Claude Code の Agent の引数と違うので、変換で置き換わらない。
 - R2：`requestSandboxPermissive` を「サンドボックスの外で動かす」と示さない（generated-plugin-structure.md 6.3）。tasks.list には shell と client のタスクも入る。
 
 ## 後の仕事に渡すこと（作業のエージェントの報告から）
@@ -135,7 +138,8 @@
 | A4 | afd1d4ef4c0e6d043（完了） |
 | C1 | ad77758fe8b6dfff7（完了。続きとして、B3 の説明の文の取り込みと、候補の出どころを頼んだ） |
 | B3（書く） | a85fc7bf7ada9e044（完了。次は点検：briefs/review.md） |
-| B2 | ae0285d8193b30123（指示は briefs/B2.md） |
+| B2 | ae0285d8193b30123（完了） |
+| B2 の点検 | design ab9b178fb21c516c7、format a601e2263da67d231、models a8867cdfa37807567、language af819d6c8db5a58b7。指摘は reviews/B2-<観点>.md。全部そろったら、直す担当（Opus）を立てる |
 | B3 の点検 | design（＋constitution）a2216a7d623ca20ec、format a0beeebe3a6691ad6、models a036d2c25c4d5d2e8、language ab1ea81ee5665979f。指摘は reviews/B3-<観点>.md。全部そろったら、直す担当（Opus）を立てる |
 | B1 | a7b491f44bb4b21eb（指示は briefs/B1.md） |
 | C2 | ab07d1229ed5e8971（指示は briefs/C2.md） |
