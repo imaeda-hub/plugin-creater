@@ -2,6 +2,7 @@
 // 確かめる要件：REQ-041（モデルが判定する分も、見込みと使った AI クレジットに入る）、REQ-048（道具の置き場所）。
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { after, describe, test } from 'node:test';
 
@@ -157,7 +158,7 @@ describe('道具の置き場所と読み込み', () => {
   test('REQ-048 EVAL の道具は <COPILOT_HOME>/plugin-data/plugin-creator/tools/ に置く（COPILOT_HOME がなければ ~/.copilot）', () => {
     assert.equal(toolsDir({ COPILOT_HOME: '/h/.copilot' }), path.join('/h/.copilot', 'plugin-data', 'plugin-creator', 'tools'));
     assert.equal(copilotHome({ COPILOT_HOME: '/x' }), '/x');
-    assert.equal(copilotHome({}), path.join(process.env.HOME ?? '', '.copilot').replace(/^$/, copilotHome({})));
+    assert.equal(copilotHome({}), path.join(os.homedir(), '.copilot'));
     assert.match(toolsDir({}), /\.copilot[\\/]plugin-data[\\/]plugin-creator[\\/]tools$/);
   });
 

@@ -18,7 +18,7 @@ export function toolsDir(env = process.env) {
 /** 道具が足りないときの誤り。missing は { name, reason } の並び */
 export class ToolsMissingError extends Error {
   constructor(dir, missing) {
-    super(`EVAL の道具が足りません（${missing.map((m) => m.name).join('、')}）。python3 check_tools.py --plugin <生成プラグインのフォルダ> --scope eval --install で入れてください（入れる場所：${dir}）。`);
+    super(`EVAL の道具が足りません（${missing.map((m) => (m.reason && m.reason !== '入っていません' ? `${m.name}：${m.reason}` : m.name)).join('、')}）。python3 check_tools.py --plugin <生成プラグインのフォルダ> --scope eval --install で入れてください（入れる場所：${dir}）。`);
     this.name = 'ToolsMissingError';
     this.dir = dir;
     this.missing = missing;

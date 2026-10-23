@@ -112,6 +112,7 @@ async function tryList(call) {
  * @param {string} [opts.workRoot] 作業フォルダを作る場所（省くと OS の一時フォルダの下）
  * @param {object} [opts.env] ランタイムに渡す環境
  * @param {(text: string) => void} [opts.log] 進み具合
+ * @param {AbortSignal} [opts.signal] 外からの中断の合図
  * @returns {Promise<object>} 結果（result.json と同じ）
  */
 export async function runEval(opts) {
@@ -169,6 +170,11 @@ export async function runEval(opts) {
 
   save('running');
 
+  // 外からの中断（Ctrl+C など）。動いている実行は閉じて、結果は stopped で書く
+  const interrupt = () => stop('interrupted', '試験が中断されました（Ctrl+C などで止められました）。');
+  if (opts.signal?.aborted) interrupt();
+  else opts.signal?.addEventListener('abort', interrupt, { once: true });
+
   try {
     const prepared = await screen.prepare();
     state.browser = prepared?.channel ?? null;
@@ -193,6 +199,7 @@ export async function runEval(opts) {
       }
     }
   }
+  opts.signal?.removeEventListener('abort', interrupt);
   return save(state.stopped ? 'stopped' : 'completed');
 }
 

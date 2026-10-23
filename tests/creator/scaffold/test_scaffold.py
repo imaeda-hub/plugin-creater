@@ -696,6 +696,89 @@ class EvalFiles(Base):
         self.assertEqual(self.read("data/raw.json"), raw)
 
 
+class EvalInputs(Base):
+    """EVAL の課題の入力の実物のファイル（manifest.json の eval_inputs。統括の決定）。"""
+
+    def real_file(self, name="前回の週報.txt", text="先週の実物\n"):
+        path = os.path.join(self.root, "実物", name)
+        self.write(path, text)
+        return path
+
+    def set_inputs(self, *items):
+        self.edit_manifest(lambda m: m.update(eval_inputs=list(items)))
+
+    def test_REQ_038_real_files_are_copied_to_the_places_named_in_to(self):
+        a = self.real_file()
+        b = self.real_file("memo/二つ目.csv", "a,b\n1,2\n")
+        self.set_inputs({"from": a, "to": "tests/eval/T-01/inputs/前回の週報.txt"}, {"from": b, "to": "tests/eval/T-01/inputs/sub/二つ目.csv"})
+        result = self.build()
+        self.assertEqual(self.read("tests/eval/T-01/inputs/前回の週報.txt"), "先週の実物\n")
+        self.assertEqual(self.read("tests/eval/T-01/inputs/sub/二つ目.csv"), "a,b\n1,2\n")
+        self.assertEqual(result["eval_inputs"], ["tests/eval/T-01/inputs/前回の週報.txt", "tests/eval/T-01/inputs/sub/二つ目.csv"])
+        self.assertTrue(os.path.isfile(a))   # 実物は動かさない
+
+    def test_REQ_038_a_binary_file_is_copied_as_it_is(self):
+        data = bytes(range(256)) * 3
+        path = os.path.join(self.root, "実物", "x.bin")
+        os.makedirs(os.path.dirname(path))
+        with open(path, "wb") as f:
+            f.write(data)
+        self.set_inputs({"from": path, "to": "tests/eval/T-01/inputs/x.bin"})
+        self.build()
+        self.assertEqual(self.read_bytes("tests/eval/T-01/inputs/x.bin"), data)
+
+    def test_REQ_038_files_that_do_not_exist_are_listed_and_nothing_is_made(self):
+        a = self.real_file()
+        gone1, gone2 = os.path.join(self.root, "ない1.docx"), os.path.join(self.root, "ない2.docx")
+        self.set_inputs({"from": gone1, "to": "tests/eval/T-01/inputs/a.docx"}, {"from": a, "to": "tests/eval/T-01/inputs/b.txt"},
+                        {"from": gone2, "to": "tests/eval/T-01/inputs/c.docx"})
+        problems = self.refusal()
+        self.assertMentions(problems, gone1, gone2, "がありません")
+        self.assertNotIn(a, "\n".join(problems))
+
+    def test_REQ_038_bad_items_are_refused(self):
+        ok = "tests/eval/T-01/inputs/a.txt"
+        cases = [
+            (lambda a: {"from": "相対/パス.txt", "to": ok}, "絶対パス"),
+            (lambda a: {"from": os.path.dirname(a), "to": ok}, "ファイルではありません"),
+            (lambda a: {"from": a, "to": "tests/eval/T-01/other/a.txt"}, "tests/eval/<課題>/inputs/<名前>"),
+            (lambda a: {"from": a, "to": "tests/eval/T-01/inputs/../../../x.txt"}, "tests/eval/<課題>/inputs/<名前>"),
+            (lambda a: {"from": a, "to": "/tests/eval/T-01/inputs/a.txt"}, "tests/eval/<課題>/inputs/<名前>"),
+            (lambda a: {"from": a, "to": "README.md"}, "tests/eval/<課題>/inputs/<名前>"),
+            (lambda a: {"from": a}, "from（実物の絶対パス）と to"),
+            (lambda a: {"from": a, "to": ok, "extra": 1}, "from（実物の絶対パス）と to"),
+        ]
+        for make, words in cases:
+            with self.subTest(words=words):
+                self.setUp()
+                self.set_inputs(make(self.real_file()))
+                self.assertMentions(self.refusal(), "eval_inputs", words)
+
+    def test_REQ_038_the_same_place_twice_is_refused(self):
+        a = self.real_file()
+        self.set_inputs({"from": a, "to": "tests/eval/T-01/inputs/a.txt"}, {"from": a, "to": "tests/eval/T-01/inputs/a.txt"})
+        self.assertMentions(self.refusal(), "重なっています")
+
+    def test_REQ_038_a_place_that_parts_files_also_writes_is_refused(self):
+        a = self.real_file()
+        self.set_inputs({"from": a, "to": "tests/eval/T-01/inputs/memo.txt"})   # 見本の parts/files にも同じ場所がある
+        self.assertMentions(self.refusal(), "tests/eval/T-01/inputs/memo.txt", "parts/files/", "eval_inputs")
+
+    def test_REQ_038_a_real_file_cannot_overwrite_a_template_file(self):
+        a = self.real_file()
+        self.write(self.tmpl("tests/eval/T-01/inputs/from-template.txt"), "ひな形のファイル")
+        self.set_inputs({"from": a, "to": "tests/eval/T-01/inputs/from-template.txt"})
+        self.assertMentions(self.refusal(), "from-template.txt", "書き換えられません")
+
+    def test_eval_inputs_must_be_a_list(self):
+        self.edit_manifest(lambda m: m.update(eval_inputs="x"))
+        self.assertMentions(self.refusal(), "eval_inputs", "一覧")
+
+    def test_without_eval_inputs_nothing_is_copied(self):
+        result = self.build()
+        self.assertEqual(result["eval_inputs"], [])
+
+
 class Knowledge(Base):
     """ナレッジの一覧（REQ-039、BLUEPRINT 4.2）。"""
 
@@ -780,6 +863,15 @@ class PartsFiles(Base):
         self.write(self.part("files/.git/HEAD"), "x")
         problems = self.refusal()
         self.assertMentions(problems, "link.txt", "シンボリックリンク", ".git")
+
+    def test_a_symlinked_folder_is_refused(self):
+        elsewhere = os.path.join(self.root, "elsewhere")
+        os.makedirs(elsewhere)
+        try:
+            os.symlink(elsewhere, self.part("files/linkdir"))
+        except (OSError, NotImplementedError):
+            self.skipTest("シンボリックリンクを作れない環境")
+        self.assertMentions(self.refusal(), "linkdir", "シンボリックリンク")
 
     def test_caches_in_the_parts_are_ignored(self):
         self.write(self.part("files/scripts/__pycache__/a.pyc"), "x")
