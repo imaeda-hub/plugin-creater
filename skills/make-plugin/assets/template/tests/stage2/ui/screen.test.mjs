@@ -108,7 +108,7 @@ const EVIL = {
 
 /**
  * 画面を起動してブラウザーで開き、fn に渡す。終わったら片付ける。
- * options：state（初めの状態）、viewport、task（作業の定義）、setup(core, { work })、contextOptions、
+ * options：state（初めの状態）、viewport、task（作業の定義。displays が状態の setup.taskDisplays に入る）、setup(core, { work })、contextOptions、
  * allowErrors（わざと断られる操作を試すときに、出てよいエラーの形。true なら何でも、正規表現の配列ならその形だけ）
  */
 async function withScreen(options, fn) {
@@ -117,13 +117,16 @@ async function withScreen(options, fn) {
   tempDirs.push(work);
   fs.writeFileSync(path.join(work, 'chart.png'), makePng(40, 20));
   fs.writeFileSync(path.join(work, 'report.md'), '# 週報');
-  const taskPath = path.join(work, 'task.json');
-  fs.writeFileSync(taskPath, JSON.stringify(task));
   const core = createFakeCore(state);
+  // 作業の定義の表示の定義は、中心の処理が状態の setup.taskDisplays に入れて渡す
+  core.setSilently((s) => {
+    s.setup.taskDisplays = task.displays ?? [];
+    return s;
+  });
   core.files = { f1: { path: 'chart.png', name: 'chart.png' }, f2: { path: 'report.md', name: '週報.md' } };
   core.replies = { 'ag-orch': '統括の最後の返事の全文です。\n2行目です。', 'ag-work': '作業の最後の返事の全文です。\n2行目です。' };
   await setup?.(core, { work });
-  const app = await startApp({ core, cwd: work, preferredPort: 0, taskPath });
+  const app = await startApp({ core, cwd: work, preferredPort: 0 });
   const context = await browser.newContext({ viewport, ...contextOptions });
   const page = await context.newPage();
   const errors = [];
@@ -660,6 +663,7 @@ describe('結果の確認（REQ-011、REQ-012、REQ-013）', () => {
       [{ kind: 'aborted', detail: 'orchestrator_failed' }, '途中で終わった（統括エージェントの失敗）', '終了（途中で終わった）'],
       [{ kind: 'aborted', detail: 'orchestrator_ended' }, '途中で終わった（繰り返しを終えないまま統括エージェントが終わった）', '終了（途中で終わった）'],
       [{ kind: 'aborted', detail: 'retry_limit' }, '途中で終わった（記録のやり直しが上限を超えた）', '終了（途中で終わった）'],
+      [{ kind: 'aborted', detail: 'extension_restarted' }, '途中で終わった（エクステンションが再起動した）', '終了（途中で終わった）'],
     ];
     await withScreen({ state: finishedState({ kind: 'all_passed', detail: null, unstoppable: false }) }, async ({ page, core }) => {
       for (const [reason, expected, pill] of cases) {
@@ -1547,7 +1551,7 @@ describe('分かりやすい表示（REQ-025）', () => {
   const SYMBOLS = [
     'preparing', 'starting', 'running', 'summarizing', 'stopping', 'finished', 'standby', 'waiting', 'completed', 'failed', 'stopped', 'unstopped',
     'all_passed', 'max_iterations', 'user_stopped', 'aborted', 'mechanical', 'orchestrator', 'verifier', 'worker', 'permission', 'question', 'limit',
-    'cut_off', 'credit_limit', 'chat_interrupted', 'orchestrator_failed', 'orchestrator_ended', 'retry_limit', 'filing', 'filed', 'unknown', 'none',
+    'cut_off', 'credit_limit', 'chat_interrupted', 'orchestrator_failed', 'orchestrator_ended', 'retry_limit', 'extension_restarted', 'filing', 'filed', 'unknown', 'none',
     'undefined', 'null', 'NaN', '\\[object',
   ];
 

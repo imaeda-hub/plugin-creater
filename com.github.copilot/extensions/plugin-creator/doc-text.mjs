@@ -63,7 +63,7 @@ const attr = (raw, name) => {
   return m ? decodeEntities(m[2] ?? m[3] ?? '') : null;
 };
 
-const localName = (name) => name.replace(/^[^:]*:/, '');
+const localName = (name) => (typeof name === 'string' ? name.replace(/^[^:]*:/, '') : '');
 
 /** 余分な空白と空行を整える */
 function tidy(text) {
@@ -109,7 +109,10 @@ export function ooxmlText(xml, stopAt = Infinity) {
         break;
       case 'w:p':
       case 'a:p':
-        if (t.closing && fallbackDepth === 0) out += tableDepth > 0 ? ' ' : '\n';
+        if (t.closing && fallbackDepth === 0) {
+          if (tableDepth > 0) out += ' ';
+          else if (out !== '' && !out.endsWith('\n')) out += '\n'; // 入れ子の段落（テキストボックスなど）で、空行が重ならないように
+        }
         break;
       case 'w:tbl':
       case 'a:tbl':
@@ -334,7 +337,7 @@ function xlsxText(zip, stopAt) {
  * 文書の中の文字を返す。
  * @param {string} file 文書の場所（docx・xlsx・pptx）
  * @param {{ maxChars?: number }} [options]
- * @returns {{ format: string, text: string, totalChars: number, truncated: boolean }}
+ * @returns {{ format: string, text: string, totalChars: number, atLeast: boolean, truncated: boolean }}
  * @throws {DocTextError} 読めない理由（message は平易な日本語）
  */
 export function documentText(file, { maxChars = MAX_TEXT_CHARS } = {}) {
@@ -363,10 +366,11 @@ export function documentText(file, { maxChars = MAX_TEXT_CHARS } = {}) {
     throw new DocTextError(`読めません：${path.basename(file)}。パスワードで守られているか、古い形式のファイルの可能性があります。`);
   }
 
+  // 途中で読むのをやめる大きさ。これを超えたときは、全体の文字数は「以上」としか分からない
+  const stopAt = maxChars * 4;
   let text;
   try {
     const zip = opener(buffer);
-    const stopAt = maxChars * 2;
     text = format === 'docx' ? docxText(zip, stopAt) : format === 'xlsx' ? xlsxText(zip, stopAt) : pptxText(zip, stopAt);
   } catch (error) {
     if (error instanceof DocTextError) throw error;
@@ -374,7 +378,13 @@ export function documentText(file, { maxChars = MAX_TEXT_CHARS } = {}) {
     throw new DocTextError(`読めません：${path.basename(file)}（${error.message}）`);
   }
 
-  const totalChars = [...text].length;
-  const truncated = totalChars > maxChars;
-  return { format, text: truncated ? [...text].slice(0, maxChars).join('') : text, totalChars, truncated };
+  const chars = [...text];
+  const truncated = chars.length > maxChars;
+  return {
+    format,
+    text: truncated ? chars.slice(0, maxChars).join('') : text,
+    totalChars: chars.length,
+    atLeast: chars.length > stopAt, // 全体の文字数は、この数以上（途中で読むのをやめた）
+    truncated,
+  };
 }

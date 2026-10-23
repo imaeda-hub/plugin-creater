@@ -14,9 +14,8 @@ import { DocTextError, documentText } from './doc-text.mjs';
 import { Refusal, createHearing } from './hearing.mjs';
 import { createHooks } from './hooks.mjs';
 import { IssueError, fileIssue, runGh as defaultRunGh } from './issue.mjs';
-import { itemIndex, kindIndex, sourceIndex } from './names.mjs';
 import { checkResultFile, createResultReader } from './results.mjs';
-import { hearingView, stateText } from './report.mjs';
+import { hearingView, knowledgeRow, stateText } from './report.mjs';
 import { checkTaskDefinition, createSample, injectCriteria, readDraft } from './sample.mjs';
 import { copilotHome, createStore } from './store.mjs';
 import { TOOL_DEFS } from './tool-defs.mjs';
@@ -69,22 +68,12 @@ export function createCreator({
     const c = state?.confirmation;
     if (!c) return null;
     const byId = new Map(state.knowledge.map((k) => [k.id, k]));
-    const row = (k) => ({
-      id: k.id,
-      kind: kindIndex.nameOf(k.kind),
-      item: itemIndex.nameOf(k.item),
-      text: k.text,
-      source: sourceIndex.nameOf(k.source),
-      quote: k.quote,
-      example: k.example ?? null,
-      exception: k.exception ?? null,
-    });
     const knowledge = c.knowledgeIds.map((id) => byId.get(id)).filter(Boolean);
     const criteria = knowledge.filter((k) => k.kind === 'criterion').map((k, i) => ({ id: `C-${String(i + 1).padStart(2, '0')}`, text: k.text, knowledge: k.id }));
     return {
       at: c.at,
       behavior: c.behavior,
-      knowledge: knowledge.map(row),
+      knowledge: knowledge.map(knowledgeRow),
       criteria,
       evalTasks: c.evalTasks.map((t) => ({
         prompt: t.prompt,
@@ -277,8 +266,9 @@ export function createCreator({
       if (typeof args?.path !== 'string' || args.path.trim() === '') throw new Refusal('文書の場所（path）を渡してください。');
       const file = path.resolve(workDir, args.path);
       const doc = documentText(file);
-      const head = `ファイル：${path.basename(file)}（${doc.format}、全体で${doc.totalChars}文字）`;
-      const tail = doc.truncated ? `\n\n（長いため、先頭の${[...doc.text].length}文字で切りました。全体は${doc.totalChars}文字です。残りは読めません）` : '';
+      const total = `${doc.totalChars}文字${doc.atLeast ? '以上' : ''}`;
+      const head = `ファイル：${path.basename(file)}（${doc.format}、全体で${total}）`;
+      const tail = doc.truncated ? `\n\n（長いため、先頭の${[...doc.text].length}文字で切りました。全体は${total}です。残りは読めません）` : '';
       return `${head}\n\n${doc.text}${tail}`;
     },
 

@@ -141,7 +141,8 @@ export function stateText(hearing, context, include) {
 
 // ---- クリエイターの画面に出す状態 ------------------------------------------------------------
 
-const knowledgeRow = (k) => ({
+/** 画面に出すナレッジの1行。決まったこと（REQ-043）と生成前の確認（REQ-020）で、同じ形・同じ中身にする */
+export const knowledgeRow = (k) => ({
   id: k.id,
   kind: kindIndex.nameOf(k.kind),
   item: itemIndex.nameOf(k.item),

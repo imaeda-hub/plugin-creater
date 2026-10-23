@@ -52,7 +52,15 @@ export function runGh(args, input, { timeoutMs = GH_TIMEOUT_MS, command = 'gh', 
     }
     const timer = setTimeout(() => {
       timedOut = true;
-      child.kill('SIGKILL');
+      try {
+        child.kill('SIGKILL');
+      } catch {
+        // すでに終わっていた
+      }
+      // gh が起こした別のプロセスが出力の管を開けたままでも、待たずに返す
+      child.stdout.destroy();
+      child.stderr.destroy();
+      done({ code: null });
     }, timeoutMs);
     child.stdout.on('data', (chunk) => {
       stdout += chunk;

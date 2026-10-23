@@ -42,6 +42,7 @@
     orchestrator_failed: '統括エージェントの失敗',
     orchestrator_ended: '繰り返しを終えないまま統括エージェントが終わった',
     retry_limit: '記録のやり直しが上限を超えた',
+    extension_restarted: 'エクステンションが再起動した',
   };
   const WAIT_KINDS = { permission: '許可', question: '質問', limit: 'AI クレジットの上限' };
   const PERMISSION_KINDS = {

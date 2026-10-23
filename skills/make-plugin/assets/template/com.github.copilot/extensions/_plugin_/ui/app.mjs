@@ -9,10 +9,9 @@
 // - core.getReply(agentId)       最後の返事の全文（文字）。なければ null。
 // - core.getFile(fileId)         記録のツールで知らされたファイル { path, name? }（path は文字でもよい）。なければ null。
 //
-// 作業の定義（task.json）の表示の定義（displays）は、状態の全体にないので、ここで読んで
-// 状態の応答に taskDisplays として足す（core が setup.taskDisplays を持つなら、そちらを使う）。
+// 作業の定義（task.json）の表示の定義（displays）は、中心の処理が状態の全体の setup.taskDisplays に入れて渡す。
+// 画面は状態の応答の taskDisplays として読むので、ここで同じ値を taskDisplays に写して返す。
 
-import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 import { HttpError, serveFile, startServer } from './server.mjs';
@@ -21,16 +20,6 @@ import { HttpError, serveFile, startServer } from './server.mjs';
 export const DEFAULT_PORT = 8731;
 
 const STATIC_DIR = fileURLToPath(new URL('./static/', import.meta.url));
-const DEFAULT_TASK_PATH = fileURLToPath(new URL('../task.json', import.meta.url));
-
-function readTaskDisplays(taskPath) {
-  try {
-    const task = JSON.parse(fs.readFileSync(taskPath, 'utf8'));
-    return Array.isArray(task.displays) ? task.displays : [];
-  } catch {
-    return []; // 作業の定義が読めなくても画面は開く。表示は見出しなしの文字で出る
-  }
-}
 
 // 中心の処理が断るときの Error は、画面に出す文として 400 で返す
 async function refuseAsBadRequest(action) {
@@ -48,16 +37,13 @@ async function refuseAsBadRequest(action) {
  * @param {object} options.core 中心の処理
  * @param {string} options.cwd 作業フォルダ。ファイルの窓口はこの中のものだけを返す
  * @param {number} [options.preferredPort] いつもの番号
- * @param {string} [options.taskPath] 作業の定義の場所（試験用。ふつうは ui/ の一つ上の task.json）
  * @returns {Promise<{ url: string, port: number, token: string, close: () => Promise<void> }>}
  */
-export async function startApp({ core, cwd, preferredPort = DEFAULT_PORT, taskPath = DEFAULT_TASK_PATH }) {
-  const taskDisplays = readTaskDisplays(taskPath);
-
+export async function startApp({ core, cwd, preferredPort = DEFAULT_PORT }) {
   const routes = {
     'GET /api/state': async () => {
       const state = await core.getState();
-      return { ...state, taskDisplays: state.setup?.taskDisplays ?? taskDisplays };
+      return { ...state, taskDisplays: state.setup?.taskDisplays ?? [] };
     },
 
     'GET /api/agents/:id/reply': async ({ params }) => {

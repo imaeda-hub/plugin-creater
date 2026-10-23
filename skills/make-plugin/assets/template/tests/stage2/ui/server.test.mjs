@@ -559,7 +559,6 @@ describe('生成プラグインの窓口（app.mjs。設計書 6.3 の窓口の�
   let outside;
   let core;
   let app;
-  let taskPath;
   const call = (p, options = {}) => fetch(`http://127.0.0.1:${app.port}${p}${p.includes('?') ? '&' : '?'}k=${app.token}`, options);
   const post = (p, body = {}) => call(p, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
 
@@ -569,8 +568,6 @@ describe('生成プラグインの窓口（app.mjs。設計書 6.3 の窓口の�
     fs.writeFileSync(path.join(work, 'chart.png'), 'png');
     fs.writeFileSync(path.join(work, 'report.md'), '# 週報');
     fs.writeFileSync(path.join(outside, 'secret.png'), 'secret');
-    taskPath = path.join(tempDir(), 'task.json');
-    fs.writeFileSync(taskPath, JSON.stringify(SAMPLE_TASK));
     core = createFakeCore(finishedState());
     core.replies['ag-work'] = '最後の返事の全文';
     core.files = {
@@ -579,7 +576,7 @@ describe('生成プラグインの窓口（app.mjs。設計書 6.3 の窓口の�
       f3: { path: path.join(outside, 'secret.png'), name: 'secret.png' },
       f4: path.join(work, 'chart.png'),
     };
-    app = await startApp({ core, cwd: work, preferredPort: 0, taskPath });
+    app = await startApp({ core, cwd: work, preferredPort: 0 });
   });
   after(async () => {
     await app.close();
@@ -588,7 +585,7 @@ describe('生成プラグインの窓口（app.mjs。設計書 6.3 の窓口の�
   test('REQ-029 いつもの番号が空いていなくても起動し、示す URL で状態が取れる', async () => {
     const blocker = await listenOn('127.0.0.1');
     try {
-      const other = await startApp({ core, cwd: work, preferredPort: blocker.address().port, taskPath });
+      const other = await startApp({ core, cwd: work, preferredPort: blocker.address().port });
       try {
         assert.notEqual(other.port, blocker.address().port);
         const response = await fetch(`http://127.0.0.1:${other.port}/api/state?k=${other.token}`);
@@ -601,17 +598,23 @@ describe('生成プラグインの窓口（app.mjs。設計書 6.3 の窓口の�
     }
   });
 
-  test('REQ-005 GET /api/state は、中心の処理の状態の全体に、作業の定義の表示の定義を足して返す', async () => {
+  test('REQ-005 GET /api/state は、中心の処理の状態の全体を返し、画面が読む taskDisplays に、状態の setup.taskDisplays を写す', async () => {
     const state = await (await call('/api/state')).json();
     const expected = core.getState();
     assert.equal(state.version, expected.version);
     assert.equal(state.plugin.title, SAMPLE_TASK.name);
     assert.equal(state.run.status, 'finished');
     assert.deepEqual(state.taskDisplays, SAMPLE_TASK.displays);
+    assert.deepEqual(state.taskDisplays, expected.setup.taskDisplays);
   });
 
-  test('REQ-005 作業の定義が読めなくても状態は返る（表示の定義は空）', async () => {
-    const other = await startApp({ core, cwd: work, preferredPort: 0, taskPath: path.join(work, 'no-such-task.json') });
+  test('REQ-005 状態に setup.taskDisplays がなくても状態は返る（表示の定義は空。task.json を読みに行かない）', async () => {
+    const own = createFakeCore(prepState());
+    own.set((state) => {
+      delete state.setup.taskDisplays;
+      return state;
+    });
+    const other = await startApp({ core: own, cwd: work, preferredPort: 0 });
     try {
       const state = await (await fetch(`http://127.0.0.1:${other.port}/api/state?k=${other.token}`)).json();
       assert.deepEqual(state.taskDisplays, []);
@@ -687,13 +690,13 @@ describe('生成プラグインの窓口（app.mjs。設計書 6.3 の窓口の�
     assert.equal((await call('/api/files/unknown')).status, 404, '知らされていない番号');
   });
 
-  test('REQ-005 状態に作業の定義の表示の定義（setup.taskDisplays）が入っていれば、そちらを使う', async () => {
+  test('REQ-005 状態の setup.taskDisplays の値が、そのまま taskDisplays に入る', async () => {
     const own = createFakeCore(prepState());
     own.set((state) => {
       state.setup.taskDisplays = [{ key: 'x', label: 'X', type: 'text', when: 'both' }];
       return state;
     });
-    const other = await startApp({ core: own, cwd: work, preferredPort: 0, taskPath });
+    const other = await startApp({ core: own, cwd: work, preferredPort: 0 });
     try {
       const state = await (await fetch(`http://127.0.0.1:${other.port}/api/state?k=${other.token}`)).json();
       assert.deepEqual(state.taskDisplays, [{ key: 'x', label: 'X', type: 'text', when: 'both' }]);
@@ -739,6 +742,13 @@ describe('画面の部品の決まり（ソースの検査）', () => {
       }
     }
     assert.ok(!fs.existsSync(path.join(uiDir, 'package.json')) && !fs.existsSync(path.join(uiDir, 'node_modules')));
+  });
+
+  test('REQ-005 窓口の配線（app.mjs）は、作業の定義のファイル（task.json）を読み直さず、中心の処理の状態だけを使う', () => {
+    const source = withoutComments(fs.readFileSync(path.join(uiDir, 'app.mjs'), 'utf8'));
+    for (const forbidden of [/task\.json/, /taskPath/, /readFileSync|readFile\(/, /from\s+['"]node:fs/]) {
+      assert.doesNotMatch(source, forbidden, `app.mjs に ${forbidden} がある`);
+    }
   });
 
   test('REQ-025 画面の文字は日本語で、状態の記号（英語）を日本語にする表がある', () => {

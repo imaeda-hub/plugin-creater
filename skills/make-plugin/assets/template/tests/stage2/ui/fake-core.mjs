@@ -59,6 +59,7 @@ export function prepState(overrides = {}) {
       defaults: { orchestrator: 'claude-opus-5-5', worker: 'claude-haiku-5-5', verifier: 'claude-opus-5-5' },
       maxIterationsDefault: 3,
       taskSettings: SAMPLE_TASK.settings,
+      taskDisplays: SAMPLE_TASK.displays,
       isAuto: false,
       autoNotice: null,
       overrideNotice: null,
