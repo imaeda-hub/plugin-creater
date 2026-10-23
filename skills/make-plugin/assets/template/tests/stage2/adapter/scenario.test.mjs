@@ -65,7 +65,7 @@ describe('頼んでから終わるまで（REQ-005、REQ-008、REQ-010、REQ-011
     assert.equal(run.summary, '1回の試行で、すべての基準を満たしました。');
     assert.deepEqual(run.iterations[0].verdicts.map((v) => v.pass), [true, true]);
     assert.deepEqual(run.agents.map((a) => [a.slot, a.status, a.actualModel]), [
-      ['orchestrator', 'completed', ''],
+      ['orchestrator', 'completed', SETTINGS.models.orchestrator],
       ['worker', 'completed', 'gpt-6-luna'],
       ['verifier', 'completed', 'claude-opus-5-5'],
     ]);
@@ -90,8 +90,7 @@ describe('頼んでから終わるまで（REQ-005、REQ-008、REQ-010、REQ-011
     assert.deepEqual(await response.json(), { text: reply });
     assert.equal((await fetchApi(p, '/api/agents/ag-nobody/reply')).status, 404);
     const worker = p.core.getState().run.agents.find((a) => a.slot === 'worker');
-    assert.equal(worker.replySummary, reply.replace('\n', ' ').slice(0, 160).trim() === '' ? '' : worker.replySummary);
-    assert.ok(worker.replySummary.includes('下書きを書きました'));
+    assert.ok(worker.replySummary.includes('下書きを書きました'), '状態の全体には要約だけが入る');
   });
 
   test('REQ-008 実際に動いたモデルがエージェントごとに画面の状態に出て、選んだモデルと違えば課題になる', async () => {
@@ -259,11 +258,9 @@ describe('エクステンションが起動し直されたとき（REQ-008、REQ
 
   test('REQ-008 同じセッションの終わっていない実行は、動いている統括と下のエージェントを取り消して「途中で終わった（エクステンションが再起動した）」になる', async () => {
     const { second, root } = await restartDuringRun({ agentsRemain: true });
-    assert.deepEqual(
-      second.fake.callsOf('tasks.cancel').map((c) => c.args.id).sort(),
-      [root].sort(),
-      '統括を取り消す',
-    );
+    // 前の実行の木のエージェント（log.jsonl に書いた番号）のうち、動いているものを取り消す
+    assert.deepEqual(second.fake.callsOf('tasks.cancel').map((c) => c.args.id).sort(), [root, 'ag-w'].sort());
+    assert.equal(second.fake.task(root).status, 'cancelled');
     assert.equal(second.fake.task('ag-w').status, 'cancelled');
     // 取り消す前から、前の実行のエージェントのツールは拒む
     assert.equal(second.fake.config.hooks.onPreToolUse({ toolName: 'edit', agentId: 'ag-w' }).permissionDecision, 'deny');
