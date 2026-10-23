@@ -104,6 +104,14 @@ function timeOf(event) {
   return Number.isFinite(at) ? at : Date.now();
 }
 
+// 画面の枠の「担当」。task ツールで起動したサブエージェントは、agentDisplayName に、呼び出しの説明（task の description）が入る
+// （session-events.d.ts の説明）。agentDescription はエージェントの定義の説明なので、agentDisplayName がないときだけ使う。
+// 親のないもの（統括。tasks.startAgent で起動する）には付けない。統括の担当は、中心の処理が頼まれた作業の要約を持っている。
+function taskDescriptionOf(data) {
+  for (const text of [data.agentDisplayName, data.agentDescription]) if (typeof text === 'string' && text.trim() !== '') return text;
+  return undefined;
+}
+
 const hasRequestId = (data) => typeof data.requestId === 'string' && data.requestId !== '';
 
 function createEventConverter({ pluginName, ownAgentNames }) {
@@ -140,7 +148,7 @@ function createEventConverter({ pluginName, ownAgentNames }) {
           agentType: agentTypeOf(data),
           model: data.model,
           executionMode: data.executionMode,
-          description: data.agentDescription,
+          description: parentAgentId ? taskDescriptionOf(data) : undefined,
         };
       }
       case 'subagent.configured':
@@ -338,6 +346,8 @@ export async function startAdapter({ joinSession }) {
     description: definition.description,
     parameters: definition.parameters,
     skipPermission: definition.skipPermission,
+    // ツール検索の裏に回さない（回されると、入口のスキルや統括が「ツールがない」と取り違えるおそれがある。R2 の 3.3）
+    defer: 'never',
     handler: (args, invocation) => callTool(definition.shortName, args, invocation),
   }));
 

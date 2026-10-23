@@ -214,7 +214,16 @@ export async function beginRun(p, { settings = SETTINGS } = {}) {
   await p.core.start(settings);
   const root = p.fake.tasks.find((t) => t.agentType === `${p.name}:orchestrator`);
   assert.ok(root, '統括が起動されていない');
-  p.fake.emit(sdkEvent.subagentStarted(root.id, { agentType: `${p.name}:orchestrator`, executionMode: 'background', model: settings.models.orchestrator }));
+  // 統括は tasks.startAgent で起動する。agentDisplayName には、起動のときに渡した名前が入る
+  p.fake.emit(
+    sdkEvent.subagentStarted(root.id, {
+      agentType: `${p.name}:orchestrator`,
+      agentDisplayName: root.displayName,
+      agentDescription: '統括エージェントの定義の説明',
+      executionMode: 'background',
+      model: settings.models.orchestrator,
+    }),
+  );
   await p.core.whenIdle();
   return root.id;
 }
@@ -226,10 +235,11 @@ export async function fetchApi(p, path, init) {
 }
 
 /** 統括の下のエージェントを、一覧に載せて、開始のイベントを流す。 */
-export async function startChild(p, { agentId, parentAgentId, agent, executionMode = 'sync', model = 'm' }) {
+export async function startChild(p, { agentId, parentAgentId, agent, executionMode = 'sync', model = 'm', description }) {
   const agentType = `${p.name}:${agent}`;
   p.fake.spawn({ agentId, parentAgentId, agentType, executionMode });
-  p.fake.emit(sdkEvent.subagentStarted(agentId, { agentType, executionMode, parentId: parentAgentId, model }));
+  // task ツールで起動したサブエージェントは、agentDisplayName に task の description が入る
+  p.fake.emit(sdkEvent.subagentStarted(agentId, { agentType, executionMode, parentId: parentAgentId, model, agentDisplayName: description ?? `${agent} の作業`, agentDescription: `${agent} の定義の説明` }));
   await p.core.whenIdle();
 }
 
