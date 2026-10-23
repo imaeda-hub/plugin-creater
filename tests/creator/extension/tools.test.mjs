@@ -114,10 +114,31 @@ describe('ツールの登録', () => {
         assert.ok(TOOL_DESCRIPTIONS[name].length > 10, `${name} の説明が短すぎる`);
       }
     });
-    // 説明の文（仮の印「【仮】」）は、descriptions.mjs 以外のモジュールにない
-    for (const file of fs.readdirSync(EXTENSION_DIR).filter((f) => f.endsWith('.mjs') && f !== 'descriptions.mjs')) {
-      assert.ok(!fs.readFileSync(path.join(EXTENSION_DIR, file), 'utf8').includes('【仮】'), `${file} に説明の文がある`);
+    // 説明の文は仕上がっている（仮の印「【仮】」がどこにもない）
+    for (const file of fs.readdirSync(EXTENSION_DIR).filter((f) => f.endsWith('.mjs'))) {
+      assert.ok(!fs.readFileSync(path.join(EXTENSION_DIR, file), 'utf8').includes('【仮】'), `${file} に仮の印がある`);
     }
+  });
+
+  test('REQ-049 引数の説明の文は、実装の引数の名前と過不足なく合う（説明のない引数も、引数のない説明もない）', async () => {
+    const { PARAM_DESCRIPTIONS } = await import(pathToFileURL(path.join(EXTENSION_DIR, 'descriptions.mjs')).href);
+    await withRun(async (run) => {
+      for (const name of Object.keys(TOOLS)) {
+        const paths = [];
+        const walk = (schema, prefix) => {
+          for (const [key, sub] of Object.entries(schema.properties ?? {})) {
+            const here = prefix ? `${prefix}.${key}` : key;
+            paths.push([here, sub]);
+            if (sub.type === 'object') walk(sub, here);
+            if (sub.type === 'array' && sub.items?.type === 'object') walk(sub.items, here);
+          }
+        };
+        walk(run.fake.tool(T(name)).parameters, '');
+        const described = Object.keys(PARAM_DESCRIPTIONS[name] ?? {}).sort();
+        assert.deepEqual(paths.map(([p]) => p).sort(), described, `${name} の引数と説明の名前が合わない`);
+        for (const [p, sub] of paths) assert.ok(typeof sub.description === 'string' && sub.description.length >= 3, `${name}.${p} の説明がない`);
+      }
+    });
   });
 
   test('REQ-015 状態取得ツールの説明に、コンパクションの後、再開の後、段階の始めにまず呼ぶと書く（hearing.md 7.5）', async () => {

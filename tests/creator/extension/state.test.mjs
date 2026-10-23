@@ -49,12 +49,34 @@ describe('状態取得ツール（plugin-creator_state）', () => {
       assert.match(text, /^ {2}頼む場面と言い方：未着手$/m);
       assert.match(text, /^ {2}候補の確かめ：未着手（確かめていない候補 1件）$/m);
       assert.match(text, /^まだ聞いていない項目：頼む場面と言い方、受け取るもの、進め方/m);
-      assert.match(text, /確かめていない候補：\n {2}K-01（進め方）：提出前に上長が確認する/);
+      assert.match(text, /確かめていない候補：\n {2}K-01（項目：進め方、出どころ：ファイルから読んで確かめた）：提出前に上長が確認する/);
       assert.match(text, /保留：\n {2}成果物（知っている人：経理の田中さん）/);
       assert.match(text, /AI の判断（ユーザーが任せたこと）：\n {2}K-02（守らないと困ること）：数値は税抜きで書く/);
       assert.match(text, /ナレッジ：候補1件、決まった1件、外した0件/);
       assert.deepEqual(internalSymbolsIn(text), []);
       assert.ok(Buffer.byteLength(text, 'utf8') < 4096, `数 KB 以内にする：${Buffer.byteLength(text, 'utf8')}バイト`);
+    });
+  });
+
+  test('REQ-017 確かめていない候補の行に、出どころも示す（段階「決まりの確かめ」は、ファイルから読んだ候補だけを確かめる。コンパクションの後に見分けるため）', async () => {
+    await withRun(async (run) => {
+      await run.call('record', {
+        knowledge: [
+          knowledge({ item: '進め方', text: 'ファイルから読んだ決まり', status: '候補', source: 'ファイルから読んで確かめた', quote: '週報.docx の2ページ' }),
+          knowledge({ item: '成果物', text: '既存のプラグインにあった決まり', status: '候補', source: '既存のプラグインから読んで確かめた', quote: 'SKILL.md の12行目' }),
+          knowledge({ item: '作業の目的', text: '頼みの文にあった目的', status: '候補', source: 'ユーザーが自分から話した', quote: '頼みの文' }),
+          knowledge({ item: '成果物', text: '決まったもの', status: '決まった' }),
+        ],
+      });
+      const text = await run.call('state');
+      const lines = text.split('\n').filter((l) => /^ {2}K-0[1-3]（項目：/.test(l));
+      assert.deepEqual(lines, [
+        '  K-01（項目：進め方、出どころ：ファイルから読んで確かめた）：ファイルから読んだ決まり',
+        '  K-02（項目：成果物、出どころ：既存のプラグインから読んで確かめた）：既存のプラグインにあった決まり',
+        '  K-03（項目：作業の目的、出どころ：ユーザーが自分から話した）：頼みの文にあった目的',
+      ]);
+      assert.ok(!text.includes('決まったもの'), '決まったナレッジは、確かめていない候補の行に出ない');
+      assert.deepEqual(internalSymbolsIn(text), []);
     });
   });
 
@@ -114,9 +136,11 @@ describe('状態取得ツール（plugin-creator_state）', () => {
       assert.deepEqual(targets.map((t) => t.id), ['K-02', 'K-03']);
       assert.deepEqual(targets.map((t) => t.reason), ['その項目を聞いた後に、ユーザーが自分から話した', '生成前の確認で足した']);
       const text = await run.call('state', { include: '振り返りの材料' });
-      assert.match(text, /K-02（項目：成果物）/);
-      assert.match(text, /K-03（項目：進め方）/);
-      assert.ok(!/K-0[14567]（項目/.test(text));
+      // 対象の一覧の部分だけを見る（確かめていない候補の行にも「K-06（項目：…」が出る）
+      const targetSection = text.split('質問の改善案の対象のナレッジ')[1].split('問答の記録のすべて')[0];
+      assert.match(targetSection, /K-02（項目：成果物）/);
+      assert.match(targetSection, /K-03（項目：進め方）/);
+      assert.ok(!/K-0[14567]（項目/.test(targetSection));
     });
   });
 

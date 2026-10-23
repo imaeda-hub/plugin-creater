@@ -49,6 +49,8 @@
 15. 文書をテキストにするツール（plugin-creator_doc_text）は skipPermission で登録する（hearing.md 9章の未決が決まった。作業フォルダの外の文書も確認なしで読める）。
 16. 試験の道具の置き場所：1・2段目の道具（Python の仮想環境と PyYAML・jsonschema、Node.js の playwright）は生成プラグインの tests/.venv と tests/node_modules（git に入れない）。EVAL の @github/copilot-sdk と playwright は <COPILOT_HOME>/plugin-data/plugin-creator/tools/ に1つ。ブラウザーは手元の Chrome・Edge、なければ Playwright の共通の場所（testing.md 11.2 の要確認が決まった）。
 17. 生成プラグインの統括と検証の既定のモデル：`model: [claude-sonnet-5.5, gpt-6.1-sol]`（Sonnet 5.5 はすべてのプランで使え、Copilot CLI の既定。設計書は「思考力の高いモデル」としか書いていなかった）。作業は `model: [gpt-6-luna, claude-haiku-5.5]`。
+18. 生成の後の構造の検査と部品の試験が不合格のときに、作業エージェントに直させる上限：3回（REQ-039。仕様と設計書に数がなかった）。
+19. 「合否の決め方」が決まりなしで、基準の案も残らなかったとき：生成前の確認に進む前に、合格の条件を1つ以上、自由入力で聞いて「合否の決め方」のナレッジにする（hearing.md 6.4 に扱いがなかった。REQ-011・REQ-038 のため）。
 13. ユーザーが「質問しないで作って」とはっきり頼んだとき：聞かないと仕事の決まりが入らない理由を1文で伝え、急ぎのときと同じ3つ（ここでやめて後で続ける〔おすすめ〕／残りを手早く聞く／このまま続ける）から選ばせる。推測で埋めて作らない（仕様 REQ-015 に足す必要がある）。
 
 ## 報告すること（最後にまとめて示す）
@@ -85,6 +87,10 @@
 - A4：入口のスキルの「エクステンションのツールがないときの直し方」に、3つ目の原因（/extensions mode が Disabled）を足すよう、generated-plugin-structure.md 4.7 と creator-structure.md 4.3 に足す提案。
 - A1：窓口の tasks.list はエージェントだけで、シェルの処理を課題にできない。generated-plugin-structure.md 4.10 の表と 11章 #14 に効く。
 - A1：設計書 4.13・6.5・10章の「自分のセッションの終わっていない実行はすぐ途中で切れた」を、ユーザーの答え14に合わせて直す。
+- B3：上位の文書で直すこと（tasks/B3.md の同じ節）。エクステンションのツールがないときの3つ目の原因（/extensions mode が Disabled）を creator-structure.md 4.3 と generated-plugin-structure.md 4.7 に足す。hearing.md 7.3 に画面の3項目で決めた設定と表示を残す欄がない。hearing.md 6.4 に基準が0件のときの扱いがない（ユーザーの答え19）。hearing.md 10.2 の7の決まりの範囲を「スキルの終わりまで」に広げた。hearing.md 4.2 の承認の形を、道具を入れる・EVAL を始める・Issue を起票する承認にも使った。hearing.md 11章・creator-structure.md 4.1：生成の後の直しをコミットし、タグ plugin-creator-generated を付けて「生成したときの状態」とする。hearing.md 6.5・testing.md 10.1：実物の入力のファイルは組み立てのスクリプトが写す（統括の決定。manifest.json の eval_inputs）。hearing.md 10.1 の本文の並びに「問いの形」の節を足した。
+- B3：EVAL の回数の既定は、testing.md 8.2 のとおり未決（費用を測ってから）。仮に、あり・なしを3回ずつにし、承認の問いで変えられる。
+- C1：上位の文書で直すこと（tasks/C1.md の同じ節）。hearing.md 7.1 に state.json の欄の名前を書く。generated-plugin-structure.md 9章に _confirm の引数と断る順、見本が別のサーバーであることを書く。hearing.md 6.3 に「確認で示した後にナレッジが変わったら、示し直すまで生成に進めない」を足した（設計書にない確かめ）。ツールに defer: "never" を足した（BLUEPRINT 7章）。
+- C1：実機でしか確かめられないこと：ハイフンを含むツール名 plugin-creator_open の受け入れ、defer: "never"、onPostToolUse の toolArgs・toolResult の形、サブエージェントのコンパクションのイベント（H2）。
 - R2：`requestSandboxPermissive` を「サンドボックスの外で動かす」と示さない（generated-plugin-structure.md 6.3）。tasks.list には shell と client のタスクも入る。
 
 ## 後の仕事に渡すこと（作業のエージェントの報告から）
@@ -126,8 +132,8 @@
 | A2 | a4dd7b3736f4dd2a9（完了） |
 | A3 | a6ae7ad9d3151a163（完了） |
 | A4 | afd1d4ef4c0e6d043（完了） |
-| C1 | ad77758fe8b6dfff7（23:15 に再開） |
-| B3（書く） | a85fc7bf7ada9e044（23:15 に始めた。指示は briefs/B3.md） |
+| C1 | ad77758fe8b6dfff7（完了。続きとして、B3 の説明の文の取り込みと、候補の出どころを頼んだ） |
+| B3（書く） | a85fc7bf7ada9e044（完了。次は点検：briefs/review.md） |
 | B2 | ae0285d8193b30123（指示は briefs/B2.md） |
 | B1 | a7b491f44bb4b21eb（指示は briefs/B1.md） |
 | C2 | ab07d1229ed5e8971（指示は briefs/C2.md） |

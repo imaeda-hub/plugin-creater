@@ -81,7 +81,8 @@ export function stateText(hearing, context, include) {
     const candidates = hearing.candidates();
     if (candidates.length) {
       lines.push('確かめていない候補：');
-      for (const k of candidates.slice(0, LIST_LIMIT)) lines.push(`  ${k.id}（${itemIndex.nameOf(k.item)}）：${clip(k.text, STATE_LINE_CLIP)}`);
+      // 出どころも示す。段階「決まりの確かめ」は、ファイルから読んだ候補だけを確かめる。コンパクションの後に見分けるため
+      for (const k of candidates.slice(0, LIST_LIMIT)) lines.push(`  ${k.id}（項目：${itemIndex.nameOf(k.item)}、出どころ：${sourceIndex.nameOf(k.source)}）：${clip(k.text, STATE_LINE_CLIP)}`);
       if (candidates.length > LIST_LIMIT) lines.push(`  ほか${candidates.length - LIST_LIMIT}件`);
     }
 

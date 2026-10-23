@@ -158,6 +158,7 @@ export async function runEval(opts) {
       counts: summary.counts,
       warnings: warningsOf(state.runs, summary),
       resultsDir,
+      resultFile,
     };
   };
   const save = (status) => {

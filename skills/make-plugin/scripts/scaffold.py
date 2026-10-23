@@ -15,7 +15,8 @@ build がすること（creator-structure.md 2章・4.1、BLUEPRINT 8章・9章�
      埋まらない差し込み口が残ったら断り、どの差し込み口かを示す。
   4. 作業の定義（task.json）に、合否の決め方のナレッジから合否の基準を書き込む（番号は C-01 から。文はナレッジのまま）。
   5. ナレッジの一覧（tests/knowledge.json）を書く。
-  6. parts/files/ を写し、EVAL の課題（tests/eval/*/eval.json）の基準の番号と文を、作業の定義の写しで埋める。
+  6. parts/files/ をそのまま写し、manifest.json の eval_inputs（EVAL の課題の入力の実物のファイル）を指定の場所に写す。
+     EVAL の課題（tests/eval/*/eval.json）の基準の番号と文を、作業の定義の写しで埋める。
   7. 土台がひな形と同じかを確かめる（check-base と同じ）。
   8. git のリポジトリにして、最初のコミットをする。
   9. 作業用の一時フォルダ（.plugin-creator-work/）を消す。
@@ -70,6 +71,7 @@ PLACEHOLDER = re.compile(r"(?<!\$)\{\{(slot:)?([A-Za-z][A-Za-z0-9_.-]*)\}\}")   
 SLOT_NAME = re.compile(r"^[A-Za-z][A-Za-z0-9_.-]*$")
 WORKER_SLOT = re.compile(r"\{\{slot:worker-task(?:\.[A-Za-z0-9._-]*)?\}\}")
 EVAL_REL = re.compile(r"^tests/eval/[^/]+/eval\.json$")
+EVAL_INPUT_REL = re.compile(r"^tests/eval/[^/]+/inputs/.+$")   # eval_inputs の to（EVAL の課題の入力のファイルの置き場所）
 YAML_PLAIN = re.compile(r"^[A-Za-z][A-Za-z0-9._-]*$")        # 引用符なしで YAML に置いてよい値
 YAML_RESERVED = {"y", "n", "yes", "no", "true", "false", "on", "off", "null"}   # YAML が真偽や null に読む言葉
 
@@ -78,7 +80,7 @@ STAGE_GENERATE = "generate"             # 段階「生成」
 STATUS_DECIDED = "decided"              # ナレッジの状態「決まった」
 KINDS = ("criterion", "other")          # ナレッジの種類「合否の決め方」「それ以外」（tests/knowledge.json の kind と同じ）
 
-MANIFEST_KEYS = ("plugin_name", "plugin_description", "entry_skill", "workers", "verifier", "orchestrator")
+MANIFEST_KEYS = ("plugin_name", "plugin_description", "entry_skill", "workers", "verifier", "orchestrator", "eval_inputs")
 DESCRIPTION_MAX = 1024
 
 # tools の作業ごとの分を入れる差し込み口（B2 のひな形の名前に合わせる。BLUEPRINT 8章に名前の決まりはない）
@@ -259,6 +261,40 @@ def check_tools(value: Any, label: str, problems: List[str]) -> List[str]:
     return tools
 
 
+def load_eval_inputs(value: Any, label: str, problems: List[str]) -> List[Dict[str, str]]:
+    """manifest.json の eval_inputs：EVAL の課題の入力に使う実物のファイル [{from: 実物の絶対パス, to: 生成プラグインの中の置き場所}]。
+    実物がなければ断り、どれがないかを示す。"""
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        problems.append("%s の eval_inputs は、from と to を持つ項目の一覧にしてください。" % label)
+        return []
+    found: List[Dict[str, str]] = []
+    seen: Set[str] = set()
+    for number, item in enumerate(value, 1):
+        where = "%s の eval_inputs の %d 番目" % (label, number)
+        if not isinstance(item, dict) or sorted(item) != ["from", "to"]:
+            problems.append("%sは、from（実物の絶対パス）と to（生成プラグインの中の置き場所）だけを持つ項目にしてください。" % where)
+            continue
+        source, target = item["from"], item["to"]
+        if not isinstance(source, str) or not os.path.isabs(source):
+            problems.append("%sの from %s は、実物のファイルの絶対パスにしてください。" % (where, show(source)))
+        elif not os.path.exists(source):
+            problems.append("%sの from のファイル %s がありません。" % (where, source))
+        elif not os.path.isfile(source):
+            problems.append("%sの from %s はファイルではありません（フォルダは写せません）。" % (where, source))
+        if not isinstance(target, str) or not EVAL_INPUT_REL.match(target) or "\\" in target \
+                or any(part in ("", ".", "..") for part in target.split("/")):
+            problems.append("%sの to %s は、tests/eval/<課題>/inputs/<名前> の形のパスにしてください。" % (where, show(target)))
+        elif target in seen:
+            problems.append("%sの to %s が重なっています。" % (where, target))
+        else:
+            seen.add(target)
+            if isinstance(source, str):
+                found.append({"from": source, "to": target})
+    return found
+
+
 def load_manifest(work: str, problems: List[str]) -> Optional[Dict[str, Any]]:
     """parts/manifest.json（組み立ての設定。BLUEPRINT 8章）を確かめて、使いやすい形にする。"""
     label = "組み立ての設定（parts/manifest.json）"
@@ -331,6 +367,8 @@ def load_manifest(work: str, problems: List[str]) -> Optional[Dict[str, Any]]:
         else:
             roles[role] = check_tools(part.get("extra_tools"), "%s の %s.extra_tools" % (label, role), problems)
 
+    eval_inputs = load_eval_inputs(data.get("eval_inputs"), label, problems)
+
     if len(problems) > before or None in (name, entry_name):
         return None
     return {
@@ -341,6 +379,7 @@ def load_manifest(work: str, problems: List[str]) -> Optional[Dict[str, Any]]:
         "workers": workers,
         "verifier_tools": roles["verifier"],
         "orchestrator_tools": roles["orchestrator"],
+        "eval_inputs": eval_inputs,
     }
 
 
@@ -914,6 +953,10 @@ def build(hearing: str, work: str, out: str, template: Optional[str] = None, tod
     slots = load_slots(work, problems)
     parts_files = list_parts_files(work, problems)
     filled_eval = prepare_eval(os.path.join(work, "parts", "files"), parts_files, criteria, problems, warnings)
+    if manifest is not None:
+        for item in manifest["eval_inputs"]:
+            if item["to"] in parts_files:
+                problems.append("EVAL の課題の入力 %s が、parts/files/ と manifest.json の eval_inputs の両方にあります。どちらか一方にしてください。" % item["to"])
     check_output_path(work, out, problems)
     if problems or manifest is None or task is None:
         raise Refusal(problems or ["組み立ての設定を読めませんでした。"])
@@ -968,7 +1011,8 @@ def build(hearing: str, work: str, out: str, template: Optional[str] = None, tod
 
         # 作業エージェントが書いたファイルをそのまま足す。ひな形や組み立てのファイルは書き換えさせない
         base = os.path.join(work, "parts", "files")
-        collisions = [r for r in parts_files if os.path.lexists(os.path.join(out, *r.split("/")))]
+        inputs = manifest["eval_inputs"]
+        collisions = [r for r in parts_files + [i["to"] for i in inputs] if os.path.lexists(os.path.join(out, *r.split("/")))]
         if collisions:
             raise Refusal(["作業エージェントが書いたファイル %s は、ひな形か組み立てが作るファイルと同じ場所です。"
                            "ひな形のファイル（土台と文書、task.json、tests/knowledge.json など）は書き換えられません。置き場所を変えてください。" % r
@@ -980,6 +1024,10 @@ def build(hearing: str, work: str, out: str, template: Optional[str] = None, tod
             else:
                 os.makedirs(os.path.dirname(target), exist_ok=True)
                 shutil.copy2(os.path.join(base, *rel.split("/")), target)
+        for item in inputs:   # EVAL の課題の入力の実物
+            target = os.path.join(out, *item["to"].split("/"))
+            os.makedirs(os.path.dirname(target), exist_ok=True)
+            shutil.copyfile(item["from"], target)
 
         # 土台がひな形と同じか
         _name, _ext, differences = compare_base(out, template)
@@ -1008,6 +1056,7 @@ def build(hearing: str, work: str, out: str, template: Optional[str] = None, tod
         "workers": agents,
         "criteria": [{"id": c["id"], "knowledge": c["knowledge"]} for c in criteria],
         "knowledge": counts,
+        "eval_inputs": [i["to"] for i in inputs],
         "commit": commit,
         "work_folder_removed": removed,
         "warnings": warnings,
