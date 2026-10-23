@@ -8,7 +8,7 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { after, describe, test } from 'node:test';
 
-import { PLUGIN, SETTINGS, TASK, beginRun, cleanupAll, delay, fetchApi, prepareStart, sdkEvent, startChild, startPlugin, tempDir } from './harness.mjs';
+import { PLUGIN, SETTINGS, TASK, beginRun, cleanupAll, fetchApi, prepareStart, sdkEvent, startChild, startPlugin, tempDir } from './harness.mjs';
 
 after(cleanupAll);
 
@@ -285,6 +285,5 @@ describe('エクステンションが起動し直されたとき（REQ-008、REQ
     await second.core.whenIdle();
     assert.deepEqual(second.fake.callsOf('tasks.cancel'), [], 'ほかのセッションのエージェントには触れない');
     assert.equal(second.fake.config.hooks.onPreToolUse({ toolName: 'edit', agentId: root }), undefined, '拒む一覧は自分のセッションの記録だけから作る');
-    await delay(5);
   });
 });

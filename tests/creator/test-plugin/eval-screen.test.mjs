@@ -167,8 +167,10 @@ describe('画面の操作', () => {
 
   test('REQ-041 画面のサーバーにつながらなくなったら、そのことを伝えて終える', async () => {
     await withApp(async ({ core, app }) => {
-      const done = operate(app);
-      await until(() => core.callsOf('start').length === 1, '開始');
+      const seen = [];
+      const done = operate(app, { onSnapshot: (s) => seen.push(s.status) });
+      await until(() => seen.includes('running'), '画面が実行中の状態を読んだこと'); // 監視が始まってから、サーバーを閉じる
+      assert.equal(core.callsOf('start').length, 1);
       await app.close();
       await assert.rejects(done, /画面のサーバーにつながらなくなりました/);
     });
