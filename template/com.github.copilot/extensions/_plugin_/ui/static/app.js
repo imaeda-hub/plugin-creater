@@ -66,11 +66,6 @@
     unknown: ['起票したか分かりません', 'waiting'],
   };
   const ISSUE_SOURCES = { mechanical: '実行の記録から自動で見つけた課題', orchestrator: '統括エージェントが振り返って足した課題' };
-  const DEFAULT_FILE_STEPS = [
-    'このプラグインを GitHub に公開する。',
-    'plugin.json の repository にそのリポジトリを書き、プラグインを入れ直す。',
-    'gh（GitHub の公式のコマンド）を入れて、ログインする。',
-  ];
   const DEFAULT_UNSTOP_HOW_TO = 'チャットで Esc を2回押すか、Copilot CLI を終えてください。';
   const AUTO_NOTICE = 'Auto のため、役割ごとのモデルが効かないことがあります。実際に動いたモデルは、エージェントごとに表示します。';
   const OVERRIDE_NOTICE = '実行が終わると、このセッションのほかのエージェントのモデルの指定も消えます。';
@@ -701,13 +696,13 @@
   }
 
   function cannotFileView(canFile) {
-    const steps = Array.isArray(canFile.steps) && canFile.steps.length ? canFile.steps : DEFAULT_FILE_STEPS;
+    // 手順は、中心の処理が確かめた結果に合わせて決める（起票できるかを確かめている間などは、手順がない）
+    const steps = Array.isArray(canFile.steps) ? canFile.steps : [];
     return h(
       'div',
       { class: 'alert alert-info', id: 'cannot-file' },
       h('p', null, h('strong', null, '今は Issue を起票できません。'), canFile.reason ? ` ${canFile.reason}` : ''),
-      h('p', null, '起票できるようにする手順：'),
-      h('ol', null, steps.map((step) => h('li', null, step))),
+      steps.length ? [h('p', null, '起票できるようにする手順：'), h('ol', null, steps.map((step) => h('li', null, step)))] : null,
     );
   }
 

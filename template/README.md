@@ -26,15 +26,23 @@ copilot plugin install {{plugin_name}}@{{marketplace_name}}
 
 画面を動かす仕組み（エクステンション。Copilot CLI が起動する別のプログラム）は、試験的な機能です（Copilot CLI 1.0.102 の時点）。有効にしないと、{{plugin_name}} は使えません。
 
-```text
-/experimental on
+初めて使うときは、`--experimental` を付けて Copilot CLI を起動します。一度付けると設定に残るので、次からは付けなくても有効です。
+
+```shell
+copilot --experimental
 ```
 
-有効にしたら、Copilot CLI を起動し直します。起動のときに `copilot --experimental` と付けても有効にできます。試験的な機能なので、Copilot CLI の更新で使い方が変わることがあります。
+すでに起動しているときは、チャットで次のように打ちます。Copilot CLI が自動で再起動して、有効になります。再起動すると、今の会話は終わります。
+
+```text
+/settings experimental on
+```
+
+どちらの場合も、起動のあとに、まだ信頼していないフォルダでは、フォルダを信頼するかの確認が出ます。続けて、次の「3. 読み込むときの確認を許可する」の確認が出ます。試験的な機能なので、Copilot CLI の更新で使い方が変わることがあります。
 
 ### 3. 読み込むときの確認を許可する
 
-{{plugin_name}} を読み込むとき、Copilot CLI がチャットに確認を出します。題は `Extension "<名前>" wants elevated permissions` で、本文は次のとおりです。
+{{plugin_name}} を読み込むとき、Copilot CLI がチャットに確認を出します。題は `Extension "plugin:{{plugin_name}}:{{plugin_name}}" wants elevated permissions` で、本文は次のとおりです。
 
 ```text
 This extension wants to: skip tool permission prompts, register hooks, handle permission requests.
@@ -54,11 +62,11 @@ Copilot CLI 1.0.101 から、この確認は必ずあなたに出ます。許可
 | 選択肢 | 意味 |
 | --- | --- |
 | Yes | 今回だけ許可します。Copilot CLI を起動するたびと、`/clear` のたびに、また確認が出ます |
-| Yes, and always allow "<名前>" in this directory | このフォルダでは常に許可します。このフォルダでは、次から確認が出ません（`/clear` の後も、起動し直しても）。ほかのフォルダでは、また出ます |
-| Yes, and don't ask again for "<名前>" this session | フォルダが分からないときに、上の選択肢の代わりに出ます。このセッションの間は、確認が出ません |
+| Yes, and always allow "plugin:{{plugin_name}}:{{plugin_name}}" in this directory (<フォルダの場所>) | このフォルダでは常に許可します。このフォルダでは、次から確認が出ません（`/clear` の後も、起動し直しても）。ほかのフォルダでは、また出ます |
+| Yes, and don't ask again for "plugin:{{plugin_name}}:{{plugin_name}}" this session | フォルダが分からないときに、上の選択肢の代わりに出ます。このセッションの間は、確認が出ません |
 | No (Esc) | 断ります。{{plugin_name}} は読み込まれません |
 
-初めて起動するときは、フォルダーを信頼するかの確認の後に、この確認が2回出ることがあります。
+初めて使うときと、`/settings experimental on` で再起動した後は、フォルダを信頼するかの確認の後に、この確認が続けて2回出ることがあります。
 
 ## 使い方
 
@@ -126,6 +134,6 @@ EVAL（実際のモデルで課題を実行して採点する試験）は、plug
 
 チャットで作業を頼んでも画面の URL が示されないときは、{{plugin_name}} のエクステンションが読み込まれていません。次のどれかです。
 
-- 試験的機能を有効にしていない：`/experimental on` で有効にして、Copilot CLI を起動し直します。
+- 試験的機能を有効にしていない：`copilot --experimental` で起動し直します。すでに起動しているときは、チャットで `/settings experimental on` と打ちます（自動で再起動します）。
 - 読み込むときの確認を断った：Copilot CLI を起動し直して、出た確認を許可します。選び方は「3. 読み込むときの確認を許可する」にあります。
 - エクステンションを使わない設定（`/extensions mode` の Disabled）にしている：`/extensions mode` で Load & Augment か Load Only に戻します。Disabled は、次のセッションにも残ります。

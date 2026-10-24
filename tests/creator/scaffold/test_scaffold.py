@@ -131,6 +131,10 @@ class Base(unittest.TestCase):
     def edit_eval(self, change):
         self.edit_json(self.part("files/tests/eval/T-01/eval.json"), change)
 
+    def edit_confirmed(self, change, index=0):
+        """ユーザーが生成前の確認で確かめた課題（ヒアリングの記録の confirmation.evalTasks）を直す。"""
+        self.edit_state(lambda s: change(s["confirmation"]["evalTasks"][index]))
+
     def append(self, path, text):
         with open(path, "a", encoding="utf-8", newline="") as f:
             f.write(text)
@@ -684,6 +688,7 @@ class Criteria(Base):
                     k.update(kind="criterion", status="decided")
         self.edit_state(change)
         self.edit_eval(lambda e: e["criteria"].extend([{"knowledge": "K-05", "grading": "model"}, {"knowledge": "K-06", "grading": "model"}]))
+        self.edit_confirmed(lambda t: t["criteria"].extend(["K-05", "K-06"]))
         self.build()
         task = self.json("com.github.copilot/extensions/weekly-report/task.json")
         self.assertEqual([(c["id"], c["knowledge"]) for c in task["criteria"]],
@@ -769,14 +774,11 @@ class EvalFiles(Base):
         self.write(self.part("files/tests/eval/T-01/eval.json"), "{ 壊れている")
         self.assertMentions(self.refusal(), "eval.json", "JSON として読めません")
 
-    def test_REQ_038_a_criterion_that_no_task_uses_and_missing_tasks_are_warnings(self):
+    def test_REQ_038_a_criterion_that_no_confirmed_task_uses_is_a_warning(self):
         self.edit_eval(lambda e: e["criteria"].pop())
+        self.edit_confirmed(lambda t: t["criteria"].remove("K-03"))   # 確かめた課題にも入れない
         result = self.build()
         self.assertTrue(any("C-02" in w and "どの EVAL の課題にも入っていません" in w for w in result["warnings"]))
-        self.setUp()
-        shutil.rmtree(self.part("files/tests/eval"))
-        result = self.build()
-        self.assertTrue(any("EVAL の課題" in w and "1つもありません" in w for w in result["warnings"]))
 
     def test_other_json_files_are_copied_as_they_are(self):
         raw = '{"b":1,   "a":[1,2]}'
@@ -796,10 +798,16 @@ class EvalInputs(Base):
     def set_inputs(self, *items):
         self.edit_manifest(lambda m: m.update(eval_inputs=list(items)))
 
+    def confirm_real(self, *items):
+        """実物のファイルを、manifest.json の eval_inputs・eval.json の inputs・確かめた課題の入力の3か所にそろえて入れる。"""
+        self.set_inputs(*items)
+        self.edit_eval(lambda e: e["inputs"].extend("inputs/" + i["to"].split("/inputs/", 1)[1] for i in items))
+        self.edit_confirmed(lambda t: t["inputs"].extend({"path": i["from"], "provisional": False} for i in items))
+
     def test_REQ_038_real_files_are_copied_to_the_places_named_in_to(self):
         a = self.real_file()
         b = self.real_file("memo/二つ目.csv", "a,b\n1,2\n")
-        self.set_inputs({"from": a, "to": "tests/eval/T-01/inputs/前回の週報.txt"}, {"from": b, "to": "tests/eval/T-01/inputs/sub/二つ目.csv"})
+        self.confirm_real({"from": a, "to": "tests/eval/T-01/inputs/前回の週報.txt"}, {"from": b, "to": "tests/eval/T-01/inputs/sub/二つ目.csv"})
         result = self.build()
         self.assertEqual(self.read("tests/eval/T-01/inputs/前回の週報.txt"), "先週の実物\n")
         self.assertEqual(self.read("tests/eval/T-01/inputs/sub/二つ目.csv"), "a,b\n1,2\n")
@@ -812,7 +820,7 @@ class EvalInputs(Base):
         os.makedirs(os.path.dirname(path))
         with open(path, "wb") as f:
             f.write(data)
-        self.set_inputs({"from": path, "to": "tests/eval/T-01/inputs/x.bin"})
+        self.confirm_real({"from": path, "to": "tests/eval/T-01/inputs/x.bin"})
         self.build()
         self.assertEqual(self.read_bytes("tests/eval/T-01/inputs/x.bin"), data)
 
@@ -856,7 +864,7 @@ class EvalInputs(Base):
     def test_REQ_038_a_real_file_cannot_overwrite_a_template_file(self):
         a = self.real_file()
         self.write(self.tmpl("tests/eval/T-01/inputs/from-template.txt"), "ひな形のファイル")
-        self.set_inputs({"from": a, "to": "tests/eval/T-01/inputs/from-template.txt"})
+        self.confirm_real({"from": a, "to": "tests/eval/T-01/inputs/from-template.txt"})
         self.assertMentions(self.refusal(), "from-template.txt", "書き換えられません")
 
     def test_eval_inputs_must_be_a_list(self):

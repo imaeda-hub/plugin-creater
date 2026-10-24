@@ -178,6 +178,12 @@ const until = (page, fn, arg) => page.waitForFunction(fn, arg, { timeout: 6000 }
 const HTTP_400 = /status of 400/;
 const HTTP_403 = /status of 403/;
 const HTTP_404 = /status of 404/;
+// 起票できないときの手順（中心の処理が決める文。core/github.mjs の STEP_* と同じ書き方の見本）
+const FILE_STEPS = [
+  'GitHub にこのプラグインを公開する。',
+  'プラグインの設定ファイル（plugin.json）の repository に、公開したリポジトリの GitHub の URL を書く。手元のフォルダから入れたときは、新しいセッションを始めると反映される。GitHub などから入れたときは、入れ直すと反映される。',
+  'gh（GitHub の公式のコマンド）を入れて、gh auth login でログインする。',
+];
 const openAllFolds = (page) => page.evaluate(() => document.querySelectorAll('details').forEach((d) => (d.open = true)));
 
 /** ブラウザーの外（試験の側）の条件を、決めた時間まで待つ */
@@ -806,18 +812,15 @@ describe('Issue の起票の承認（REQ-014）', () => {
   test('REQ-014 起票できないときは、承認ボタンが押せず、起票できるようにする手順が出る（案は並ぶ）', async () => {
     const state = finishedState();
     state.run.issues = [issue('i1', 'none'), issue('i2', 'failed', { reason: '前の理由' })];
-    state.run.canFile = { ok: false, reason: 'gh にログインしていません。', steps: [] };
+    state.run.canFile = { ok: false, reason: 'このプラグインの設定ファイル（plugin.json）に repository が書かれていません。', code: 'no_repository', steps: FILE_STEPS };
     await withScreen({ state }, async ({ page, core }) => {
       assert.equal(await page.locator('.issue').count(), 2, '案は並ぶ');
       for (const id of ['i1', 'i2']) assert.equal(await page.locator(`.issue[data-issue-id="${id}"] .approve`).isDisabled(), true);
       const box = await textOf(page, '#cannot-file');
       assert.match(box, /今は Issue を起票できません/);
-      assert.match(box, /gh にログインしていません。/);
-      assert.deepEqual(await page.locator('#cannot-file ol li').allInnerTexts(), [
-        'このプラグインを GitHub に公開する。',
-        'plugin.json の repository にそのリポジトリを書き、プラグインを入れ直す。',
-        'gh（GitHub の公式のコマンド）を入れて、ログインする。',
-      ]);
+      assert.match(box, /repository が書かれていません。/);
+      assert.match(box, /起票できるようにする手順：/);
+      assert.deepEqual(await page.locator('#cannot-file ol li').allInnerTexts(), FILE_STEPS, '中心の処理が決めた手順をそのまま出す');
       assert.equal(core.callsOf('fileIssue').length, 0);
       // 中心の処理が手順を決めているときは、その手順を出す
       core.set((s) => {
@@ -833,6 +836,16 @@ describe('Issue の起票の承認（REQ-014）', () => {
       });
       await until(page, () => !document.getElementById('cannot-file'));
       assert.equal(await page.locator('.issue[data-issue-id="i1"] .approve').isEnabled(), true);
+      // 起票できるかを確かめている間は、手順がない。理由だけを出し、手順の見出しは出さない
+      core.set((s) => {
+        s.run.canFile = { ok: false, reason: '起票できるかを確かめています。', code: 'checking', steps: [] };
+        return s;
+      });
+      await until(page, () => document.getElementById('cannot-file'));
+      assert.match(await textOf(page, '#cannot-file'), /起票できるかを確かめています。/);
+      assert.ok(!(await textOf(page, '#cannot-file')).includes('手順'));
+      assert.equal(await page.locator('#cannot-file ol').count(), 0);
+      assert.equal(await page.locator('.issue[data-issue-id="i1"] .approve').isDisabled(), true);
     });
   });
 
@@ -1496,13 +1509,13 @@ describe('分かりやすい表示（REQ-025）', () => {
     });
   }
 
-  test('REQ-025 画面の文に、内部の用語（生成プラグイン・クリエイター）が出ない。起票の手順の標準の文は「このプラグイン」と書く', async () => {
-    const withDefaultSteps = finishedState();
-    withDefaultSteps.run.issues = [{ id: 'i1', title: '案', body: '本文', source: 'mechanical', filing: { state: 'none', url: null, reason: null } }];
-    withDefaultSteps.run.canFile = { ok: false, reason: 'gh にログインしていません。', steps: [] };
-    const previousWithDefaultSteps = richPrep();
-    previousWithDefaultSteps.previous.canFile = { ok: false, reason: 'gh にログインしていません。', steps: [] };
-    for (const [name, state] of [['準備中', richPrep()], ['実行中', richRunning()], ['終了後', richFinished()], ['起票の手順（標準の文）', withDefaultSteps], ['前の結果の起票の手順', previousWithDefaultSteps]]) {
+  test('REQ-025 画面の文に、内部の用語（生成プラグイン・クリエイター）が出ない', async () => {
+    const withSteps = finishedState();
+    withSteps.run.issues = [{ id: 'i1', title: '案', body: '本文', source: 'mechanical', filing: { state: 'none', url: null, reason: null } }];
+    withSteps.run.canFile = { ok: false, reason: 'gh でログインしていません。', code: 'not_logged_in', steps: FILE_STEPS };
+    const previousWithSteps = richPrep();
+    previousWithSteps.previous.canFile = { ok: false, reason: 'gh でログインしていません。', code: 'not_logged_in', steps: FILE_STEPS };
+    for (const [name, state] of [['準備中', richPrep()], ['実行中', richRunning()], ['終了後', richFinished()], ['起票の手順', withSteps], ['前の結果の起票の手順', previousWithSteps]]) {
       await withScreen({ state, task: ALL_DISPLAYS_TASK, allowErrors: [HTTP_404] }, async ({ page }) => {
         if (name.startsWith('準備中') || name.startsWith('前の結果')) await page.click('#s-previous summary');
         await openAllFolds(page);
@@ -1510,13 +1523,7 @@ describe('分かりやすい表示（REQ-025）', () => {
         assert.doesNotMatch(text, /生成プラグイン|クリエイター/, `${name}の画面に内部の用語が出ている`);
         assert.ok(!(await page.title()).match(/生成プラグイン|クリエイター/));
         assert.match(text, /このプラグインの GitHub リポジトリに起票されます/);
-        if (name.includes('標準の文') || name.startsWith('前の結果')) {
-          assert.deepEqual(await page.locator('#cannot-file ol li').allInnerTexts(), [
-            'このプラグインを GitHub に公開する。',
-            'plugin.json の repository にそのリポジトリを書き、プラグインを入れ直す。',
-            'gh（GitHub の公式のコマンド）を入れて、ログインする。',
-          ]);
-        }
+        if (name.includes('起票の手順')) assert.deepEqual(await page.locator('#cannot-file ol li').allInnerTexts(), FILE_STEPS);
       });
     }
   });

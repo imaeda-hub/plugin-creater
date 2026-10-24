@@ -11,6 +11,7 @@
 
 終了コード: 0 全部合格、1 不合格あり、2 道具が足りない・使い方の誤り。
 モデルも外のネットワークも使わない。公式スキーマは schemas/ の写しを使う。
+EVAL の課題の regex の pattern が正規表現として読めるかだけは、node があれば node で確かめる（採点は JavaScript の正規表現で行うため）。
 """
 from __future__ import annotations
 
@@ -19,9 +20,13 @@ import ast
 import glob
 import ipaddress
 import json
+import math
 import os
 import re
+import subprocess
 import sys
+import unicodedata
+import warnings
 from typing import Any, Dict, List, Optional, Set, Tuple
 from urllib.parse import urlsplit
 
@@ -58,7 +63,7 @@ CATALOG: Dict[str, Tuple[List[str], str]] = {
     "layout": (["REQ-004"], "ファイルの置き場所が Agent Plugins の形式に合う"),
     "symlinks": (["REQ-004"], "根の外に出るシンボリックリンクがない"),
     "task": (["REQ-011"], "作業の定義（task.json）が task.schema.json に合う"),
-    "eval": (["REQ-011"], "EVAL の課題の基準の番号と文が作業の定義の写しと同じ"),
+    "eval": (["REQ-011"], "EVAL の課題が採点のしかたの決まりに合い、基準の番号と文が作業の定義の写しと同じ"),
     # ナレッジの番号の突き合わせは、生成プラグインの要件ではなく設計書 7章の試験なので、要件の番号の代わりに節を付ける
     "knowledge": ([], "ナレッジの番号がそれぞれの置き場所にある（設計書 7章）"),
     "agent-tools": (["REQ-010"], "統括・作業・検証の定義がそろい、作業と検証に tools があり、統括に tools がなく、検証エージェントに書き込みとコマンドがない"),
@@ -721,52 +726,309 @@ def check_task(ctx: Context, c: Check) -> None:
                 c.error("%s settings の %s の初めの値 %s が選択肢にない" % (label, setting.get("key"), short(setting["default"])))
 
 
+# ---- EVAL の課題（eval.json）。形と採点のしかたの決まりは skills/test-plugin/scripts/grade.mjs の先頭の表と同じにする。
+# 2つがずれていないことは、tests/creator/stage1/ の試験（同じ誤りの例を両方に通す）が見張る。
+
+GRADINGS = ("program", "model")
+CHECK_TYPES: Dict[str, Tuple[List[str], List[str]]] = {   # 種類 -> (必須の項目, 任意の項目)
+    "file_exists": (["file"], []),
+    "contains": (["file", "text"], []),
+    "not_contains": (["file", "text"], []),
+    "regex": (["file", "pattern"], ["flags"]),
+}
+REGEX_FLAGS = "imsu"
+Regexes = List[Tuple[str, str, str]]   # (場所, pattern, flags)
+
+
+def is_text(value: Any) -> bool:
+    return isinstance(value, str) and value.strip() != ""
+
+
+def is_number(value: Any) -> bool:
+    return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
+
+
+def is_integer(value: Any) -> bool:
+    return is_number(value) and value == int(value)
+
+
+def normalize_rel(path: Any) -> str:
+    return unicodedata.normalize("NFC", str(path).replace("\\", "/"))
+
+
+def glob_to_regex(pattern: str) -> "re.Pattern[str]":
+    """作業フォルダの根からの相対のグロブを正規表現にする（grade.mjs の globToRegExp と同じ書き方）。"""
+    p = normalize_rel(pattern)
+    out, i = "", 0
+    while i < len(p):
+        c = p[i]
+        if c == "*":
+            if p[i + 1:i + 2] == "*":
+                i += 1
+                if p[i + 1:i + 2] == "/":
+                    i += 1
+                    out += "(?:.*/)?"
+                else:
+                    out += ".*"
+            else:
+                out += "[^/]*"
+        elif c == "?":
+            out += "[^/]"
+        elif c == "[":
+            end = p.find("]", i + 2)
+            if end == -1:
+                out += "\\["
+            else:
+                body = p[i + 1:end]
+                if body[:1] == "!":
+                    body = "^" + body[1:]
+                out += "[" + body.replace("\\", "\\\\") + "]"
+                i = end
+        elif c == "{":
+            end = p.find("}", i)
+            if end == -1:
+                out += "\\{"
+            else:
+                out += "(?:" + "|".join(re.escape(x) for x in p[i + 1:end].split(",")) + ")"
+                i = end
+        else:
+            out += re.escape(c)
+        i += 1
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        return re.compile("^" + out + "$")
+
+
+def glob_problems(value: Any, label: str) -> List[str]:
+    if not is_text(value):
+        return ["%s は、作業フォルダの根からの場所（グロブ）を文字で書く" % label]
+    out = []
+    if "\\" in value:
+        out.append("%s は、場所の区切りを / で書く（\\ は使えない）" % label)
+    if value.startswith("/") or re.match(r"^[A-Za-z]:", value):
+        out.append("%s は、作業フォルダの根からの相対の場所で書く（絶対の場所は使えない）" % label)
+    if ".." in value.split("/"):
+        out.append("%s に .. は使えない" % label)
+    try:
+        glob_to_regex(value)
+    except re.error as e:
+        out.append("%s がグロブとして読めない（%s）" % (label, e))
+    return out
+
+
+def check_problems(check: Any, label: str, regexes: Regexes) -> List[str]:
+    """program の基準の check を確かめる。regex の pattern は regexes に集める（あとで node で読めるかを見る）。"""
+    if not isinstance(check, dict):
+        return ["%s がない（program の基準には check が要る）" % label]
+    spec = CHECK_TYPES.get(check.get("type")) if isinstance(check.get("type"), str) else None
+    if spec is None:
+        shown = check.get("type") if isinstance(check.get("type"), str) else ""
+        return ["%s.type「%s」は使えない（使えるのは %s）" % (label, shown, "・".join(CHECK_TYPES))]
+    out = []
+    allowed = {"type", *spec[0], *spec[1]}
+    out += ["%s に、%s では使わない項目「%s」がある" % (label, check["type"], k) for k in check if k not in allowed]
+    out += ["%s に %s がない（%s には要る）" % (label, k, check["type"]) for k in spec[0] if k not in check]
+    if "file" in check:
+        out += glob_problems(check["file"], label + ".file")
+    if check["type"] in ("contains", "not_contains") and "text" in check and not is_text(check["text"]):
+        out.append("%s.text は、探す文字を空でない文字で書く" % label)
+    if check["type"] == "regex" and "pattern" in check:
+        flags = check.get("flags", "")
+        if not is_text(check["pattern"]):
+            out.append("%s.pattern は、正規表現を空でない文字で書く" % label)
+        elif not isinstance(flags, str) or any(f not in REGEX_FLAGS for f in flags) or len(set(flags)) != len(flags):
+            out.append("%s.flags は、i・m・s・u のうち使うものを並べて書く" % label)
+        else:
+            regexes.append((label + ".pattern", check["pattern"], flags))
+    return out
+
+
+def model_check_problems(check: Any, label: str) -> List[str]:
+    """model の基準の check（省いてもよい）を確かめる。"""
+    if not isinstance(check, dict):
+        return ["%s は、{ \"files\": [グロブ] } の形で書く（省いてもよい）" % label]
+    out = ["%s に、model の基準では使わない項目「%s」がある" % (label, k) for k in check if k != "files"]
+    if "files" in check:
+        files = check["files"]
+        if not isinstance(files, list) or not files:
+            out.append("%s.files は、グロブの並びを書く" % label)
+        else:
+            for i, g in enumerate(files):
+                out += glob_problems(g, "%s.files[%d]" % (label, i))
+    return out
+
+
+def eval_task_problems(task: Any, label: str, regexes: Regexes) -> List[str]:
+    """eval.json の1課題の形を確かめる。"""
+    if not isinstance(task, dict):
+        return ["%s が JSON のオブジェクトではない" % label]
+    out = []
+    if not is_text(task.get("id")):
+        out.append("%s に id がない" % label)
+    if not is_text(task.get("prompt")):
+        out.append("%s に prompt（頼むときの言葉）がない" % label)
+    if "inputs" in task:
+        if not isinstance(task["inputs"], list):
+            out.append("%s.inputs は、入力のファイルの場所の並びで書く" % label)
+        else:
+            for i, item in enumerate(task["inputs"]):
+                if not is_text(item) or item.startswith("/") or re.match(r"^[A-Za-z]:", item) or ".." in normalize_rel(item).split("/"):
+                    out.append("%s.inputs[%d] は、課題のフォルダの中の相対の場所で書く" % (label, i))
+    if "settings" in task:
+        settings = task["settings"]
+        if not isinstance(settings, dict):
+            out.append("%s.settings は、{ \"maxIterations\": 数, \"task\": {...} } の形で書く" % label)
+        else:
+            if "maxIterations" in settings and not (is_integer(settings["maxIterations"]) and settings["maxIterations"] >= 1):
+                out.append("%s.settings.maxIterations は、1以上の整数で書く" % label)
+            if "task" in settings:
+                if not isinstance(settings["task"], dict):
+                    out.append("%s.settings.task は、設定の名前と値の組で書く" % label)
+                else:
+                    for k, v in settings["task"].items():
+                        if not (isinstance(v, (str, bool)) or is_number(v)):
+                            out.append("%s.settings.task.%s の値は、文字・数・真偽のどれかで書く" % (label, k))
+    criteria = task.get("criteria")
+    if not isinstance(criteria, list) or not criteria:
+        out.append("%s に criteria（合否の基準）がない" % label)
+        return out
+    seen: Set[str] = set()
+    for i, item in enumerate(criteria):
+        where = "%s.criteria[%d]" % (label, i)
+        if not isinstance(item, dict):
+            out.append("%s がオブジェクトではない" % where)
+            continue
+        if not is_text(item.get("id")):
+            out.append("%s に id がない" % where)
+        elif item["id"] in seen:
+            out.append("%s の id「%s」が重なっている" % (where, item["id"]))
+        else:
+            seen.add(item["id"])
+        if not is_text(item.get("text")):
+            out.append("%s に text（基準の文）がない" % where)
+        if item.get("grading") not in GRADINGS:
+            out.append("%s.grading は program か model で書く" % where)
+        elif item["grading"] == "program":
+            out += check_problems(item.get("check"), where + ".check", regexes)
+        elif "check" in item:
+            out += model_check_problems(item["check"], where + ".check")
+    return out
+
+
+def js_regex_errors(regexes: Regexes) -> Dict[str, str]:
+    """pattern が JavaScript の正規表現として読めるかを node で確かめる（採点が JavaScript で行われるため）。場所 -> 誤りの文。
+    node がない・動かないときは None の代わりに空の辞書を返し、確かめなかったことは呼び出し側が注意にする。"""
+    script = ("const items = JSON.parse(require('fs').readFileSync(0, 'utf8'));"
+              "console.log(JSON.stringify(items.map(([p, f]) => { try { new RegExp(p, f); return null; } catch (e) { return e.message; } })));")
+    try:
+        done = subprocess.run(["node", "-e", script], input=json.dumps([[p, f] for _, p, f in regexes]).encode("utf-8"),
+                              capture_output=True, timeout=30)
+        results = json.loads(done.stdout.decode("utf-8"))
+    except (OSError, subprocess.SubprocessError, ValueError):
+        raise RuntimeError("node を動かせなかった")
+    return {where: message for (where, _, _), message in zip(regexes, results) if message}
+
+
+def settings_problems(task_def: Dict[str, Any], given: Dict[str, Any], label: str) -> List[str]:
+    """課題の settings.task の値が、作業の定義の settings（画面の欄）に合うか。合わないと、EVAL が画面を操作できない。"""
+    defs = {d["key"]: d for d in task_def.get("settings", []) if isinstance(d, dict) and isinstance(d.get("key"), str)}
+    out = []
+    for key, value in given.items():
+        d = defs.get(key)
+        if d is None:
+            out.append("%s.settings.task の「%s」が、作業の定義の settings にない（画面に欄がないので、EVAL が値を入れられない）" % (label, key))
+            continue
+        kind = d.get("type")
+        options = [o.get("value") if isinstance(o, dict) else o for o in d.get("options", [])] if isinstance(d.get("options"), list) else []
+        if kind in ("text", "path") and not isinstance(value, str):
+            out.append("%s.settings.task.%s は、%s の設定なので文字で書く" % (label, key, kind))
+        elif kind == "number" and not is_number(value):
+            out.append("%s.settings.task.%s は、number の設定なので数で書く" % (label, key))
+        elif kind == "checkbox" and not isinstance(value, bool):
+            out.append("%s.settings.task.%s は、checkbox の設定なので true か false で書く" % (label, key))
+        elif kind == "select" and value not in options:
+            out.append("%s.settings.task.%s の値 %s が、作業の定義の選択肢（%s）にない" % (label, key, short(value), "、".join(map(str, options))))
+    for key, d in defs.items():   # 必須で、初めの値がない設定は、課題が値を入れないと画面で開始できない
+        default = d.get("default")
+        empty_default = default is None or (isinstance(default, str) and default.strip() == "")
+        given_value = given.get(key)
+        missing = given_value is None or (isinstance(given_value, str) and given_value.strip() == "")
+        if d.get("required") and d.get("type") != "checkbox" and empty_default and missing:
+            out.append("%s.settings.task に、必須の設定「%s」（%s）の値がない（初めの値もないので、画面で開始できない）" % (label, d.get("label", key), key))
+    return out
+
+
+def input_problems(task_dir: str, items: List[Any], label: str) -> List[str]:
+    out = []
+    for item in items:
+        if not is_text(item):
+            continue
+        source = os.path.join(task_dir, *normalize_rel(item).split("/"))
+        if not os.path.lexists(source):
+            out.append("%s: 入力のファイル %s がない" % (label, item))
+        elif os.path.islink(source):
+            out.append("%s: 入力「%s」はシンボリックリンクなので使えない" % (label, item))
+        elif os.path.isdir(source):
+            for directory, dirs, files in os.walk(source):
+                for entry in dirs + files:
+                    if os.path.islink(os.path.join(directory, entry)):
+                        out.append("%s: 入力「%s」の中に、シンボリックリンクがある（%s）" % (label, item, entry))
+    return out
+
+
 def check_eval(ctx: Context, c: Check) -> None:
     base = os.path.join(ctx.root, "tests", "eval")
-    files = sorted(glob.glob(os.path.join(base, "*", "eval.json")))
-    if not files:
+    names = sorted(d for d in os.listdir(base) if os.path.isdir(os.path.join(base, d))) if os.path.isdir(base) else []
+    if not names:
         c.error("tests/eval/<課題>/eval.json がない（EVAL の課題が1つも入っていない）")
         return
     criteria = task_criteria(ctx.task)
     if ctx.task is None:
-        c.error("作業の定義が読めないので、基準の写しを比べられない")
+        c.error("作業の定義が読めないので、基準の写しと設定を比べられない")
     used: Set[str] = set()
-    for path in files:
+    regexes: Regexes = []
+    ids: Dict[str, str] = {}
+    for name in names:
+        path = os.path.join(base, name, "eval.json")
         label = rel(ctx, path)
+        if not os.path.isfile(path):
+            c.error("%s がない" % label)
+            continue
         data = read_json_file(path, label, c)
         if data is None:
             continue
+        problems = eval_task_problems(data, label, regexes)
+        for problem in problems:
+            c.error(problem)
         if not isinstance(data, dict):
-            c.error("%s: 項目の集まりになっていない" % label)
             continue
-        for key in ("id", "prompt"):
-            if not isinstance(data.get(key), str) or not data[key].strip():
-                c.error("%s: %s がない" % (label, key))
-        for item in data.get("inputs") if isinstance(data.get("inputs"), list) else []:
-            if isinstance(item, str) and not os.path.exists(os.path.join(os.path.dirname(path), item)):
-                c.error("%s: 入力のファイル %s がない" % (label, item))
-        items = data.get("criteria")
-        if not isinstance(items, list) or not items:
-            c.error("%s: criteria（基準の番号と文の写し）がない" % label)
-            continue
-        for item in items:
-            if not isinstance(item, dict) or not isinstance(item.get("id"), str):
-                c.error("%s: criteria の要素に id がない" % label)
+        if isinstance(data.get("id"), str) and data["id"].strip():
+            if data["id"] in ids:
+                c.error("%s の id「%s」が、%s と重なっている" % (label, data["id"], ids[data["id"]]))
+            ids[data["id"]] = label
+        if isinstance(data.get("inputs"), list):
+            for problem in input_problems(os.path.dirname(path), data["inputs"], label):
+                c.error(problem)
+        if isinstance(ctx.task, dict) and isinstance(data.get("settings"), dict) and isinstance(data["settings"].get("task"), dict):
+            for problem in settings_problems(ctx.task, data["settings"]["task"], label):
+                c.error(problem)
+        for item in data.get("criteria") if isinstance(data.get("criteria"), list) else []:
+            if ctx.task is None or not isinstance(item, dict) or not isinstance(item.get("id"), str):
                 continue
-            cid = item["id"]
-            if item.get("grading") not in ("program", "model"):
-                c.error("%s: 基準 %s の grading は program か model にする" % (label, cid))
-            elif item["grading"] == "program" and not (isinstance(item.get("check"), dict) and isinstance(item["check"].get("type"), str)):
-                c.error("%s: 基準 %s は grading が program なので、check（type つき）が要る" % (label, cid))
-            if ctx.task is None:
-                continue
-            original = criteria.get(cid)
+            original = criteria.get(item["id"])
             if original is None:
-                c.error("%s: 基準 %s が作業の定義にない" % (label, cid))
+                c.error("%s: 基準 %s が作業の定義にない" % (label, item["id"]))
             elif item.get("text") != original.get("text"):
-                c.error("%s: 基準 %s の文が作業の定義と違う（EVAL: %s／作業の定義: %s）" % (label, cid, short(item.get("text"), 80), short(original.get("text"), 80)))
+                c.error("%s: 基準 %s の文が作業の定義と違う（EVAL: %s／作業の定義: %s）"
+                        % (label, item["id"], short(item.get("text"), 80), short(original.get("text"), 80)))
             else:
-                used.add(cid)
+                used.add(item["id"])
+    if regexes:
+        try:
+            for where, message in js_regex_errors(regexes).items():
+                c.error("%s が正規表現として読めない（%s）" % (where, message))
+        except RuntimeError as e:
+            c.warn("regex の pattern が正規表現として読めるかは確かめていない（%s。Node.js があれば確かめる）" % e)
     for cid, original in criteria.items():
         if ctx.task is not None and cid not in used:
             c.error("作業の定義の基準 %s（%s）が、どの EVAL の課題にも写されていない" % (cid, short(original.get("text"), 80)))
