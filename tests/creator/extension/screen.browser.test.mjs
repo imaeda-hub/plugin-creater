@@ -97,8 +97,8 @@ describe('クリエイターの画面（ブラウザー）', { skip: skipReason 
       const view = await openPage(url);
       try {
         await view.page.locator('#s-head h1').waitFor(WAIT);
-        assert.equal(await view.page.title(), 'クリエイターの画面');
-        assert.equal(await view.page.locator('#s-head h1').textContent(), 'クリエイターの画面');
+        assert.equal(await view.page.title(), 'plugin-creator の画面');
+        assert.equal(await view.page.locator('#s-head h1').textContent(), 'plugin-creator の画面');
         assert.match(await view.page.locator('#stage').textContent(), /お話を聞くことはまだ始まっていません/);
         assert.match(await view.page.locator('#s-head').textContent(), /この画面は見るだけです。答えや直しは、Copilot CLI のチャットで行ってください。/);
         assert.equal(await view.page.locator('input, textarea, select, button, form, [contenteditable], [role="button"]').count(), 0, '入力の欄やボタンがある');

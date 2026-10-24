@@ -257,7 +257,7 @@ export async function runOuterOnce(o) {
   const refused = [];
   const skills = [];
   const subagents = {}; // Agent の呼び出しの番号 → { type, description, model }
-  const models = {}; // 'main' か Agent の呼び出しの番号 → モデル
+  const models = {}; // 'main' か Agent の呼び出しの番号 → そのエージェントのメッセージに出たモデル（出た順、重ならない）
   const results = [];
   const initInfo = [];
   let agentCostUsd = 0;
@@ -312,11 +312,14 @@ export async function runOuterOnce(o) {
   });
 
   // 質問のツール（AskUserQuestion）への答え。ユーザー役が答える
+  let askGroup = 0; // 質問のツールの呼び出しの番号。1 回の呼び出しの問いの欄の数を数えるため（testing.md 6.5、hearing.md 4.1）
   const onQuestion = async (questions) => {
     const answers = {};
+    askGroup += 1;
+    const group = askGroup;
     for (const q of questions) {
       const options = (q.options ?? []).map((opt) => ({ label: String(opt.label ?? ''), description: String(opt.description ?? '') }));
-      recorder.add('creator.question', { header: q.header ?? '', question: q.question, options, multiSelect: Boolean(q.multiSelect) });
+      recorder.add('creator.question', { header: q.header ?? '', question: q.question, options, multiSelect: Boolean(q.multiSelect), group, groupSize: questions.length });
       const entry = await userRole.answer(q.question, options, 'AskUserQuestion', { header: q.header ?? '', multiSelect: Boolean(q.multiSelect) });
       answers[q.question] = entry.answer;
       recorder.add('user.answer', { index: entry.index, via: 'AskUserQuestion', question: q.question, header: q.header ?? '', choices: entry.choices, answer: entry.answer, rawAnswer: entry.rawAnswer, signal: entry.signal });
@@ -358,7 +361,7 @@ export async function runOuterOnce(o) {
           initInfo.push({ plugins: (m.plugins ?? []).map((p) => p.name), mcp: (m.mcp_servers ?? []).map((s) => `${s.name}:${s.status}`), model: m.model });
         } else if (m.type === 'assistant') {
           const owner = m.parent_tool_use_id ?? 'main';
-          models[owner] ??= m.message?.model;
+          if (m.message?.model && !(models[owner] ??= []).includes(m.message.model)) models[owner].push(m.message.model);
           for (const c of m.message?.content ?? []) {
             if (c.type === 'text' && owner === 'main' && c.text?.trim()) {
               recorder.add('creator.text', { text: c.text, turn: turnNumber });
@@ -456,6 +459,12 @@ export async function runOuterOnce(o) {
 
   const state = readState();
   const toolEvents = toolkit ? toolkit.events : [];
+  const modelUse = {
+    requested: model,
+    main: models.main ?? [],
+    subagents: Object.entries(subagents).map(([id, s]) => ({ type: s.type, models: models[id] ?? [] })),
+    lowCost: converted ? readConvertedAgentModel(converted, 'worker') : null,
+  };
   const grading = gradeOuter({
     persona,
     personaFiles,
@@ -467,6 +476,7 @@ export async function runOuterOnce(o) {
     stages,
     inner: innerResult && innerResult.withScore !== null ? innerResult : null,
     userSignals: userRole.signals,
+    modelUse,
     model,
     arm,
   });
@@ -487,8 +497,9 @@ export async function runOuterOnce(o) {
     sessionId: sessionId ?? null,
     initInfo,
     skills: skills.filter(Boolean),
-    subagents: Object.entries(subagents).map(([id, s]) => ({ ...s, model: models[id] ?? null })),
-    mainModel: models.main ?? null,
+    subagents: Object.entries(subagents).map(([id, s]) => ({ ...s, model: models[id]?.[0] ?? null, models: models[id] ?? [] })),
+    mainModel: models.main?.[0] ?? null,
+    mainModels: models.main ?? [],
     results,
     costUsd: { creator: agentCostUsd, userRole: userRole.cost },
     refusedWrites: refused,
@@ -514,6 +525,21 @@ export async function runOuterOnce(o) {
     fs.rmSync(path.join(dirs.agentHome, '.claude'), { recursive: true, force: true });
   }
   return record;
+}
+
+/**
+ * 置き換えた版のエージェントの定義（agents/<名前>.md）の frontmatter の model を読む。ないとき・inherit のときは null。
+ * 作業エージェントが動くべき「費用の低いモデル」（REQ-046）を、変換後の定義から知るために使う。
+ */
+export function readConvertedAgentModel(convertedRoot, agentName) {
+  try {
+    const text = fs.readFileSync(path.join(convertedRoot, 'agents', `${agentName}.md`), 'utf8');
+    const front = /^---\r?\n([\s\S]*?)\r?\n---/.exec(text)?.[1] ?? '';
+    const value = /^model:\s*(.+?)\s*$/m.exec(front)?.[1]?.replace(/^["']|["']$/g, '');
+    return value && value !== 'inherit' ? value : null;
+  } catch {
+    return null;
+  }
 }
 
 /** 記録に残す tool_use の入力。書き込みの中身などの長い文字は切る（場所は残す） */

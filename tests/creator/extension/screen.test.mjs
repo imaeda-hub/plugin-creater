@@ -136,7 +136,7 @@ describe('クリエイターの画面のサーバー', () => {
       const html = await (await api(url, '/')).text();
       assert.ok(!html.includes('%%K%%'), '合言葉の差し込み口が残っている');
       assert.ok(html.includes(`creator.js?k=${token}`) && html.includes(`render.js?k=${token}`) && html.includes(`style.css?k=${token}`));
-      assert.match(html, /<title>クリエイターの画面<\/title>/);
+      assert.match(html, /<title>plugin-creator の画面<\/title>/);
 
       const templateStatic = path.join(TEMPLATE_EXTENSION_DIR, 'ui', 'static');
       for (const name of ['render.js', 'style.css']) {
@@ -237,7 +237,13 @@ describe('クリエイターの画面のサーバー', () => {
     await withRun(async (run) => {
       const url = await openScreen(run);
       await readyToConfirm(run);
-      const text = await run.call('confirm', confirmArgs({ evalTasks: [{ prompt: '今週の週報を作ってください。', inputs: [{ path: 'inputs/前回の週報.docx', provisional: true }, { path: 'inputs/実績.xlsx' }], criteria: ['K-02'] }] }));
+      const text = await run.call('confirm', confirmArgs({
+          evalTasks: [
+            { prompt: '今週の週報を作ってください。', inputs: [{ path: 'inputs/前回の週報.docx', provisional: true }, { path: 'inputs/実績.xlsx' }], criteria: ['K-02'], settings: { maxIterations: 2, task: { week: '2026-W42', style: '詳細' } } },
+            { prompt: '先週の分も作ってください。', criteria: ['K-02'] },
+          ],
+        }),
+      );
       const sampleUrl = /見本：(http:\/\/127\.0\.0\.1:\d+\/\?k=\S+)/.exec(text)[1];
       const c = (await viewOf(url)).confirmation;
       assert.equal(c.behavior, '前回の週報を受け取り、今週の予定と実績を整理して、決まった書き方の週報を作る。');
@@ -251,6 +257,13 @@ describe('クリエイターの画面のサーバー', () => {
           prompt: '今週の週報を作ってください。',
           inputs: [{ path: 'inputs/前回の週報.docx', provisional: true }, { path: 'inputs/実績.xlsx', provisional: false }],
           criteria: [{ id: 'K-02', text: '見出しが「今週の実績」「来週の予定」の順に並んでいれば合格' }],
+          settings: { maxIterations: 2, task: { week: '2026-W42', style: '詳細' } },
+        },
+        {
+          prompt: '先週の分も作ってください。',
+          inputs: [],
+          criteria: [{ id: 'K-02', text: '見出しが「今週の実績」「来週の予定」の順に並んでいれば合格' }],
+          settings: {},
         },
       ]);
       assert.equal(c.rebuild, null);
@@ -296,7 +309,7 @@ describe('クリエイターの画面のサーバー', () => {
       fs.writeFileSync(other, JSON.stringify({ hello: '世界' }));
 
       const text = await run.call('results', { paths: ['tests/results/latest.json', evalFile, other] });
-      assert.equal(text, '試験の結果3件を、クリエイターの画面に出します。');
+      assert.equal(text, '試験の結果3件を、plugin-creator の画面に出します。');
       const { results } = await viewOf(url);
       assert.deepEqual(results.map((r) => r.name), ['latest.json', 'summary.json', 'other.json']);
 

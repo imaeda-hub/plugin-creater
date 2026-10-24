@@ -185,7 +185,7 @@ describe('状態取得ツール（plugin-creator_state）', () => {
     await withRun(async (run) => {
       const a = await run.call('open');
       const b = await run.call('open');
-      assert.match(a, /^クリエイターの画面の用意ができました。次の URL をブラウザーで開いてください：http:\/\/127\.0\.0\.1:\d+\/\?k=/);
+      assert.match(a, /^plugin-creator の画面の用意ができました。次の URL をブラウザーで開いてください：http:\/\/127\.0\.0\.1:\d+\/\?k=/);
       assert.equal(a, b);
     });
   });
@@ -203,7 +203,7 @@ describe('状態取得ツール（plugin-creator_state）', () => {
         assert.match(text, /画面を起動できませんでした：画面の部品/);
         const open = await run.callSafe('open');
         assert.equal(open.ok, false);
-        assert.match(open.error, /クリエイターの画面を起動できません：画面の部品/);
+        assert.match(open.error, /plugin-creator の画面を起動できません：画面の部品/);
       },
       { extra: { loadUi } },
     );

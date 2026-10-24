@@ -78,7 +78,7 @@ describe('ツールの断り方（例外ではなく、理由の文を結果と�
     };
     await withRun(
       async (run) => {
-        assertFailure(await run.callRaw('open', {}), /^クリエイターの画面を起動できません：画面の部品/, 'open');
+        assertFailure(await run.callRaw('open', {}), /^plugin-creator の画面を起動できません：画面の部品/, 'open');
         await readyToConfirm(run);
         assertFailure(await run.callRaw('confirm', confirmArgs()), /^画面の部品（ひな形の ui\/server\.mjs）を読み込めません：見つかりません/, 'confirm');
         assert.equal(run.readState().confirmation, null, '見本を作れなかったときは、確認を受け付けない');
