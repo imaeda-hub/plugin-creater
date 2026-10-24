@@ -162,8 +162,8 @@
 
 ## 次にすること（2026-10-24 時点）
 
-1. V1 の追加の確かめ（ひな形を移した先が読み込まれないか、/settings experimental on）を待つ。
-2. ひな形を移す（答え25。Sonnet）。SKILL.md・references（confirm.md、generate.md）・scaffold.py・check_creator.py・test_scaffold.py・test_convert.py の置き場所の参照を直す。あわせて generate.md 27〜28行目の manifest の `"orchestrator": { "extra_tools": [] }` を消す（B1 の報告）。
+1. （済み）V1 の追加の確かめ：クリエイターの直下の `template/` に移しても、中のスキル・エージェント・エクステンション・MCP・plugin.json は読み込まれない。Related files は97件→16件。試験的機能の案内は `copilot --experimental`（一度付ければ settings.json に残る。起動した後なら `/settings experimental on`：自動で再起動し、エクステンションの確認が2回出る）。報告の7節。
+2. ひな形を移す（答え25。Sonnet。指示は briefs/M1.md。D1d が convert.py を直し終えてから立てる）。SKILL.md・references（confirm.md、generate.md）・scaffold.py・check_creator.py・test_scaffold.py・test_convert.py の置き場所の参照を直す。あわせて generate.md 27〜28行目の manifest の `"orchestrator": { "extra_tools": [] }` を消す（B1 の報告）。
 3. X3 の仕分けを待ち、担当ごとの直しを立てる。D の問いはユーザーに聞く。ひな形の docs/design/design.md の統括の表（B1 の報告）も直しに入れる。
 4. 直しが全部入ったら、V1 に本物の Copilot CLI で確かめ直してもらう（統括の許す一覧で通るか、GPT の族の統括が受け取るツールの全部、apply_patch のフックの toolName、update_todo を拒んで困らないか、断りの文、担当の欄）。
 5. T1 の通しをもう一度。
@@ -204,7 +204,7 @@
 | X1 突き合わせ（生成プラグインの側） | a573cbefd6ad8b7da（完了。19件〔high 2：V1 の不具合1・2と同じ〕。reviews/X1.md） |
 | X2 突き合わせ（クリエイターの側） | a015be8b3c3f5b5f0（完了。22件〔high 0〕。reviews/X2.md） |
 | T1 すべての試験の通し | a7e9349258395fe6a（完了。約1,500件が通り、落ちたのは会話例がないこと〔REQ-037。EVAL の後に作る〕だけ。組み立てた生成プラグインの tests/run.py も、Playwright を入れた後に合格） |
-| V1 Copilot CLI の読み込みの確かめ | a2958fd3e81866605（不具合3件を報告。2026-10-24 に追加の確かめ〔ひな形を移した先が読み込まれないか、/settings experimental on〕を頼んだ。道具は scratchpad/v1/） |
+| V1 Copilot CLI の読み込みの確かめ | a2958fd3e81866605（不具合3件と追加の確かめ2つを報告〔7001605〕。道具は scratchpad/v1/。直しが全部入った後に確かめ直しを頼む） |
 | X3 突き合わせの指摘の仕分け | a806235c922ce2476（指示は briefs/X-triage.md。表は reviews/X3-triage.md） |
 | H1 見ない模擬ユーザー | ac4ca894931c3fb3d（完了。形の確かめに通った。tests/dev-eval/heldout/h1/ に作る。統括はこのフォルダの中身を読まない。git の出力も `grep -v heldout` で外して見る） |
 | B3 の点検 | 4つとも完了（design 19件〔high 2〕、format 7件、models 24件〔high 1〕、language 34件） |
