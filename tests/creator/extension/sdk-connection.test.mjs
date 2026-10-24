@@ -42,7 +42,7 @@ async function withProcess(fn, sessionId = 'session-sdk-0001') {
 }
 
 describe('本物の Copilot SDK とのつなぎ目', { skip: skipReason }, () => {
-  test('REQ-023 joinSession で登録するもの：8つのツール（確認を省くのは起票以外）、フック。許可の求めの受け口と環境変数の求めはない', async () => {
+  test('creator-structure.md 4.3 joinSession で登録するもの：8つのツール（確認を省くのは起票以外）、フック。許可の求めの受け口と環境変数の求めはない', async () => {
     await withProcess(async ({ peer }) => {
       const resume = await peer.ready();
       assert.deepEqual(

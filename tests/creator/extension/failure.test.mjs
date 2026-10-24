@@ -25,7 +25,7 @@ function assertFailure(result, pattern, label = '') {
 }
 
 describe('ツールの断り方（例外ではなく、理由の文を結果として返す）', () => {
-  test('REQ-049 すべてのツールの断りは、理由の文が textResultForLlm に入り、resultType が failure で返る（例外を投げない）', async () => {
+  test('hearing.md 7.5 すべてのツールの断りは、理由の文が textResultForLlm に入り、resultType が failure で返る（例外を投げない）', async () => {
     await withRun(async (run) => {
       // 記録のツール（断る）
       assertFailure(await run.callRaw('progress', { items: [{ item: '成果', status: '聞いた', quote: 'x' }] }), /^聞くことの名前が違います：「成果」。使える名前：作業の目的、/, 'progress');
@@ -42,7 +42,7 @@ describe('ツールの断り方（例外ではなく、理由の文を結果と�
     });
   });
 
-  test('REQ-049 段階「生成」に進んだあとの断りも、failure の結果で返る', async () => {
+  test('hearing.md 7.5 段階「生成」に進んだあとの断りも、failure の結果で返る', async () => {
     await withRun(async (run) => {
       await readyToConfirm(run);
       await run.call('confirm', confirmArgs());
@@ -102,7 +102,7 @@ describe('ツールの断り方（例外ではなく、理由の文を結果と�
 });
 
 describe('想定外の失敗（内部の情報を出さず、記録に残す）', () => {
-  test('REQ-049 想定外の例外は、平易な文の failure の結果で返り、スタックと内部の語は返さず、標準エラーの記録に残る', async () => {
+  test('hearing.md 7.5 想定外の例外は、平易な文の failure の結果で返り、スタックと内部の語は返さず、標準エラーの記録に残る', async () => {
     const boom = async () => {
       throw new TypeError("Cannot read properties of undefined (reading 'code')");
     };
@@ -123,7 +123,7 @@ describe('想定外の失敗（内部の情報を出さず、記録に残す）'
     );
   });
 
-  test('REQ-049 Error でないものが投げられても、同じように failure の結果で返る', async () => {
+  test('hearing.md 7.5 Error でないものが投げられても、同じように failure の結果で返る', async () => {
     await withRun(
       async (run) => {
         const result = await run.callRaw('issue', { title: '題', body: '本文' });
@@ -141,7 +141,7 @@ describe('想定外の失敗（内部の情報を出さず、記録に残す）'
     );
   });
 
-  test('REQ-049 想定外の失敗のあとも、ほかのツールは動く（エクステンションは落ちない）', async () => {
+  test('hearing.md 7.5 想定外の失敗のあとも、ほかのツールは動く（エクステンションは落ちない）', async () => {
     await withRun(
       async (run) => {
         assertFailure(await run.callRaw('issue', { title: '題', body: '本文' }), /^うまくいきませんでした/);
@@ -159,7 +159,7 @@ describe('想定外の失敗（内部の情報を出さず、記録に残す）'
 });
 
 describe('正常な結果の形（変えていない）', () => {
-  test('REQ-015 成功のときは、これまでどおり文字列を返す（ToolResultObject にしない）', async () => {
+  test('hearing.md 7.5 成功のときは、これまでどおり文字列を返す（ToolResultObject にしない）', async () => {
     const ok = { code: 0, stdout: 'https://github.com/imaeda-hub/plugin-creator/issues/7\n', stderr: '', timedOut: false, notFound: false };
     await withRun(
       async (run) => {
@@ -189,7 +189,7 @@ describe('正常な結果の形（変えていない）', () => {
 });
 
 describe('どんな引数でも、例外を投げない', () => {
-  test('REQ-049 引数が空・型違い・でたらめでも、どのツールの処理も例外を投げず、文字列か failure の結果を返す', async () => {
+  test('hearing.md 7.5 引数が空・型違い・でたらめでも、どのツールの処理も例外を投げず、文字列か failure の結果を返す', async () => {
     const weird = [undefined, null, [], 'text', 42, true, {}, { items: 'x' }, { items: [null] }, { items: [{}] }, { knowledge: 5 }, { knowledge: [null, 3] }, { assets: {} }, { oss: [[]] }, { paths: 'x' }, { paths: [5] }, { path: 5 }, { title: 5, body: [] }, { knowledgeIds: 'K-01', evalTasks: 'x' }, { stage: 7 }, { include: {} }];
     await withRun(async (run) => {
       let calls = 0;

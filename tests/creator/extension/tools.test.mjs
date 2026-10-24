@@ -37,7 +37,7 @@ function collectEnums(schema, out = []) {
 }
 
 describe('ツールの登録', () => {
-  test('REQ-043 BLUEPRINT 7章の8つのツールが、plugin-creator_ で始まる名前で登録される', async () => {
+  test('BLUEPRINT 7章 8つのツールが、plugin-creator_ で始まる名前で登録される', async () => {
     await withRun(async (run) => {
       assert.deepEqual([...run.fake.toolNames].sort(), Object.keys(TOOLS).map(T).sort());
     });
@@ -52,7 +52,7 @@ describe('ツールの登録', () => {
     });
   });
 
-  test('REQ-015 引数の JSON Schema は、type が object で、required の名前が properties にある', async () => {
+  test('BLUEPRINT 7章 引数の JSON Schema は、type が object で、required の名前が properties にある', async () => {
     await withRun(async (run) => {
       for (const name of Object.keys(TOOLS)) {
         const { parameters } = run.fake.tool(T(name));
@@ -106,7 +106,7 @@ describe('ツールの登録', () => {
     });
   });
 
-  test('REQ-049 ツールの説明の文は descriptions.mjs にだけある（ほかのモジュールに説明の文を書かない）', async () => {
+  test('BLUEPRINT 7章 ツールの説明の文は descriptions.mjs にだけある（ほかのモジュールに説明の文を書かない）', async () => {
     const { TOOL_DESCRIPTIONS } = await import(pathToFileURL(path.join(EXTENSION_DIR, 'descriptions.mjs')).href);
     await withRun(async (run) => {
       for (const name of Object.keys(TOOLS)) {
@@ -125,7 +125,7 @@ describe('ツールの登録', () => {
     for (const description of Object.values(TOOL_DESCRIPTIONS)) assert.ok(!description.includes('【仮】'));
   });
 
-  test('REQ-049 引数の説明の文は、実装の引数の名前と過不足なく合う（説明のない引数も、引数のない説明もない）', async () => {
+  test('BLUEPRINT 7章 引数の説明の文は、実装の引数の名前と過不足なく合う（説明のない引数も、引数のない説明もない）', async () => {
     const { PARAM_DESCRIPTIONS } = await import(pathToFileURL(path.join(EXTENSION_DIR, 'descriptions.mjs')).href);
     await withRun(async (run) => {
       for (const name of Object.keys(TOOLS)) {
@@ -186,7 +186,7 @@ describe('フックの登録', () => {
     });
   });
 
-  test('REQ-021 画面のサーバーは子プロセスを作らない（エクステンションと一緒に終わる）。子プロセスを使うのは起票の gh だけ', () => {
+  test('REQ-043 画面のサーバーは子プロセスを作らない（エクステンションと一緒に終わる）。子プロセスを使うのは起票の gh だけ', () => {
     for (const file of fs.readdirSync(EXTENSION_DIR).filter((f) => f.endsWith('.mjs'))) {
       const source = fs.readFileSync(path.join(EXTENSION_DIR, file), 'utf8');
       const spawns = /node:child_process|from 'child_process'/.test(source);
@@ -194,7 +194,7 @@ describe('フックの登録', () => {
     }
   });
 
-  test('REQ-023 入口の extension.mjs は joinSession でつなぐだけで、外部の npm パッケージを使わない', () => {
+  test('creator-structure.md 4.3 入口の extension.mjs は joinSession でつなぐだけで、外部の npm パッケージを使わない', () => {
     const imports = [];
     for (const file of fs.readdirSync(EXTENSION_DIR).filter((f) => f.endsWith('.mjs'))) {
       const source = fs.readFileSync(path.join(EXTENSION_DIR, file), 'utf8');
@@ -210,7 +210,7 @@ describe('フックの登録', () => {
     assert.ok(!/console\.log\(/.test(entry), '標準出力は JSON-RPC の通り道なので console.log を使わない');
   });
 
-  test('REQ-023 どのモジュールも console.log を使わない（標準出力は JSON-RPC の通り道）', () => {
+  test('creator-structure.md 4.3 どのモジュールも console.log を使わない（標準出力は JSON-RPC の通り道）', () => {
     for (const file of fs.readdirSync(EXTENSION_DIR).filter((f) => f.endsWith('.mjs'))) {
       const source = fs.readFileSync(path.join(EXTENSION_DIR, file), 'utf8');
       assert.ok(!/console\.log\(/.test(source), `${file} が console.log を使っている`);

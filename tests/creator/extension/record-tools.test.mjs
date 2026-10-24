@@ -3,9 +3,11 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
+import crypto from 'node:crypto';
 import { describe, test } from 'node:test';
 
-import { MAIN_ITEM_NAMES, SETTABLE_ITEMS, answerEverything, answers, confirmArgs, internalSymbolsIn, knowledge, readyToConfirm, withRun, writeDraft } from './helpers.mjs';
+import { MAIN_ITEM_NAMES, SETTABLE_ITEMS, answerEverything, answers, confirmArgs, internalSymbolsIn, knowledge, readyToConfirm, startForTest, tempDir, withRun, writeDraft } from './helpers.mjs';
+import { leftWordsIn } from './words.mjs';
 
 const ALL_ITEM_NAMES_JA = '作業の目的、頼む場面と言い方、受け取るもの';
 
@@ -130,7 +132,7 @@ describe('進み具合（plugin-creator_progress）', () => {
     });
   });
 
-  test('REQ-015 返り値は短い1行の平易な日本語で、まだ聞いていない項目を示す（内部の記号を出さない）', async () => {
+  test('REQ-015 REQ-024 返り値は短い1行の平易な日本語で、まだ聞いていない項目を示す（内部の記号を出さない）', async () => {
     await withRun(async (run) => {
       const first = await run.call('progress', { stage: '始まり' });
       assert.ok(!first.includes('\n'));
@@ -165,7 +167,7 @@ describe('進み具合（plugin-creator_progress）', () => {
     });
   });
 
-  test('REQ-015 並べて呼んでも、記録は失われない（状態を変えるツールは順に1つずつ動く）', async () => {
+  test('hearing.md 7.1 並べて呼んでも、記録は失われない（状態を変えるツールは順に1つずつ動く）', async () => {
     await withRun(async (run) => {
       await Promise.all(MAIN_ITEM_NAMES.map((name) => run.call('progress', { items: [{ item: name, status: '聞いた', quote: `${name}です` }] })));
       const items = run.readState().items;
@@ -176,7 +178,7 @@ describe('進み具合（plugin-creator_progress）', () => {
     });
   });
 
-  test('REQ-015 state.json は一時ファイルに書いてから名前を変えて置く（書きかけが残らない）', async () => {
+  test('hearing.md 7.1 state.json は一時ファイルに書いてから名前を変えて置く（書きかけが残らない）', async () => {
     await withRun(async (run) => {
       const renames = [];
       const writes = [];
@@ -242,7 +244,7 @@ describe('ユーザーに話す言葉', () => {
 });
 
 describe('決まったこと（plugin-creator_record）', () => {
-  test('REQ-049 ナレッジの欄を確かめる：足りない欄、種類・項目・出どころ・状態の名前、文、ユーザーの言葉', async () => {
+  test('REQ-015 ナレッジの欄を確かめる：足りない欄、種類・項目・出どころ・状態の名前、文、ユーザーの言葉', async () => {
     await withRun(async (run) => {
       const refuse = async (entry, pattern) => {
         const r = await run.callSafe('record', { knowledge: [entry] });
@@ -264,7 +266,7 @@ describe('決まったこと（plugin-creator_record）', () => {
     });
   });
 
-  test('REQ-049 番号 K-01 は記録の順に付き、使い回さない（外したナレッジの番号も残る）', async () => {
+  test('hearing.md 7.3 番号 K-01 は記録の順に付き、使い回さない（外したナレッジの番号も残る）', async () => {
     await withRun(async (run) => {
       const first = await run.call('record', { knowledge: [knowledge({ text: 'A' }), knowledge({ text: 'B' })] });
       assert.match(first, /仕事のやり方や決まり K-01、K-02 を追加/);
@@ -380,7 +382,7 @@ describe('決まったこと（plugin-creator_record）', () => {
     });
   });
 
-  test('REQ-049 返り値は短い1行の平易な日本語（内部の記号を出さない）', async () => {
+  test('REQ-024 返り値は短い1行の平易な日本語（内部の記号を出さない）', async () => {
     await withRun(async (run) => {
       const text = await run.call('record', { knowledge: [knowledge(), knowledge({ status: '候補' })] });
       assert.ok(!text.includes('\n'));
@@ -676,3 +678,177 @@ describe('生成前の確認（plugin-creator_confirm）と、段階「生成」
     });
   });
 });
+
+describe('課題の設定の値（plugin-creator_confirm の evalTasks.settings。X2-02）', () => {
+  const task = (settings) => ({ prompt: '今週の週報を作ってください。', criteria: ['K-02'], ...(settings === undefined ? {} : { settings }) });
+
+  test('REQ-038 REQ-020 課題ごとの、作業の画面に入れる設定の値（繰り返しの上限と作業ごとの設定）を渡すと、記録に残る。省くと空のまとまり', async () => {
+    await withRun(async (run) => {
+      await readyToConfirm(run);
+      await run.call('confirm', confirmArgs({
+        evalTasks: [
+          task({ maxIterations: 2, task: { week: '2026-W42', style: '詳細', strict: true, count: 3 } }),
+          task({ task: { week: '2026-W43' } }),
+          task({ maxIterations: 5 }),
+          task(),
+          task({}),
+        ],
+      }));
+      assert.deepEqual(
+        run.readState().confirmation.evalTasks.map((t) => t.settings),
+        [{ maxIterations: 2, task: { week: '2026-W42', style: '詳細', strict: true, count: 3 } }, { task: { week: '2026-W43' } }, { maxIterations: 5 }, {}, {}],
+      );
+    });
+  });
+
+  test('REQ-038 設定の値の形が違う・使えない名前があるときは、何が違うかを返して断る（ユーザーがよいと答えた値が黙って落ちないように）。確認は受け付けない', async () => {
+    await withRun(async (run) => {
+      await readyToConfirm(run);
+      const cases = [
+        [{ maxIterations: 0 }, /課題 1 の設定（settings）の繰り返しの上限（maxIterations）は、1以上の整数で渡してください。/],
+        [{ maxIterations: 1.5 }, /繰り返しの上限（maxIterations）は、1以上の整数/],
+        [{ maxIterations: '3' }, /繰り返しの上限（maxIterations）は、1以上の整数/],
+        [{ iterations: 3 }, /設定（settings）に、使えない名前があります：iterations。使える名前：maxIterations、task/],
+        [{ task: ['week'] }, /作業ごとの設定の値（task）は、設定の名前と値の組で渡してください。/],
+        [{ task: 'week=1' }, /作業ごとの設定の値（task）は、設定の名前と値の組/],
+        [{ task: { week: { a: 1 } } }, /作業ごとの設定「week」の値は、文字・数・真偽のどれかで渡してください。/],
+        [{ task: { week: null } }, /作業ごとの設定「week」の値は、文字・数・真偽のどれか/],
+        [['x'], /設定（settings）は、繰り返しの上限（maxIterations）と作業ごとの設定の値（task）を持つものにしてください。/],
+        ['x', /設定（settings）は、繰り返しの上限/],
+      ];
+      for (const [settings, pattern] of cases) {
+        const r = await run.callSafe('confirm', confirmArgs({ evalTasks: [task(settings)] }));
+        assert.equal(r.ok, false, JSON.stringify(settings));
+        assert.match(r.error, pattern, JSON.stringify(settings));
+        assert.deepEqual(leftWordsIn(r.error), [], r.error);
+        assert.deepEqual(internalSymbolsIn(r.error), []);
+        assert.equal(run.readState().confirmation, null);
+      }
+      // 2つ目の課題の誤りは、2つ目と示す
+      const second = await run.callSafe('confirm', confirmArgs({ evalTasks: [task({ maxIterations: 2 }), task({ maxIterations: 0 })] }));
+      assert.match(second.error, /課題 2 の設定（settings）/);
+    });
+  });
+
+  test('REQ-038 settings は、confirm の引数の定義にある：繰り返しの上限は1以上の整数、作業ごとの設定は文字・数・真偽の値の組。説明の文がある', async () => {
+    await withRun(async (run) => {
+      const item = run.fake.tool('plugin-creator_confirm').parameters.properties.evalTasks.items;
+      assert.deepEqual(item.required, ['prompt']);
+      const settings = item.properties.settings;
+      assert.equal(settings.type, 'object');
+      assert.equal(settings.additionalProperties, false);
+      assert.deepEqual(Object.keys(settings.properties), ['maxIterations', 'task']);
+      assert.equal(settings.properties.maxIterations.type, 'integer');
+      assert.equal(settings.properties.maxIterations.minimum, 1);
+      assert.deepEqual(settings.properties.task.additionalProperties.type, ['string', 'number', 'boolean']);
+      for (const schema of [settings, settings.properties.maxIterations, settings.properties.task]) assert.ok(schema.description.length >= 10);
+    });
+  });
+});
+
+describe('確認で示した作業の定義の案が変わったら、示し直すまで「生成」に進めない（plugin-creator_confirm と progress。X2-12）', () => {
+  const sha256 = (file) => crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
+  const draftFile = (run) => path.join(run.cwd, '.plugin-creator-work', 'draft', 'task.json');
+  const approve = (run) => run.callSafe('progress', { stage: '生成', approvalQuote: 'はい、作ってください' });
+
+  test('REQ-020 REQ-027 確認を受け付けると、示した案（draft/task.json）の中身の印（sha256）を記録に残す', async () => {
+    await withRun(async (run) => {
+      await readyToConfirm(run);
+      await run.call('confirm', confirmArgs());
+      const confirmation = run.readState().confirmation;
+      assert.equal(confirmation.taskPath, draftFile(run));
+      assert.equal(confirmation.taskHash, sha256(draftFile(run)));
+      assert.match(confirmation.taskHash, /^[0-9a-f]{64}$/);
+    });
+  });
+
+  test('REQ-020 REQ-027 示したあとに案だけを直して示し直さないと断る。示し直せば進める。中身が同じなら（書き直しても）進める', async () => {
+    await withRun(async (run) => {
+      await readyToConfirm(run);
+      await run.call('confirm', confirmArgs());
+      const original = fs.readFileSync(draftFile(run), 'utf8');
+
+      fs.writeFileSync(draftFile(run), original.replace('週報の作成', '週報の作成（直した）'));
+      const refused = await approve(run);
+      assert.equal(refused.ok, false);
+      assert.match(refused.error, /^作る前の確認で示した画面と合格の条件の設定の案が、示したあとに変わっています（.*task\.json）。作業の画面の見本を直したときは、plugin-creator_confirm で示し直して、ユーザーによいと答えてもらってください。$/);
+      assert.deepEqual(leftWordsIn(refused.error), []);
+      assert.deepEqual(internalSymbolsIn(refused.error), []);
+      assert.equal(run.readState().stage, 'start');
+      assert.equal(run.readState().approvedAt, null);
+
+      // 示し直す：新しい印になり、進める
+      await run.call('confirm', confirmArgs());
+      assert.equal(run.readState().confirmation.taskHash, sha256(draftFile(run)));
+      const done = await approve(run);
+      assert.equal(done.ok, true, done.error);
+      assert.equal(run.readState().stage, 'generate');
+    });
+  });
+
+  test('REQ-020 案を書き直しただけで中身が同じなら（作業エージェントが同じ案を書き直した）、そのまま進める', async () => {
+    await withRun(async (run) => {
+      await readyToConfirm(run);
+      await run.call('confirm', confirmArgs());
+      fs.writeFileSync(draftFile(run), fs.readFileSync(draftFile(run)));
+      const done = await approve(run);
+      assert.equal(done.ok, true, done.error);
+    });
+  });
+
+  test('REQ-020 案が消えていても（見つからなくなった）、示し直すまで進めない', async () => {
+    await withRun(async (run) => {
+      await readyToConfirm(run);
+      await run.call('confirm', confirmArgs());
+      fs.rmSync(draftFile(run));
+      const refused = await approve(run);
+      assert.equal(refused.ok, false);
+      assert.match(refused.error, /^作る前の確認で示した画面と合格の条件の設定の案が、見つからなくなりました（.*task\.json）。/);
+      assert.equal(run.readState().stage, 'start');
+    });
+  });
+
+  test('REQ-020 案が変わり、ナレッジも変わったときは、ナレッジの食い違いを先に断る。両方を示し直すと進める', async () => {
+    await withRun(async (run) => {
+      await readyToConfirm(run);
+      await run.call('confirm', confirmArgs());
+      writeDraft(run.cwd, { name: '別の名前' });
+      await run.call('record', { knowledge: [{ id: 'K-01', text: '直した文', quote: '直して' }] });
+      assert.match((await approve(run)).error, /今の「決まった」ものが違います（直した：K-01）/);
+      await run.call('confirm', confirmArgs());
+      const done = await approve(run);
+      assert.equal(done.ok, true, done.error);
+    });
+  });
+
+  test('REQ-015 REQ-020 印のない古い記録（この直しの前の確認）は、比べずに進める。再開した記録でも、案が変わっていれば断る', async () => {
+    const home = tempDir('hash-home');
+    const cwd = tempDir('hash-cwd');
+    try {
+      const first = await startForTest({ sessionId: 'session-hash', home, cwd });
+      await readyToConfirm(first);
+      await first.call('confirm', confirmArgs());
+      const file = first.statePath();
+      const state = first.readState();
+      await first.cleanup();
+
+      // 案を直した記録は、再開しても断る
+      fs.writeFileSync(path.join(cwd, '.plugin-creator-work', 'draft', 'task.json'), fs.readFileSync(path.join(cwd, '.plugin-creator-work', 'draft', 'task.json'), 'utf8').replace('週報の作成', '直した'));
+      const second = await startForTest({ sessionId: 'session-hash', home, cwd });
+      assert.match((await second.callSafe('progress', { stage: '生成', approvalQuote: 'はい' })).error, /示したあとに変わっています/);
+      await second.cleanup();
+
+      // 印を消した記録（古い版が書いたもの）は、比べない
+      delete state.confirmation.taskHash;
+      fs.writeFileSync(file, `${JSON.stringify(state, null, 2)}\n`);
+      const third = await startForTest({ sessionId: 'session-hash', home, cwd });
+      const done = await third.callSafe('progress', { stage: '生成', approvalQuote: 'はい' });
+      assert.equal(done.ok, true, done.error);
+      await third.cleanup();
+    } finally {
+      fs.rmSync(home, { recursive: true, force: true });
+      fs.rmSync(cwd, { recursive: true, force: true });
+    }
+  });
+});
+

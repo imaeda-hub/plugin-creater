@@ -103,6 +103,10 @@ describe('ツールの返り値と断る文（REQ-024）', () => {
       await call('confirm', confirmArgs({ knowledgeIds: ['K-01', 'K-02'] }));
       await call('confirm', confirmArgs({ knowledgeIds: ['K-01', 'K-02', 'K-03'], evalTasks: [{ prompt: '頼む', criteria: ['K-01'] }] }));
       await call('confirm', confirmArgs({ knowledgeIds: ['K-01', 'K-02', 'K-03'], evalTasks: [{ prompt: '頼む', criteria: ['K-09'] }] }));
+      await call('confirm', confirmArgs({ knowledgeIds: ['K-01', 'K-02', 'K-03'], evalTasks: [{ prompt: '頼む', settings: { maxIterations: 0 } }] }));
+      await call('confirm', confirmArgs({ knowledgeIds: ['K-01', 'K-02', 'K-03'], evalTasks: [{ prompt: '頼む', settings: { iterations: 3 } }] }));
+      await call('confirm', confirmArgs({ knowledgeIds: ['K-01', 'K-02', 'K-03'], evalTasks: [{ prompt: '頼む', settings: { task: { week: { a: 1 } } } }] }));
+      await call('confirm', confirmArgs({ knowledgeIds: ['K-01', 'K-02', 'K-03'], evalTasks: [{ prompt: '頼む', settings: 'x' }] }));
       await call('confirm', confirmArgs({ knowledgeIds: ['K-01', 'K-02', 'K-03'], taskPath: 'other/task.json' }));
       await call('confirm', confirmArgs({ knowledgeIds: ['K-01', 'K-02', 'K-03'] })); // 案がまだない
       const draft = writeDraft(run.cwd);
@@ -114,6 +118,13 @@ describe('ツールの返り値と断る文（REQ-024）', () => {
       const accepted = await call('confirm', confirmArgs({ knowledgeIds: ['K-01', 'K-02', 'K-03'] }));
       assert.equal(accepted.ok, true, accepted.error);
       assert.match(accepted.text, /^作る前の確認で示すものを受け付けました。画面で見られます。作業の画面の見本：http:\/\/127\.0\.0\.1:\d+\/\?k=/);
+
+      // 生成に進める：示したあとに作業の定義の案が変わる・消えると断る
+      writeDraft(run.cwd, { name: '別の名前' });
+      await call('progress', { stage: '生成', approvalQuote: '作ってください' });
+      fs.rmSync(draft);
+      await call('progress', { stage: '生成', approvalQuote: '作ってください' });
+      writeDraft(run.cwd);
 
       // 生成に進める：示したあとに決まったことが変わると断る
       await call('progress', { stage: '生成' });
@@ -143,12 +154,14 @@ describe('ツールの返り値と断る文（REQ-024）', () => {
       await call('issue', { title: '', body: '本文' });
       await call('issue', { title: '題', body: ' ' });
 
-      assert.ok(seen.length >= 70, `${seen.length}件`);
+      assert.ok(seen.length >= 80, `${seen.length}件`);
       const found = seen.map((text) => [text, leftWordsIn(text)]).filter(([, words]) => words.length > 0);
       assert.deepEqual(found, [], `表の左の言葉が出ている：\n${found.map(([t, w]) => `${w.join('、')} ← ${t}`).join('\n')}`);
 
       // 試験が空振りでないことの確かめ：表の右の言葉で話している
       const all = seen.join('\n');
+      assert.ok(!all.includes('クリエイター'), '「クリエイター」はユーザーに説明していない言葉。画面は「plugin-creator の画面」と呼ぶ（X2-18）');
+      assert.ok(all.includes('plugin-creator の画面'));
       for (const word of ['仕事のやり方や決まり', 'お話を聞くことは終わっています', '確かめたいこと', '作る前の確認', '聞くこと', '作業の画面の見本', '画面と合格の条件の設定', '試しに動かして採点する試験の課題', '合格の条件']) {
         assert.ok(all.includes(word), `表の右の言葉が1度も出ていない：${word}`);
       }
@@ -238,6 +251,8 @@ describe('ソースの文（ユーザーに見える文を持つファイルの�
         if (words.length) found.push(`${file}:${i + 1} ${words.join('、')} ← ${line.trim().slice(0, 100)}`);
       });
       assert.deepEqual(found, []);
+      // 同じ画面を「クリエイターの画面」と呼ばない。ユーザーに説明していない言葉で、スキルと README は「plugin-creator の画面」と呼ぶ（X2-18）
+      assert.ok(!source.includes('クリエイター'), `${file} の文に「クリエイター」がある`);
     });
   }
 

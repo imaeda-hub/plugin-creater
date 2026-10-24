@@ -47,7 +47,7 @@ describe('文書をテキストにする', () => {
     });
   });
 
-  test('REQ-018 見本の xlsx の中の文字（シート、共有文字列、数、真偽、式、インライン文字列、列の飛び、非表示のシート）を返す', () => {
+  test('REQ-017 見本の xlsx の中の文字（シート、共有文字列、数、真偽、式、インライン文字列、列の飛び、非表示のシート）を返す', () => {
     withFiles({ 'sample.xlsx': sampleXlsx() }, (dir) => {
       const { format, text } = documentText(path.join(dir, 'sample.xlsx'));
       assert.equal(format, 'xlsx');
@@ -69,7 +69,7 @@ describe('文書をテキストにする', () => {
     });
   });
 
-  test('REQ-033 見本の pptx の中の文字を、スライドの順番どおりに返す（ノート、表つき。マスターの文字は出さない）', () => {
+  test('REQ-017 見本の pptx の中の文字を、スライドの順番どおりに返す（ノート、表つき。マスターの文字は出さない）', () => {
     withFiles({ 'sample.pptx': samplePptx() }, (dir) => {
       const { format, text } = documentText(path.join(dir, 'sample.pptx'));
       assert.equal(format, 'pptx');
@@ -192,7 +192,7 @@ describe('文書をテキストにする', () => {
     });
   });
 
-  test('REQ-017 文書をテキストにする部品は、DocTextError で理由を投げ、外部のパッケージを使わない（node:zlib だけ）', () => {
+  test('hearing.md 9章 文書をテキストにする部品は、DocTextError で理由を投げ、外部のパッケージを使わない（node:zlib だけ）', () => {
     assert.throws(() => documentText('/no/such/file.docx'), DocTextError);
     const source = fs.readFileSync(path.join(EXTENSION_DIR, 'zip.mjs'), 'utf8') + fs.readFileSync(path.join(EXTENSION_DIR, 'doc-text.mjs'), 'utf8');
     for (const m of source.matchAll(/from\s+'([^']+)'/g)) assert.ok(m[1].startsWith('node:') || m[1].startsWith('./'), m[1]);

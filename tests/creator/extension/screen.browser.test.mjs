@@ -194,7 +194,7 @@ describe('クリエイターの画面（ブラウザー）', { skip: skipReason 
     });
   });
 
-  test('REQ-043 記録やファイルから来た文字は、文字として出る（HTML として動かない）', async () => {
+  test('generated-plugin-structure.md 9章 記録やファイルから来た文字は、文字として出る（HTML として動かない）', async () => {
     await withRun(async (run) => {
       const url = await openScreenUrl(run);
       const view = await openPage(url);
@@ -221,7 +221,12 @@ describe('クリエイターの画面（ブラウザー）', { skip: skipReason 
         await readyToConfirm(run);
         const text = await run.call(
           'confirm',
-          confirmArgs({ evalTasks: [{ prompt: '今週の週報を作ってください。', inputs: [{ path: 'inputs/前回の週報.docx', provisional: true }, { path: 'inputs/実績.xlsx' }], criteria: ['K-02'] }] }),
+          confirmArgs({
+            evalTasks: [
+              { prompt: '今週の週報を作ってください。', inputs: [{ path: 'inputs/前回の週報.docx', provisional: true }, { path: 'inputs/実績.xlsx' }], criteria: ['K-02'], settings: { maxIterations: 2, task: { week: '2026-W42', style: '詳細' } } },
+              { prompt: '先週の分も作ってください。', criteria: ['K-02'] },
+            ],
+          }),
         );
         const sampleUrl = /見本：(\S+)/.exec(text)[1];
         await view.page.locator('#s-confirm h2').waitFor(WAIT);
@@ -249,6 +254,9 @@ describe('クリエイターの画面（ブラウザー）', { skip: skipReason 
         assert.match(evalText, /inputs\/前回の週報\.docx.*仮のファイル/);
         assert.match(evalText, /inputs\/実績\.xlsx/);
         assert.match(evalText, /K-02：見出しが「今週の実績」「来週の予定」の順に並んでいれば合格/);
+        // 作業の画面に入れる設定の値（X2-02）：値のある課題は一覧で、ない課題は「ない」と
+        assert.match(evalText, /この課題で作業の画面に入れる設定の値.*繰り返しの上限：2.*week：2026-W42.*style：詳細/);
+        assert.match(evalText, /作業の画面に入れる設定の値はありません/);
         const criteriaRows = await view.page.locator('#s-confirm table').nth(1).evaluateAll((tables) => [...tables[0].querySelectorAll('tbody tr')].map((r) => [...r.cells].map((c) => c.textContent)));
         assert.deepEqual(criteriaRows, [['C-01', '見出しが「今週の実績」「来週の予定」の順に並んでいれば合格', 'K-02']]);
         assert.deepEqual(view.problems, []);
@@ -495,7 +503,7 @@ describe('クリエイターの画面（ブラウザー）', { skip: skipReason 
     });
   });
 
-  test('REQ-043 スマートフォンの幅でも、横にはみ出さない（表は入れ物の中で動かせる）', async () => {
+  test('generated-plugin-structure.md 9章 スマートフォンの幅でも、横にはみ出さない（表は入れ物の中で動かせる）', async () => {
     await withRun(async (run) => {
       const url = await openScreenUrl(run);
       await readyToConfirm(run);
@@ -512,7 +520,7 @@ describe('クリエイターの画面（ブラウザー）', { skip: skipReason 
     });
   });
 
-  test('REQ-043 色の差が足りている：本文と背景は 4.5:1 以上（ひな形のスタイルを使う）', async () => {
+  test('generated-plugin-structure.md 9章 色の差が足りている：本文と背景は 4.5:1 以上（ひな形のスタイルを使う）', async () => {
     await withRun(async (run) => {
       const url = await openScreenUrl(run);
       await answerEverything(run);

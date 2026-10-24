@@ -129,7 +129,7 @@ describe('クリエイターの画面のサーバー', () => {
     });
   });
 
-  test('REQ-043 画面の本体と部品が返る。描画の部品とスタイルは、ひな形のものをそのまま使う（土台の写しを持たない）', async () => {
+  test('generated-plugin-structure.md 9章 画面の本体と部品が返る。描画の部品とスタイルは、ひな形のものをそのまま使う（土台の写しを持たない）', async () => {
     await withRun(async (run) => {
       const url = await openScreen(run);
       const { token } = parts(url);
