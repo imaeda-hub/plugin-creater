@@ -105,6 +105,7 @@ function ensureDir(dir) {
  * @param {object} [o.screen] createScreen() の入れ物（ありのとき。ブラウザーは使い回す）
  * @param {string} [o.pluginRoot] Copilot CLI 向けの生成プラグイン（ありのとき）
  * @param {string} [o.convertedRoot] 置き換えた版（ありのとき）
+ * @param {object} [o.taskSettings] 画面の作業ごとの設定に足す値（{ key: 値 }。課題の settings.task より後に入れる）
  * @param {object} [o.models] 画面で選ぶモデル { orchestrator?, worker?, verifier? }（Copilot の名前）。省くと画面の既定のまま
  * @param {object} [o.envExtra] 試すエージェントの環境変数に足すもの
  * @param {boolean} [o.sandbox]
@@ -112,7 +113,7 @@ function ensureDir(dir) {
  */
 export async function runInnerArm(o) {
   const {
-    arm, task, runDir, sdk, userRole, judge, screen, pluginRoot, convertedRoot, models, envExtra = {}, sandbox = false, signal,
+    arm, task, runDir, sdk, userRole, judge, screen, pluginRoot, convertedRoot, models, taskSettings = {}, envExtra = {}, sandbox = false, signal,
     model = DEFAULTS.model, timeoutMs = DEFAULTS.timeoutMs, maxReplies = DEFAULTS.maxReplies, mainMaxTurns = DEFAULTS.mainMaxTurns, pollMs,
   } = o;
   if (arm !== 'with' && arm !== 'without') throw new Error(`arm は with か without です：${arm}`);
@@ -258,7 +259,7 @@ export async function runInnerArm(o) {
 
   const screenSettings = () => {
     const base = task.json.settings ?? {};
-    return { ...(base.maxIterations !== undefined ? { maxIterations: base.maxIterations } : {}), task: { ...modelFields(models), ...(base.task ?? {}) } };
+    return { ...(base.maxIterations !== undefined ? { maxIterations: base.maxIterations } : {}), task: { ...modelFields(models), ...(base.task ?? {}), ...taskSettings } };
   };
 
   async function screenFlow() {

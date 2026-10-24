@@ -254,7 +254,7 @@ describe('再開と、記録の置き場所', () => {
       const second = await startForTest({ sessionId: 'session-new', home, cwd });
       const text = await second.call('state');
       assert.match(text, /^段階：（お話を聞くことの記録はまだありません）/m);
-      assert.match(text, /ヒアリングの記録（state\.json）：.*session-new/);
+      assert.match(text, /お話を聞くことの記録（state\.json）：.*session-new/);
       assert.equal(second.creator.hearing.exists, false);
       // 新しい記録は、新しい番号のフォルダにできる。前の記録は消えず、変わらない
       await second.call('progress', { stage: '始まり' });
@@ -339,11 +339,11 @@ describe('再開と、記録の置き場所', () => {
       const second = await startForTest({ sessionId: 'session-broken', home, cwd });
       const r = await second.callSafe('progress', { stage: '読む' });
       assert.equal(r.ok, false);
-      assert.match(r.error, /ヒアリングの記録（.*state\.json）を読めません。ファイルを確かめてください。/);
+      assert.match(r.error, /お話を聞くことの記録（.*state\.json）を読めません。ファイルを確かめてください。/);
       assert.equal(fs.readFileSync(file, 'utf8'), '{ 壊れた', '壊れた記録を上書きしない');
       assert.equal(second.creator.hearing.active, false, '壊れた記録のときは、問答を記録しない');
       const state = await second.call('state');
-      assert.match(state, /ヒアリングの記録（.*state\.json）を読めません/);
+      assert.match(state, /お話を聞くことの記録（.*state\.json）を読めません/);
       await second.cleanup();
     } finally {
       fs.rmSync(home, { recursive: true, force: true });

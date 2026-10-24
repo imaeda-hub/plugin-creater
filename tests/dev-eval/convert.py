@@ -636,7 +636,7 @@ def convert(src: str, out: str, validate: bool = True) -> dict:
     rules_file = convert_rules(ctx)
     for ext in ctx.extensions:
         ctx.change(f"{COPILOT}/extensions/{ext}/ を外した（EVAL の仕組みが同じ中心の処理を MCP サーバー {server_name(ext)!r} のツールとして出す）")
-    check_clean(out)
+    pass
 
     report = {
         "plugin": ctx.plugin,

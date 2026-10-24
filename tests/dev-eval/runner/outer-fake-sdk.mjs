@@ -47,6 +47,7 @@ function channel() {
   };
 }
 
+const tick = () => new Promise((resolve) => setImmediate(resolve));
 let idCounter = 0;
 const nextId = (prefix) => `${prefix}_${(idCounter += 1).toString(36)}`;
 
@@ -97,13 +98,15 @@ export function createFakeSdk({ userRole, agent, model = 'claude-sonnet-5-5', co
       turn,
       sessionId,
       options,
-      say(text, parent = null) {
+      async say(text, parent = null) {
         if (parent === null) lastText = text;
         assistant([{ type: 'text', text }], parent);
+        await tick();
       },
       async ask(questions) {
         const id = nextId('toolu');
         assistant([{ type: 'tool_use', id, name: 'AskUserQuestion', input: { questions } }]);
+        await tick();
         const decision = await options.canUseTool('AskUserQuestion', { questions }, { signal: abort.signal, toolUseID: id, requestId: nextId('req') });
         if (decision.behavior !== 'allow') {
           userResult(id, decision.message ?? '断られました', null, true);
@@ -111,11 +114,13 @@ export function createFakeSdk({ userRole, agent, model = 'claude-sonnet-5-5', co
         }
         const answers = decision.updatedInput?.answers ?? {};
         userResult(id, `User has answered your questions: ${Object.entries(answers).map(([q, a]) => `"${q}"="${a}"`).join(', ')}.`);
+        await tick();
         return answers;
       },
       async tool(name, input = {}, { run, parent = null, agentId } = {}) {
         const id = nextId('toolu');
         assistant([{ type: 'tool_use', id, name, input }], parent);
+        await tick();
         const mcp = /^mcp__(.+?)__(.+)$/.exec(name);
         let text;
         let isError = false;
@@ -135,6 +140,7 @@ export function createFakeSdk({ userRole, agent, model = 'claude-sonnet-5-5', co
           text = 'ok';
         }
         userResult(id, text, parent, isError);
+        await tick();
         return { text, isError };
       },
     };

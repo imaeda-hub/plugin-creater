@@ -80,6 +80,7 @@ export async function createCreatorToolkit({
     ...(loadUi ? { loadUi } : {}),
   });
 
+  let callCounter = 0;
   const record = (event) => {
     const e = { at: clock.now(), ...event };
     events.push(e);
@@ -95,13 +96,15 @@ export async function createCreatorToolkit({
       description: tool.description,
       inputSchema: tool.parameters,
       handler: async (args, ctx = {}) => {
-        const call = record({ type: 'tool.call', tool: name, args, toolUseId: ctx.toolUseId, agentId: ctx.agentId });
+        callCounter += 1;
+        const callId = callCounter;
+        record({ type: 'tool.call', callId, tool: name, args, toolUseId: ctx.toolUseId, agentId: ctx.agentId });
         try {
           const result = await tool.handler(args, ctx);
-          record({ type: 'tool.result', tool: name, callAt: call.at, toolUseId: ctx.toolUseId, isError: false, result: String(result ?? '') });
+          record({ type: 'tool.result', callId, tool: name, toolUseId: ctx.toolUseId, isError: false, result: String(result ?? '') });
           return result;
         } catch (error) {
-          record({ type: 'tool.result', tool: name, callAt: call.at, toolUseId: ctx.toolUseId, isError: true, result: error?.message ?? String(error) });
+          record({ type: 'tool.result', callId, tool: name, toolUseId: ctx.toolUseId, isError: true, result: error?.message ?? String(error) });
           throw error;
         }
       },

@@ -13,7 +13,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { after, describe, test } from 'node:test';
 
-import { answerEverything, confirmArgs, knowledge, readyToConfirm, tempDir, withRun } from './helpers.mjs';
+import { answerEverything, confirmArgs, knowledge, readyToConfirm, tempDir, withRun, writeDraft } from './helpers.mjs';
+import { leftWordsIn } from './words.mjs';
 
 // ---- Playwright を見つける（見つからなければ、この試験を飛ばす） ------------------------------------
 
@@ -78,6 +79,14 @@ async function openPage(url, viewport = { width: 1100, height: 900 }) {
   return { page, context, problems, close: () => context.close() };
 }
 
+/** 画面に見える文字（本文と、読み上げの名前などの属性）をすべて集める。段階の名前の札は、引数の値なので words.mjs が見逃す */
+async function screenWords(page) {
+  return page.evaluate(() => {
+    const attributes = [...document.querySelectorAll('[aria-label],[title],[alt],[placeholder]')].flatMap((el) => ['aria-label', 'title', 'alt', 'placeholder'].map((a) => el.getAttribute(a)).filter(Boolean));
+    return [document.title, document.body.innerText, ...attributes].join('\n');
+  });
+}
+
 const openScreenUrl = async (run) => /(http:\/\/127\.0\.0\.1:\d+\/\?k=\S+)/.exec(await run.call('open'))[1];
 const WAIT = { timeout: 6000 };
 
@@ -90,7 +99,7 @@ describe('クリエイターの画面（ブラウザー）', { skip: skipReason 
         await view.page.locator('#s-head h1').waitFor(WAIT);
         assert.equal(await view.page.title(), 'クリエイターの画面');
         assert.equal(await view.page.locator('#s-head h1').textContent(), 'クリエイターの画面');
-        assert.match(await view.page.locator('#stage').textContent(), /ヒアリングはまだ始まっていません/);
+        assert.match(await view.page.locator('#stage').textContent(), /お話を聞くことはまだ始まっていません/);
         assert.match(await view.page.locator('#s-head').textContent(), /この画面は見るだけです。答えや直しは、Copilot CLI のチャットで行ってください。/);
         assert.equal(await view.page.locator('input, textarea, select, button, form, [contenteditable], [role="button"]').count(), 0, '入力の欄やボタンがある');
         assert.equal(await view.page.locator('#loading').count(), 0, '読み込み中の表示が残っている');
@@ -131,12 +140,12 @@ describe('クリエイターの画面（ブラウザー）', { skip: skipReason 
 
         await run.call('record', { knowledge: [knowledge({ text: '毎週金曜日の17時までに提出する' })] });
         await view.page.locator('#knowledge tbody tr').first().waitFor(WAIT);
-        assert.deepEqual((await view.page.locator('#knowledge tbody tr:first-child td').allTextContents()).slice(0, 5), ['K-01', 'それ以外', '進め方', '毎週金曜日の17時までに提出する', 'ヒアリングの答え']);
+        assert.deepEqual((await view.page.locator('#knowledge tbody tr:first-child td').allTextContents()).slice(0, 5), ['K-01', 'それ以外', '進め方', '毎週金曜日の17時までに提出する', 'お話を聞いた答え']);
 
         await run.call('record', { knowledge: [knowledge({ kind: '合否の決め方', item: '合否の決め方', text: '見出しが順に並んでいれば合格', example: '実績、予定の順', exception: '祝日の週は予定を省く' })] });
         await view.page.locator('#knowledge tbody tr:nth-child(2)').waitFor(WAIT);
         const second = await view.page.locator('#knowledge tbody tr:nth-child(2) td').allTextContents();
-        assert.deepEqual(second.slice(0, 7), ['K-02', '合否の決め方', '合否の決め方', '見出しが順に並んでいれば合格', 'ヒアリングの答え', '実績、予定の順', '祝日の週は予定を省く']);
+        assert.deepEqual(second.slice(0, 7), ['K-02', '合否の決め方', '合否の決め方', '見出しが順に並んでいれば合格', 'お話を聞いた答え', '実績、予定の順', '祝日の週は予定を省く']);
 
         assert.equal(await view.page.evaluate(() => window.__notReloaded), 'same-page', 'ページが読み込み直されている');
         // 見出しや札で「項目」と言わず、「聞くこと」と言う（references/words.md の表。段階の名前「項目の点検」は、そのまま）
@@ -167,7 +176,7 @@ describe('クリエイターの画面（ブラウザー）', { skip: skipReason 
         });
         await view.page.locator('#candidates').waitFor(WAIT);
         assert.match(await view.page.locator('#candidates').textContent(), /候補の決まり/);
-        assert.match(await view.page.locator('#s-candidates h2').textContent(), /まだ確かめていない候補/);
+        assert.match(await view.page.locator('#s-candidates h2').textContent(), /まだ確かめていないこと/);
         assert.match(await view.page.locator('#asset-candidates').textContent(), /古い集計表/);
         assert.match(await view.page.locator('#s-knowledge').textContent(), /週報テンプレート.*templates\/weekly\.docx.*毎回使う/);
         assert.match(await view.page.locator('#s-knowledge').textContent(), /議事録スキル.*公開のプラグイン.*使わない.*書式が違う/);
@@ -216,7 +225,7 @@ describe('クリエイターの画面（ブラウザー）', { skip: skipReason 
         );
         const sampleUrl = /見本：(\S+)/.exec(text)[1];
         await view.page.locator('#s-confirm h2').waitFor(WAIT);
-        assert.match(await view.page.locator('#s-confirm h2').textContent(), /生成前の確認で示すもの/);
+        assert.match(await view.page.locator('#s-confirm h2').textContent(), /作る前の確認で示すもの/);
 
         // ナレッジの一覧：「決まったこと」の一覧と同じ中身
         const confirmRows = await view.page.locator('#confirm-knowledge tbody tr').evaluateAll((rows) => rows.map((r) => [...r.cells].map((c) => c.textContent)));
@@ -280,7 +289,7 @@ describe('クリエイターの画面（ブラウザー）', { skip: skipReason 
         await page.locator('#s-setup h2').waitFor(WAIT);
         assert.equal(await page.title(), '週報の作成 - Web管理画面');
         assert.equal(await page.locator('#s-head h1').textContent(), '週報の作成');
-        assert.match(await page.locator('#s-notices').textContent(), /これは Web管理画面の見本です。表示は仮のデータで、実際には何も動きません。/);
+        assert.match(await page.locator('#s-notices').textContent(), /これは作業の画面の見本です。表示は仮のデータで、実際には何も動きません。/);
         assert.equal(await page.locator('#setting-week').inputValue(), '（見本）', '必須の設定に仮の値が入っている');
         assert.equal(await page.locator('#setting-style').inputValue(), '簡易');
         assert.equal(await page.locator('#setting-style option').count(), 2);
@@ -343,19 +352,87 @@ describe('クリエイターの画面（ブラウザー）', { skip: skipReason 
         await view.page.locator('#s-results h2').waitFor(WAIT);
         const text = await view.page.locator('#s-results').textContent();
         assert.match(text, /latest\.json.*不合格/);
-        assert.match(text, /構造の検査.*合格.*12件中、合格12、不合格0/);
-        assert.match(text, /部品の試験.*不合格.*30件中、合格29、不合格1/);
-        assert.match(text, /部品の試験：REQ-009 止めると統括だけが取り消される/);
+        assert.match(text, /ファイルの形の検査.*合格.*12件中、合格12、不合格0/);
+        assert.match(text, /動きの試験.*不合格.*30件中、合格29、不合格1/);
+        assert.match(text, /動きの試験：REQ-009 止めると統括だけが取り消される/);
         assert.match(text, /取り消されたのは2体/);
-        assert.match(text, /構造の検査：説明が長い/);
-        assert.match(text, /生成プラグインありの点数0\.9/);
-        assert.match(text, /生成プラグインなしの点数0\.4/);
+        assert.match(text, /ファイルの形の検査：説明が長い/);
+        assert.match(text, /できあがるプラグインありの点数0\.9/);
+        assert.match(text, /できあがるプラグインなしの点数0\.4/);
         assert.match(text, /点数の差0\.5/);
         assert.match(text, /使った AI クレジット12\.5/);
         assert.match(text, /C-01：合格/);
         assert.match(text, /C-02：不合格/);
         assert.deepEqual(view.problems, []);
         await shot(view.page, 'creator-results');
+      } finally {
+        await view.close();
+      }
+    });
+  });
+
+  test('REQ-024 REQ-043 画面に出る文（見出し、説明、表の見出し、名前の札、表の読み上げの名前）に、表の左の言葉が出ない', async () => {
+    await withRun(async (run) => {
+      const url = await openScreenUrl(run);
+      const view = await openPage(url);
+      try {
+        // 始まる前
+        await view.page.locator('#s-head h1').waitFor(WAIT);
+        const before = await screenWords(view.page);
+        assert.deepEqual(leftWordsIn(before), [], before);
+        assert.match(before, /お話を聞くことはまだ始まっていません/);
+
+        // 聞いたこと、確かめたいこと、外したこと、資産、標準機能と公開のプラグイン、作る前の確認、作り直し、試験の結果が、すべて出ている状態
+        await answerEverything(run, { except: ['成果物'] });
+        await run.call('progress', { items: [{ item: '成果物', status: '保留', quote: '分からない', holder: '経理の山田さん' }] });
+        await run.call('record', {
+          knowledge: [
+            knowledge({ text: '毎週金曜日の17時までに提出する' }),
+            knowledge({ kind: '合否の決め方', item: '合否の決め方', text: '見出しが順に並んでいれば合格', quote: '実績が先です' }),
+            knowledge({ text: '提出前に上長が確認する', status: '候補', source: 'ファイルから読んで確かめた', quote: '週報.docx の末尾' }),
+            knowledge({ text: '外す決まり', status: '外した', source: 'ユーザーが自分から話した', quote: '違う' }),
+          ],
+          assets: [{ name: '週報テンプレート', location: 'templates/weekly.docx', status: '流用する' }, { name: '古い集計表', status: '候補' }],
+          oss: [{ name: '議事録の部品', kind: '公開のプラグイン', choice: '使わない', note: '書式が違う' }],
+        });
+        await view.page.locator('#candidates').waitFor(WAIT);
+        const middle = await screenWords(view.page);
+        assert.deepEqual(leftWordsIn(middle), [], middle);
+        assert.match(middle, /まだ確かめていないこと/);
+        assert.match(middle, /お話を聞いた答え/);
+
+        await run.call('record', { knowledge: [{ id: 'K-03', status: '決まった', quote: 'はい' }] });
+        await run.call('progress', { items: [{ item: '成果物', status: '聞いた', quote: 'Word の週報' }] });
+        await run.call('progress', { stage: 'できていたことの確認', items: [{ item: 'できていたことの確認', status: '聞いた', quote: '全部引き継ぐ' }] });
+        await run.call('progress', { stage: '生成前の確認' });
+        writeDraft(run.cwd);
+        await run.call('confirm', confirmArgs({ knowledgeIds: ['K-01', 'K-02', 'K-03'], rebuild: { keep: ['週報の書き方'], change: ['画面を足す'] } }));
+        const dir = path.join(run.cwd, 'tests', 'results');
+        fs.mkdirSync(path.join(dir, 'eval-1'), { recursive: true });
+        fs.writeFileSync(
+          path.join(dir, 'latest.json'),
+          JSON.stringify({
+            status: 'failed',
+            stages: [
+              { id: 'stage1', name: '構造の検査', status: 'passed', failures: [], warnings: ['説明が長い'], counts: { total: 12, passed: 12, failed: 0 } },
+              { id: 'stage2', name: '部品の試験', status: 'failed', failures: [{ test: 'REQ-009 止める', reason: '取り消されたのは2体' }], counts: { total: 30, passed: 29, failed: 1 } },
+            ],
+          }),
+        );
+        fs.writeFileSync(path.join(dir, 'eval-1', 'summary.json'), JSON.stringify({ scores: { with: 0.9, without: 0.4 }, credits: 12.5, runs: [{ task: 'T-01', variant: 'with', score: 1, criteria: [{ id: 'C-01', text: '見出しの順', pass: true }] }] }));
+        fs.writeFileSync(path.join(dir, 'other.json'), JSON.stringify({ memo: '形が決まっていない結果' }));
+        await run.call('results', { paths: ['tests/results/latest.json', 'tests/results/eval-1/summary.json', 'tests/results/other.json'] });
+        await view.page.locator('#s-results h2').waitFor(WAIT);
+        await view.page.locator('#confirm-rebuild').waitFor(WAIT);
+        const fold = view.page.locator('#s-candidates details');
+        if ((await fold.count()) > 0 && (await fold.getAttribute('open')) === null) await fold.locator('summary').click();
+        const after = await screenWords(view.page);
+        assert.deepEqual(leftWordsIn(after), [], after);
+        // 空振りでないことの確かめ：表の右の言葉で話している
+        for (const word of ['作る前の確認で示すもの', '作業の画面の見本', '試しに動かして採点する試験の課題と合格の条件', '仕事のやり方や決まり', 'できあがるプラグインの試験の結果', 'ファイルの形の検査', '動きの試験', 'お話を聞くことの進み具合']) {
+          assert.ok(after.includes(word), `表の右の言葉が出ていない：${word}`);
+        }
+        assert.deepEqual(view.problems, []);
       } finally {
         await view.close();
       }

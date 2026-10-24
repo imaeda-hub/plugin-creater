@@ -195,7 +195,7 @@ describe('クリエイターの画面のサーバー', () => {
       assert.equal(view.hearing.items.find((i) => i.name === '成果物').holder, '田中さん');
       assert.deepEqual(view.hearing.items.find((i) => i.name === '候補の確かめ'), { name: '候補の確かめ', status: '未着手', done: false, main: false, holder: null });
 
-      assert.deepEqual(view.hearing.knowledge.map((k) => [k.id, k.kind, k.item, k.text, k.source, k.quote]), [['K-01', 'それ以外', '作業の目的', '毎週の報告を楽にする', 'ヒアリングの答え', '楽にしたい']]);
+      assert.deepEqual(view.hearing.knowledge.map((k) => [k.id, k.kind, k.item, k.text, k.source, k.quote]), [['K-01', 'それ以外', '作業の目的', '毎週の報告を楽にする', 'お話を聞いた答え', '楽にしたい']]);
       assert.deepEqual(view.hearing.candidates.map((k) => [k.id, k.text]), [['K-02', '候補の決まり']]);
       assert.deepEqual(view.hearing.dropped.map((k) => [k.id, k.text]), [['K-03', '外した決まり']]);
       assert.deepEqual(view.hearing.assets.map((a) => a.name), ['週報テンプレート']);
@@ -303,7 +303,7 @@ describe('クリエイターの画面のサーバー', () => {
       const stages = results[0].view;
       assert.equal(stages.kind, 'stages');
       assert.equal(stages.overall, '不合格');
-      assert.deepEqual(stages.stages.map((s) => [s.name, s.status]), [['構造の検査', '合格'], ['部品の試験', '不合格']]);
+      assert.deepEqual(stages.stages.map((s) => [s.name, s.status]), [['ファイルの形の検査', '合格'], ['動きの試験', '不合格']]);
       assert.deepEqual(stages.stages[1].failures, [{ test: 'REQ-009 止めると統括だけが取り消される', reason: '取り消されたのは2体' }]);
       assert.deepEqual(stages.stages[0].warnings, ['説明が長い']);
 

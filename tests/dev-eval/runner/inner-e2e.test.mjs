@@ -30,7 +30,7 @@ const judge = async ({ criterion }) => ({ pass: true, reason: `${criterion.id} �
 test('REQ-005 REQ-007 REQ-008 REQ-012 ありの実行：画面を開く → 設定して開始 → 統括・作業・検証が動く → 終わりを読む → 採点する', { skip: SKIP, timeout: 240_000 }, async (t) => {
   const fixture = buildSamplePlugin();
   const requests = [];
-  const api = await startFakeAnthropic(scriptedModel({ verifierDelayMs: 1500, onRequest: (role, body) => requests.push({ role, model: body.model }) }));
+  const api = await startFakeAnthropic(scriptedModel({ workerDelayMs: 1500, verifierDelayMs: 1500, onRequest: (role, body) => requests.push({ role, model: body.model }) }));
   const screen = createScreen({ chromium, env: { ...process.env, PLUGIN_TEST_BROWSER_CHANNEL: 'chromium' } });
   t.after(async () => {
     await screen.close();

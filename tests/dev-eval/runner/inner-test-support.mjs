@@ -49,12 +49,15 @@ const toolNamesIn = (body) =>
 
 export function roleOf(body) {
   const system = JSON.stringify(body.system ?? '');
+  if (system.includes('あなたが知っていること')) return 'user-role';
+  if (system.includes('作業の成果物を採点する人です')) return 'judge';
   if (system.includes('の統括エージェントで')) return 'orchestrator';
   if (system.includes('の作業エージェントで')) return 'worker';
   if (system.includes('の検証エージェントで')) return 'verifier';
   return 'main';
 }
 
+const WEEKLY = '# 週報\n\n## 今週やったこと\n- 3件の問い合わせに対応した\n\n## 来週やること\n- 2件の資料を作る\n';
 const workDirOf = (body) => /Primary working directory: ([^\\\n"]+)/.exec(JSON.stringify(body))?.[1]?.trim();
 const criteriaOf = (text) => [...String(text).matchAll(/^- ([A-Z]-\d+)：(.+)$/gm)].map((m) => ({ id: m[1], text: m[2].trim() }));
 const textBlock = (text) => ({ type: 'text', text });
@@ -66,22 +69,29 @@ const tool = (name, input, extra = {}) => ({ type: 'tool_use', name, input, ...e
  * @param {string} [scenario.server] MCP のサーバー名（既定 weekly-report）
  * @param {boolean} [scenario.workerWrites] 作業が成果物を書くか（既定 true）
  * @param {boolean} [scenario.verifierPass] 検証が全部合格にするか（既定 true）
- * @param {number} [scenario.verifierDelayMs] 検証の返事を遅らせる（止める試験用）
+ * @param {number} [scenario.verifierDelayMs] 検証の返事を遅らせる（止める試験や、画面の状態を拾う試験用）
+ * @param {number} [scenario.workerDelayMs] 作業の最初の返事を遅らせる
  * @param {boolean} [scenario.askFirst] メインが最初にチャットで質問して手番を終える（ユーザー役の試験用）
  * @param {boolean} [scenario.background] 統括が作業・検証を裏で呼ぶ（run_in_background を指定しない）
  * @param {boolean} [scenario.useSkill] メインが最初に入口のスキルを呼ぶか（既定 true）
- * @param {boolean} [scenario.plain] メインが、プラグインなしの実行のように、自分で成果物を書く（なしの実行の試験用）
+ * @param {boolean} [scenario.plain] メインが、プラグインなしの実行のように、自分で成果物を書く。省くと、画面を開くツールがあるかで決める
+ * @param {string} [scenario.deliverable] 成果物の相対の場所（既定 out/weekly.md）
+ * @param {string} [scenario.content] 作業エージェントが書く成果物の中身
+ * @param {string} [scenario.plainContent] プラグインなしのメインが書く成果物の中身（省くと content と同じ）
  * @param {boolean} [scenario.askTool] メインが質問のツール（AskUserQuestion）で週を聞く
  * @param {(role: string, body: object) => void} [scenario.onRequest]
  */
 export function scriptedModel(scenario = {}) {
-  const { server = 'weekly-report', workerWrites = true, verifierPass = true, verifierDelayMs = 0, askFirst = false, background = false, useSkill = true, plain = false, askTool = false, onRequest } = scenario;
+  const { server = 'weekly-report', workerWrites = true, verifierPass = true, verifierDelayMs = 0, workerDelayMs = 0, askFirst = false, background = false, useSkill = true, plain: forcedPlain, askTool = false, deliverable = 'out/weekly.md', content: workerContent = WEEKLY, plainContent = workerContent, onRequest } = scenario;
   const mcp = (name) => `mcp__${server}__${name}`;
   return async ({ body }) => {
     const role = roleOf(body);
     onRequest?.(role, body);
     const used = toolNamesIn(body);
     const model = body.model;
+    if (role === 'user-role') return { model, blocks: [textBlock('はい、お願いします')] };
+    if (role === 'judge') return { model, blocks: [textBlock('{"pass": true, "reason": "満たしている"}')] };
+    const plain = forcedPlain ?? !(body.tools ?? []).some((t) => t.name === mcp('open'));
     if (role === 'main') {
       const answered = JSON.stringify(body.messages).includes('はい、お願いします');
       if (askTool && !used.includes('AskUserQuestion')) {
@@ -91,8 +101,7 @@ export function scriptedModel(scenario = {}) {
       if (plain) {
         if (askFirst && !answered) return { model, blocks: [textBlock('どの週の週報ですか？')] };
         if (!used.includes('Write')) {
-          const content = '# 週報\n\n## 今週やったこと\n- 3件の問い合わせに対応した\n\n## 来週やること\n- 2件の資料を作る\n';
-          return { model, blocks: [tool('Write', { file_path: path.join(workDirOf(body), 'out', 'weekly.md'), content })] };
+          return { model, blocks: [tool('Write', { file_path: path.join(workDirOf(body), deliverable), content: plainContent })] };
         }
         return { model, blocks: [textBlock('週報を out/weekly.md に書きました。')] };
       }
@@ -118,12 +127,12 @@ export function scriptedModel(scenario = {}) {
     }
     if (role === 'worker') {
       const cwd = workDirOf(body);
+      if (workerDelayMs && used.length === 0) await new Promise((resolve) => setTimeout(resolve, workerDelayMs).unref());
       if (workerWrites && !used.includes('Write')) {
-        const content = '# 週報\n\n## 今週やったこと\n- 3件の問い合わせに対応した\n\n## 来週やること\n- 2件の資料を作る\n';
-        return { model, blocks: [tool('Write', { file_path: path.join(cwd, 'out', 'weekly.md'), content })] };
+        return { model, blocks: [tool('Write', { file_path: path.join(cwd, deliverable), content: workerContent })] };
       }
       if (!used.includes(mcp('show'))) return { model, blocks: [tool(mcp('show'), { key: 'draft', value: '下書きを書きました' })] };
-      return { model, blocks: [textBlock(`成果物：${path.join(cwd, 'out', 'weekly.md')}\nしたこと：週報を書いた\nできなかったこと：なし`)] };
+      return { model, blocks: [textBlock(`成果物：${path.join(cwd, deliverable)}\nしたこと：週報を書いた\nできなかったこと：なし`)] };
     }
     // verifier
     if (!used.includes(mcp('verdict'))) {

@@ -376,7 +376,7 @@ describe('決まったこと（plugin-creator_record）', () => {
       const badOss = await run.callSafe('record', { oss: [{ name: 'x', kind: '自作', choice: '使う' }] });
       assert.match(badOss.error, /使える名前：標準機能、公開のプラグイン/);
       const empty = await run.callSafe('record', {});
-      assert.match(empty.error, /ナレッジ（knowledge）、資産（assets）、標準機能と公開のプラグイン（oss）のどれかを渡してください/);
+      assert.match(empty.error, /仕事のやり方や決まり（knowledge）、資産（assets）、標準機能と公開のプラグイン（oss）のどれかを渡してください/);
     });
   });
 

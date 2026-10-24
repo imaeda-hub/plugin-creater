@@ -225,7 +225,7 @@ describe('Web管理画面の見本', () => {
         ['draft', 'text', 'running'], ['table', 'table', 'finished'], ['rate', 'progress', 'both'], ['facts', 'kv', 'both'], ['chart', 'image', 'finished'], ['report', 'file', 'finished'],
       ]);
       assert.equal(typeof state.version, 'number');
-      assert.match(state.notices[0].text, /これは Web管理画面の見本です。表示は仮のデータで、実際には何も動きません。/);
+      assert.match(state.notices[0].text, /これは作業の画面の見本です。表示は仮のデータで、実際には何も動きません。/);
     });
   });
 

@@ -15,11 +15,11 @@
 - [x] 読み込み（common.md、D1.md、BLUEPRINT、RESUME、testing.md 全章、hearing.md の関係の章、ナレッジ3つ、R4、試作の lib.mjs・outer.mjs・test_user_role.mjs・inner.mjs・control-creator、FORMAT.md、D1a・D1b・D1d のメモ、C1 のメモと creator.mjs・hooks.mjs・store.mjs・tool-defs.mjs、C2 のメモ、C3 の grade.mjs の窓口）
 - [x] 環境の確かめ：bubblewrap（bwrap）と socat は **この環境にない**（`which` で確認。要確認の1）。Agent SDK は tests/dev-eval/node_modules に 0.3.310 が入っている（D1d）。手元の claude は 2.1.310。非特権のユーザー名前空間は使える見込み（max_user_namespaces=64280）ので、入れれば bwrap は動く見込み
 - [ ] 共通の部品の置き場所の決め（下）
-- [ ] ユーザー役（user-role.mjs）
+- [x] ユーザー役（user-role.mjs。試験 user-role.test.mjs 13件）
 - [ ] ユーザー役の試験（user-role-test.mjs）
-- [ ] クリエイターのエクステンションの置き換え（creator-tools.mjs）
-- [ ] 外側の EVAL の流れ（outer-*.mjs）
-- [ ] 6.5 の採点
+- [x] クリエイターのエクステンションの置き換え（creator-tools.mjs。試験 creator-tools.test.mjs 8件）
+- [~] 外側の EVAL の流れ（outer-run.mjs、outer-inner.mjs、outer-fake-sdk.mjs はできた。試験はまだ）
+- [x] 6.5 の採点（outer-grade.mjs。試験 outer-grade.test.mjs 21件）
 - [ ] 6.6 の記録の全文
 - [ ] 対照のクリエイター
 - [ ] 会話例の作成のスクリプト
