@@ -122,8 +122,8 @@ export async function runInnerArm(o) {
   const eventsFile = path.join(runDir, 'events.jsonl');
   const record = (entry) => fs.appendFileSync(eventsFile, `${JSON.stringify({ at: Date.now(), arm, ...entry })}\n`);
   const startedAt = Date.now();
-  const workParent = ensureDir(path.join(runDir, 'work'));
-  const { workDir, inputs } = prepareWorkDir({ task, dir: path.join(workParent, 'files') });
+  // 作業フォルダ（試されるエージェントの cwd）は、記録の置き場所と分ける。採点のときに、記録が成果物に混ざらないようにするため
+  const { workDir, inputs } = prepareWorkDir({ task, dir: path.join(runDir, 'work') });
   const homeDir = ensureDir(path.join(runDir, 'home-main'));
 
   const result = {
@@ -337,6 +337,9 @@ export async function runInnerArm(o) {
   } else if (arm === 'with' && result.mainInit && !result.mainInit.plugins.includes(reportInfo.plugin)) {
     result.status = 'error';
     result.reason = `プラグイン ${reportInfo.plugin} が読み込まれませんでした${result.mainInit.pluginErrors.length ? `（${result.mainInit.pluginErrors.map((e) => e.message).join('、')}）` : ''}。`;
+  } else if (arm === 'with' && result.mainInit && result.mainInit.mcpServers.find((s) => s.name === adapter.serverName)?.status !== 'connected') {
+    result.status = 'error';
+    result.reason = `画面を開くツールの MCP サーバー（${adapter.serverName}）につながりませんでした（${JSON.stringify(result.mainInit.mcpServers)}）。`;
   } else if (result.mainError) {
     result.status = 'incomplete';
     result.reason = `メインの実行が誤りで終わりました（${result.mainError}）`;
@@ -344,12 +347,15 @@ export async function runInnerArm(o) {
     if (!result.url) {
       result.status = 'incomplete';
       result.reason = 'チャットに画面の URL が出ませんでした。';
+    } else if (result.timedOut) {
+      result.status = 'incomplete';
+      result.reason = '時間内に、画面に終わった理由が出ませんでした。';
     } else if (result.screenError) {
       result.status = 'incomplete';
       result.reason = result.screenError;
     } else if (!result.screen?.finished) {
       result.status = 'incomplete';
-      result.reason = result.timedOut ? '時間内に、画面に終わった理由が出ませんでした。' : '画面に終わった理由が出ませんでした。';
+      result.reason = '画面に終わった理由が出ませんでした。';
     }
   } else if (result.timedOut) {
     result.status = 'incomplete';

@@ -11,12 +11,14 @@
 
 印の意味：[x] できた（試験も通った）、[~] ファイルはできた（試験はまだ）、[ ] まだ
 
-- [ ] 読み込み（憲章、testing.md 1〜9章・11.1、ナレッジ3つ、R4、R2、B1 の adapter.mjs、C3 の screen.mjs・grade.mjs）
-- [ ] 共通の部品の置き場所の決め
-- [ ] 内側のつなぎ口（Agent SDK 用）
-- [ ] 画面の操作
-- [ ] 採点
-- [ ] 試験
+- [x] 読み込み（testing.md、ナレッジ3つ、R4、BLUEPRINT、B1 の adapter.mjs、A1 の core、C3 の screen.mjs・grade.mjs・tasks.mjs・judge.mjs、D1a の convert.py、D1b の FORMAT.md）。憲章は CLAUDE.md の求めのとおり先頭で確かめる前に作業を始めてしまったので、最後に通して読み、反する点がないか確かめる（下の「憲章の確かめ」）
+- [x] 偽の API で、本物の Agent SDK 0.3.310 の Claude Code を動かす実験（スクラッチ。分かったことは上の節）
+- [x] 共通の部品：package.json、model-map.mjs、isolation.mjs、mcp-tools.mjs と、それぞれの試験（20 件通った）、fake-anthropic.mjs（偽の Anthropic API）
+- [x] inner-adapter.mjs（内側のつなぎ口）、inner-run.mjs（実行1回）、inner-test-support.mjs（試験の道具）
+- [~] inner-e2e.test.mjs：ありの実行が、本物の Agent SDK と偽のモデル、本物の画面と Playwright で通った（1 件）。なしの実行、チャットの返事、止める、利用枠の上限、失敗の試験はこれから
+- [ ] inner-judge.mjs（モデルで判定する関数の Agent SDK 版）と試験
+- [ ] inner.mjs（入口：模擬ユーザーの inner/ の課題を、あり・なしで回して比べる）と試験
+- [ ] inner-adapter の単体の試験（偽の sdk）
 - [ ] 最後の返事
 
 ## 共通の部品（D1c と分け合うもの。置き場所と形）

@@ -76,4 +76,26 @@
 
 ## 要確認
 
-## 上位の文書で直すこと
+本物のモデルを使わないと確かめられないこと（この担当では使っていない）と、公式の資料にないこと。
+
+1. 統括が `Agent` を `run_in_background: false` で呼んだとき、結果が同じ手番に返るか。型（`AgentInput`）と公式ページ（Agent SDK では Claude が待てる）から読んだだけで、動かしていない。最初の EVAL（D1d）で、統括の記録に作業・検証の結果が返っているか見る。裏で動いてしまうと、サブエージェントの組み込みツールが絞られる（公式：裏のサブエージェントは Read、Edit、Write、Bash などだけ。MCP のツールは残る）。
+2. `claude -p` の init の `tools` には、Agent が `Task` の名前で出る（2.1.310。公式は「v2.1.63 で Agent に改名。`Task` は別名」）。記録の tool_use の名前が `Agent` か `Task` かは、動かしてみないと分からない。D1c・D1d は両方を受ける作りにする。
+3. MCP のサーバー（Agent SDK の同じプロセスのもの）が出すツールを、プラグインのサブエージェントの `tools`（`mcp__<サーバー>__<ツール>`）で絞って渡せるか。公式は「サブエージェントはメインの会話の MCP ツールを引き継ぐ。`tools` に `mcp__<server>__*` と書ける」。同じプロセスのサーバーでも同じと読んだが、確かめていない（D1d の最初の EVAL）。
+4. `.mcp.json` の stdio サーバーの `cwd`：Copilot CLI の mcp.json には `cwd` があり、Claude Code の公式の表（`command`、`args`、`env`）にない。写して警告する。`claude plugin validate` は通る。効くかは未確認。
+5. `com.github.copilot/commands/` の中身：Copilot CLI のファイルの形が公式の資料にない（R3）ので、写しただけ。警告する。クリエイターと今の生成プラグインにはない。
+6. `tools` が空のリスト（Copilot CLI ではツールなし）：Claude Code で空の指定がどうなるか公式に書いていない。`tools` を書かずに警告する（全部のツールが使える形になる）。今のクリエイターと生成プラグインにはない。
+7. プラグイン名やエクステンション名に `.` を含むとき：Claude Code が MCP の名前をどう正規化するか公式の資料で確かめていない。エクステンションの名前は下線に直して警告し（レポートの `server`）、プラグイン自身の mcp.json のサーバーは警告だけする。
+8. モデルの ID（`claude-haiku-5-5` など）が、本物のモデルでそのまま通るか。`claude plugin validate` と init の確認は、モデルの名前を調べない。
+9. 試験の `claude` コマンドの版は 2.1.310（この環境）。Agent SDK 同梱の本体は 0.3.307 の 2.1.307（D1c が固定する）。変換の形は両方で同じ。init の確認は `claude` コマンドで行った。
+
+## 上位の文書で直すこと（自分では直していない）
+
+1. testing.md 4章：統括の `task` の引数の扱いが書かれていない。足す：Copilot CLI の `agent_type` は Claude Code の Agent の `subagent_type`、`mode: "sync"`・`"background"` は `run_in_background: false`・`true`（Claude Code の `mode` は無効の別の意味）。サブエージェントは既定で裏で動くので、1体ずつ待つには `false` が要る。変換スクリプトがバッククォートで書かれた名前と値を置き換える。
+2. testing.md 4章：変数の置き換えは設定ファイル（mcp.json、フック、lsp.json）だけで、スキルとエージェントの本文では置き換えない、と書く（理由は「決めたこと」）。R4 注 C-5 を取り下げる。
+3. testing.md 4章：置き換えた版に写さないものを書く。トップの `docs/`、`tests/`、`examples/`、`wip/`、`.git` など、`heldout`（どこにあっても）、シンボリックリンク。特に、見ない模擬ユーザー（tests/dev-eval/heldout/）を試されるクリエイターから隠すのは、変換スクリプトが `tests/` を写さないことに依っている。6.3・6.6 に「見ない模擬ユーザーと会話例は、置き換えた版に入れない」を足す。試作の変換は全部を写していた。
+4. testing.md 4章：エクステンションのツール名の規則を書く。サーバー名はエクステンションのフォルダの名前、`<エクステンション>_<ツール>` は `mcp__<エクステンション>__<ツール>`。置き換えた名前は変換レポートの `extension_tools` に残り、EVAL の仕組みが出す MCP のツールと突き合わせられる。
+5. testing.md 4章：モデルの対応の表は、変換レポートの `model_map` にも出る（画面で選ぶ名前を ID にするのに使う）。「変換スクリプトに表として持つ」と合う。
+6. testing.md 4章：ツール名の対応に、公式の表にない `skill` → `Skill` を補った、と書く。表にないもの（`task_complete` など）はそのまま残す。
+7. testing.md 4章：置き換えた版の中の `.eval/`（変換レポートと `rules.md`）を書く。`rules` は `.eval/rules.md` になり、EVAL の課題の側で指示として足す。
+8. creator-structure.md 2章：部品の表に、変換スクリプト（tests/dev-eval/convert.py）とその試験（tests/dev-eval/test_convert.py）の行がない（R4 の指摘のとおり。追跡のため足す）。
+9. testing.md 4章：置き換えた版が Claude Code に読み込まれることの確かめは、`claude plugin validate` に加えて、`claude -p` の init の `agents`・`skills` で見られる（モデルは呼ばない。つながらない接続先を指す）。試験に入れた。

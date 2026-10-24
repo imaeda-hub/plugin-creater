@@ -20,6 +20,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 import unittest
 from unittest import mock
 
@@ -585,6 +586,24 @@ class Refusals(Base):
                 convert.convert(self.src, out, validate=False)
         self.assertTrue(os.path.isfile(os.path.join(self.src, "plugin.json")))
 
+    def test_an_old_output_that_contains_the_source_is_refused_and_the_source_survives(self):
+        """OUT が前の出力に見えても、SRC を含むなら消さない（消すと元のプラグインがなくなる）。"""
+        write(self.tmp, ".eval/conversion-report.json", "{}")
+        with self.assertRaises(convert.Refusal):
+            convert.convert(self.src, self.tmp, validate=False)
+        self.assertTrue(os.path.isfile(os.path.join(self.src, "plugin.json")))
+
+    def test_the_final_check_refuses_an_output_that_holds_examples_or_unseen_simulated_users(self):
+        """写さない決まりが破れたときの最後の砦。"""
+        for rel in ("examples/a.md", "x/heldout/b.md"):
+            folder = os.path.join(self.tmp, "check-" + rel.replace("/", "-"))
+            write(folder, rel, "x\n")
+            with self.assertRaises(convert.Refusal):
+                convert.check_clean(folder)
+        clean = os.path.join(self.tmp, "check-clean")
+        write(clean, "skills/a/SKILL.md", "x\n")
+        convert.check_clean(clean)
+
     def test_the_command_line_returns_2_for_a_refusal_and_prints_the_reason(self):
         os.remove(os.path.join(self.src, "plugin.json"))
         buffer = io.StringIO()
@@ -623,6 +642,15 @@ class Validate(Base):
         self.assertIn("homepage", summary["validate_output"])
         self.assertTrue(os.path.isdir(self.out), "不合格でも置き換えた版は残す（直す手がかりにする）")
 
+    def test_4_claude_code_loads_the_converted_agents_and_skill_under_the_plugin_name(self):
+        self.run_convert()
+        init = claude_init_message(self.out)
+        self.assertIsNotNone(init, "claude が起動しなかった")
+        self.assertIn("demo-plugin", [p["name"] for p in init["plugins"]])
+        for name in ("orchestrator", "worker", "verifier", "free", "team--deep"):
+            self.assertIn(f"demo-plugin:{name}", init["agents"])
+        self.assertIn("demo-plugin:demo", init["skills"])
+
     def test_4_warnings_of_the_validator_do_not_fail(self):
         """作者の情報がない、README がない、などは警告で、不合格にしない。"""
         write(self.src, "plugin.json", json.dumps({"name": "demo-plugin"}))
@@ -630,6 +658,38 @@ class Validate(Base):
         report = self.run_convert(validate=True)
         self.assertTrue(report["validate"]["ok"], report["validate"].get("output"))
         self.assertIn("warning", report["validate"]["output"].lower())
+
+
+def claude_init_message(plugin_dir, timeout_sec=90):
+    """claude -p を、つながらない接続先で起動し、最初の system/init のメッセージを返す。モデルは呼ばない。
+
+    init には、読み込まれたプラグイン、エージェント（<プラグイン>:<名前>）、スキルが入っている。
+    """
+    home, work = tempfile.mkdtemp(prefix="d1a-home-"), tempfile.mkdtemp(prefix="d1a-work-")
+    env = {"PATH": os.environ.get("PATH", ""), "HOME": home,
+           "ANTHROPIC_BASE_URL": "http://127.0.0.1:9", "ANTHROPIC_API_KEY": "dummy-key-never-used"}
+    proc = subprocess.Popen(
+        ["claude", "-p", "--output-format", "stream-json", "--verbose", "--plugin-dir", plugin_dir,
+         "--setting-sources", "", "--max-turns", "1", "hi"],
+        cwd=work, env=env, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, encoding="utf-8")
+    timer = threading.Timer(timeout_sec, proc.kill)
+    timer.start()
+    try:
+        for line in proc.stdout:
+            try:
+                message = json.loads(line)
+            except ValueError:
+                continue
+            if message.get("type") == "system" and message.get("subtype") == "init":
+                return message
+        return None
+    finally:
+        timer.cancel()
+        proc.kill()
+        proc.wait()
+        proc.stdout.close()
+        shutil.rmtree(home, ignore_errors=True)
+        shutil.rmtree(work, ignore_errors=True)
 
 
 def node_json(code):
@@ -753,6 +813,22 @@ class RealPlugins(unittest.TestCase):
             self.assertFalse(os.path.exists(os.path.join(out, top)), top)
         self.assertTrue(os.path.isdir(os.path.join(out, "scripts")))
         self.assert_no_copilot_names_left(out, "weekly-report")
+
+    @unittest.skipUnless(HAVE_CLAUDE, "claude コマンドがない")
+    def test_4_claude_code_loads_the_converted_creator_and_generated_plugin(self):
+        out, _ = self.convert_real(REPO, "creator-load", validate=False)
+        init = claude_init_message(out)
+        self.assertIsNotNone(init, "claude が起動しなかった")
+        self.assertIn("plugin-creator:reader", init["agents"])
+        self.assertIn("plugin-creator:worker", init["agents"])
+        self.assertIn("plugin-creator:make-plugin", init["skills"])
+        self.assertIn("plugin-creator:test-plugin", init["skills"])
+        out, _ = self.convert_real(self.generated, "generated-load", validate=False)
+        init = claude_init_message(out)
+        self.assertIsNotNone(init, "claude が起動しなかった")
+        for name in ("orchestrator", "worker", "verifier"):
+            self.assertIn(f"weekly-report:{name}", init["agents"])
+        self.assertIn("weekly-report:weekly-report", init["skills"])
 
     def test_4_the_generated_orchestrator_calls_agent_in_the_foreground_with_claude_code_arguments(self):
         out, _ = self.convert_real(self.generated, "generated-agent", validate=False)
