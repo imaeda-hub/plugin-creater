@@ -132,4 +132,4 @@ plugin-creator は、あなたにしか分からないことを推測で埋め�
 
 ## 会話例
 
-plugin-creator と、AI が演じたユーザーとのやり取りの例は、[examples/](examples/) に置きます。何を伝えればよいかの参考にしてください。
+plugin-creator と、AI が演じたユーザーとのやり取りの例は、[examples/](examples/) にあります。何を伝えればよいかの参考にしてください。
