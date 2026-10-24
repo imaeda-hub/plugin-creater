@@ -5,7 +5,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { after, describe, test } from 'node:test';
+import { after, describe, mock, test } from 'node:test';
 
 import { FAST_TIMING, SCREEN_URL, createWorld, filesIn, finishedScreen, sleep, usage } from './fake-sdk.mjs';
 import { cleanupTemp, loadScript, makeTemp, sampleTask } from './helpers.mjs';
@@ -866,5 +866,157 @@ describe('エクステンションの起動（Copilot SDK では、起動のし�
     const result = await run(world, { extensionSdkPath: SDK_PATH });
     assert.deepEqual(result.runs[0].extensionLaunch, { launched: ['plugin:weekly-report:weekly-report'], refused: ['user:my-helper'] });
     assert.equal('extensionLaunch' in result.runs[1], false);
+  });
+});
+
+describe('EVAL でできた生成プラグインの実行の記録の片付け（ふだんの作業の記録と同じ場所に入るため）', () => {
+  const NAME = 'weekly-report';
+  const USER_RECORDS = ['20261001-090000-aaaaaa', '20261002-090000-bbbbbb'];
+
+  /** 生成プラグインのエクステンションが、実行の記録を作る代わり（store.mjs と同じ置き方：<番号>/log.jsonl の1行目が begin） */
+  function writeRecord(root, id, begin, finished = true) {
+    const dir = path.join(root, id);
+    fs.mkdirSync(path.join(dir, 'issues'), { recursive: true });
+    fs.writeFileSync(path.join(dir, 'log.jsonl'), `${JSON.stringify({ t: 'begin', runId: id, ...begin })}\n`);
+    fs.writeFileSync(path.join(dir, 'alive'), '1');
+    if (finished) fs.writeFileSync(path.join(dir, 'result.json'), '{"done":true}');
+    return dir;
+  }
+  /** フォルダの中身（相対の場所と中身）を並べる。前後の比べ合いに使う */
+  const treeOf = (dir) =>
+    fs
+      .readdirSync(dir, { recursive: true })
+      .sort()
+      .map((rel) => {
+        const abs = path.join(dir, rel);
+        return fs.statSync(abs).isDirectory() ? `${rel}/` : `${rel}=${fs.readFileSync(abs, 'utf8')}`;
+      });
+
+  /**
+   * ふだんの作業の記録が2つある COPILOT_HOME で、ありの実行のたびに、生成プラグインが記録を1つ作る世界。
+   * onRecord は、記録を作った後（実行の間）に呼ぶ。behavior は、偽物の SDK の動きの上書き
+   */
+  function setup({ onRecord, behavior = {}, ...options } = {}) {
+    const home = makeTemp('c3-copilot-home-');
+    const root = path.join(home, 'plugin-data', NAME, 'runs');
+    USER_RECORDS.forEach((id, i) => writeRecord(root, id, { cwd: '/home/user/project', sessionId: `user-session-${i}` }));
+    const created = [];
+    const ctx = { home, root, created, env: { ...ENV, COPILOT_HOME: home }, userTree: treeOf(root) };
+    ctx.world = createWorld({
+      outputs: GOOD,
+      ...options,
+      behavior: {
+        onSend: async (session) => {
+          if (session.variant === 'with') {
+            const id = `20261024-12000${created.length + 1}-c0ffe${created.length + 1}`;
+            created.push(id);
+            writeRecord(root, id, { cwd: session.workDir, sessionId: session.sessionId }, false);
+            await onRecord?.({ session, root, id });
+          }
+          if (behavior.onSend) await behavior.onSend(session, ctx);
+          else await ctx.world.defaultOnSend(session);
+        },
+        ...Object.fromEntries(Object.entries(behavior).filter(([key]) => key !== 'onSend')),
+      },
+    });
+    return ctx;
+  }
+
+  test('REQ-041 ありの実行が終わるたびに、その実行でできた記録だけを消す。ふだんの作業の記録・生成プラグインのフォルダ・EVAL の結果は残る', async () => {
+    const { world, root, created, env, userTree } = setup();
+    const pluginTree = treeOf(world.pluginDir);
+    const result = await run(world, { runs: 2, env });
+
+    assert.equal(result.status, 'completed');
+    assert.equal(created.length, 2);
+    assert.deepEqual(treeOf(root), userTree, 'ふだんの作業の記録は、件数も中身も前と同じ。EVAL の記録は残っていない');
+    const [with1, without1, with2] = result.runs;
+    assert.deepEqual(with1.pluginRecords, { root, removed: [created[0]], failed: [], unidentified: [], skipped: null });
+    assert.deepEqual(with2.pluginRecords.removed, [created[1]]);
+    assert.equal('pluginRecords' in without1, false, 'なしの実行は、生成プラグインを読み込まないので、記録を扱わない');
+
+    // 生成プラグインのフォルダは消えない。その tests/results/ の EVAL の結果も残る
+    assert.equal(fs.existsSync(result.resultFile), true);
+    assert.equal(fs.existsSync(path.join(result.resultsDir, with1.events)), true);
+    const notResults = (entry) => !entry.startsWith('tests/results') && !entry.startsWith('tests');
+    assert.deepEqual(treeOf(world.pluginDir).filter(notResults), pluginTree.filter(notResults));
+    assert.equal(fs.existsSync(path.join(world.pluginDir, 'plugin.json')), true);
+    assert.equal(fs.existsSync(path.join(world.pluginDir, 'tests', 'eval', 'T-01', 'eval.json')), true);
+    assert.equal(result.warnings.some((w) => /実行の記録/.test(w)), false, '注意は出ない');
+  });
+
+  test('REQ-041 消すのは、セッションを閉じた後。閉じ始めるまでは、記録は残っている（エクステンションが書いている間は消さない）', async () => {
+    const seen = [];
+    const ctx = setup({
+      behavior: { onAbort: (session) => session.variant === 'with' && seen.push(fs.existsSync(path.join(ctx.root, ctx.created[0]))) },
+    });
+    const result = await run(ctx.world, { env: ctx.env });
+    assert.deepEqual(seen, [true], 'ありの閉じ始めの時点では、まだ残っている');
+    assert.equal(fs.existsSync(path.join(ctx.root, ctx.created[0])), false, '閉じた後に消えた');
+    assert.deepEqual(result.runs[0].pluginRecords.removed, ctx.created);
+  });
+
+  test('REQ-041 実行が失敗しても（画面の操作が落ちた）、できていた記録は消す', async () => {
+    const ctx = setup({ screen: { operate: async () => { throw new Error('ブラウザーが落ちました'); } } });
+    const result = await run(ctx.world, { env: ctx.env });
+    assert.equal(result.runs[0].status, 'error');
+    assert.deepEqual(result.runs[0].pluginRecords.removed, ctx.created);
+    assert.deepEqual(treeOf(ctx.root), ctx.userTree);
+  });
+
+  test('REQ-041 セッションがエラーになった実行でも、できていた記録は消す。ふだんの作業の記録は残る', async () => {
+    const ctx = setup({
+      behavior: {
+        onSend: async (session) => {
+          if (session.variant === 'with') session.emit('session.error', { message: 'モデルの呼び出しに失敗しました' });
+          else await ctx.world.defaultOnSend(session);
+        },
+      },
+    });
+    const result = await run(ctx.world, { env: ctx.env });
+    assert.equal(result.runs[0].status, 'error');
+    assert.deepEqual(result.runs[0].pluginRecords.removed, ctx.created);
+    assert.deepEqual(treeOf(ctx.root), ctx.userTree);
+  });
+
+  test('REQ-041 試験の間にできても、この実行のものと確かめられない記録（ふだんの作業が同時に動いた）は、消さずに注意を出す', async () => {
+    const other = '20261024-120009-a1b2c3';
+    const ctx = setup({ onRecord: ({ root }) => writeRecord(root, other, { cwd: '/home/user/another-project', sessionId: 'someone-elses-session' }) });
+    const result = await run(ctx.world, { env: ctx.env });
+    assert.equal(fs.existsSync(path.join(ctx.root, other)), true, '残る');
+    assert.deepEqual(result.runs[0].pluginRecords.removed, ctx.created);
+    assert.deepEqual(result.runs[0].pluginRecords.unidentified, [other]);
+    assert.match(result.warnings.find((w) => /確かめられなかったので、消していません/.test(w)), /1 件増えました.*消していません（実行：T-01 あり 1）/);
+  });
+
+  test('REQ-041 消せなかった記録は、場所を示して注意を出す。試験の結果は止めない', async () => {
+    const ctx = setup();
+    const realRm = fs.rmSync;
+    const stub = mock.method(fs, 'rmSync', (target, ...rest) => {
+      if (String(target).startsWith(ctx.root) && String(target).includes('20261024-')) throw new Error('EBUSY: 使用中です');
+      return realRm(target, ...rest);
+    });
+    let result;
+    try {
+      result = await run(ctx.world, { env: ctx.env });
+    } finally {
+      stub.mock.restore();
+    }
+    assert.equal(result.status, 'completed');
+    assert.equal(result.runs[0].score, 1, '採点は通常どおり');
+    assert.deepEqual(result.runs[0].pluginRecords.failed, [{ id: ctx.created[0], message: 'EBUSY: 使用中です' }]);
+    const warning = result.warnings.find((w) => /消せませんでした/.test(w));
+    assert.ok(warning.includes(path.join(ctx.root, ctx.created[0])), warning);
+    assert.match(warning, /手で消してかまいません/);
+    assert.deepEqual(treeOf(ctx.root).filter((entry) => !entry.startsWith(ctx.created[0])), ctx.userTree, 'ふだんの作業の記録は残っている');
+  });
+
+  test('REQ-041 記録の置き場所を決められないとき（COPILOT_HOME が絶対パスでない）は、何も消さず、そのことを注意に出す', async () => {
+    const ctx = setup();
+    const result = await run(ctx.world, { env: { ...ENV, COPILOT_HOME: 'relative/home' } });
+    assert.equal(result.runs[0].pluginRecords.root, null);
+    assert.deepEqual(result.runs[0].pluginRecords.removed, []);
+    assert.match(result.warnings.find((w) => /記録の置き場所を決められませんでした/.test(w)), /消していません.*COPILOT_HOME/);
+    assert.deepEqual(treeOf(ctx.root).filter((entry) => !ctx.created.some((id) => entry.startsWith(id))), ctx.userTree);
   });
 });

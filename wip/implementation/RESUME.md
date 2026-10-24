@@ -209,7 +209,7 @@
 | D1a 変換 | a94162dfbb0aaf6aa（完了） |
 | D1b 模擬ユーザー | a28af96a1b11b7fea（完了。週報・議事録・研修のアンケートの集計の3人。答え26で議事録に話し方の5種を足し〔232fad3〕、週報と議事録の terse・hurry に「いくつかのことを聞かれたら、それぞれ答える」を足した〔ee30b34〕） |
 | D1d 内側の EVAL | afe3eb2243185d726（完了。V1 の直しへの合わせ〔58ba51f〕、統括の tools をなくしたことへの合わせ〔0b8c6cc：内側のつなぎ口が実行用のコピーの統括の定義に、Claude Code の名前の許す一覧を tools として書く。Claude Code では子のツールは親に絞られないことを確かめた〕） |
-| D1c 外側の EVAL | af526bb1af09f9618（完了） |
+| D1c 外側の EVAL | af526bb1af09f9618（完了。X の直し〔5c227bb：記録する数 countRecorded、REQ-045・046 のモデルの観点 main-model・worker-model〕。次は M1 の後に会話例の版の呼び方〔3b〕を頼む） |
 | X1 突き合わせ（生成プラグインの側） | a573cbefd6ad8b7da（完了。19件〔high 2：V1 の不具合1・2と同じ〕。reviews/X1.md） |
 | X2 突き合わせ（クリエイターの側） | a015be8b3c3f5b5f0（完了。22件〔high 0〕。reviews/X2.md） |
 | T1 すべての試験の通し | a7e9349258395fe6a（完了。約1,500件が通り、落ちたのは会話例がないこと〔REQ-037。EVAL の後に作る〕だけ。組み立てた生成プラグインの tests/run.py も、Playwright を入れた後に合格） |

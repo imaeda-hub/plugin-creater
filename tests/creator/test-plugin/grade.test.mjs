@@ -6,7 +6,7 @@ import path from 'node:path';
 import { after, describe, test } from 'node:test';
 
 import { sampleDocx, sampleXlsx } from '../extension/ooxml.mjs';
-import { cleanupTemp, loadScript, makeTemp, sampleTask, tempWith, writeFiles } from './helpers.mjs';
+import { cleanupTemp, loadScript, sampleTask, tempWith } from './helpers.mjs';
 
 const grade = await loadScript('grade.mjs');
 after(cleanupTemp);
@@ -432,10 +432,4 @@ describe('使うファイルの置き場所', () => {
     assert.doesNotMatch(source, /copilot-sdk|claude-agent-sdk|@anthropic-ai/);
     assert.doesNotMatch(source, /\bplaywright\b/);
   });
-});
-
-test('後片付け用：makeTemp と writeFiles が働く', () => {
-  const dir = makeTemp();
-  writeFiles(dir, { 'a/b.txt': 'x' });
-  assert.equal(fs.readFileSync(path.join(dir, 'a', 'b.txt'), 'utf8'), 'x');
 });

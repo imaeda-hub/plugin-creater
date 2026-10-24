@@ -9,7 +9,8 @@
 //   4. 課題の頼むときの言葉を送る
 //   5. ありのとき：チャットに出た URL を画面で開き、設定を入れて開始し、終わった理由が出たら結果を読む。なしのとき：手番が終わる（session.idle）まで待つ
 //   6. 落ち着くまで待ち（最後の費用のイベントを取りこぼさないため）、セッションとクライアントを閉じる
-//   7. 作業フォルダの成果物を、基準で採点する（生成プラグインの検証エージェントの合否は使わない）
+//   7. ありのとき、この実行でできた生成プラグインの実行の記録だけを消す（plugin-records.mjs。ふだんの作業の記録と同じ場所に入るため。ユーザーの答え27）
+//   8. 作業フォルダの成果物を、基準で採点する（生成プラグインの検証エージェントの合否は使わない）
 // 試験全体を止める場合：管理設定で人の承認が要る求め、AI クレジットの上限、プラグインやエクステンションが読み込まれない、ブラウザーが起動できない。
 
 import fs from 'node:fs';
@@ -20,6 +21,7 @@ import { clipText, createEventLog, createTracker, waitUntil } from './events.mjs
 import { createExtensionLaunchProvider } from './extension-launch.mjs';
 import { gradeRun } from './grade.mjs';
 import { createPermissionHandler, createUserInputHandler } from './permissions.mjs';
+import { removeEvalRecords, watchPluginRecords } from './plugin-records.mjs';
 import { RESULT_FILE, createResultsDir, summarizeRuns, writeJsonAtomic } from './results.mjs';
 import { ScreenError } from './screen.mjs';
 import { loadTasks, prepareWorkDir } from './tasks.mjs';
@@ -247,6 +249,18 @@ function warningsOf(runs, summary) {
   const incomplete = runs.filter((r) => r.status === 'incomplete');
   if (incomplete.length > 0) out.push(`終わりまで動かなかった実行が ${incomplete.length} 回あります（${incomplete.map(where).join('、')}）。できていた分だけを採点しています。`);
   if (summary.creditDetail.status !== 'complete') out.push('AI クレジットを数えきれなかった呼び出しがあります。使った AI クレジットは、実際より少ないかもしれません。');
+  const kept = runs.filter((r) => r.pluginRecords?.unidentified?.length);
+  if (kept.length > 0) {
+    const count = kept.reduce((total, r) => total + r.pluginRecords.unidentified.length, 0);
+    out.push(`試験の間に、生成プラグインの実行の記録が ${count} 件増えましたが、試験の実行のものと確かめられなかったので、消していません（実行：${kept.map(where).join('、')}）。ふだんの作業の記録かもしれません。`);
+  }
+  const notRemoved = runs.filter((r) => r.pluginRecords?.failed?.length);
+  if (notRemoved.length > 0) {
+    const places = notRemoved.flatMap((r) => r.pluginRecords.failed.map((f) => path.join(r.pluginRecords.root, f.id)));
+    out.push(`試験でできた生成プラグインの実行の記録を、消せませんでした：${places.join('、')}。試験のものなので、手で消してかまいません。`);
+  }
+  const skippedRecords = runs.find((r) => r.pluginRecords?.skipped);
+  if (skippedRecords) out.push(`試験でできた生成プラグインの実行の記録は、消していません（${skippedRecords.pluginRecords.skipped}）。`);
   const rejected = runs.reduce((total, r) => total + (r.permissions?.rejected ?? 0), 0);
   if (rejected > 0) out.push(`作業フォルダの外への書き込みなど、${rejected} 件の許可の求めを拒みました。`);
   return out;
@@ -274,6 +288,7 @@ async function runOne(ctx, task, variant, n, where) {
   let client = null;
   let session = null;
   let launchProviderOf = null;
+  let recordWatch = null;
 
   const tracker = createTracker({
     log: eventLog,
@@ -307,6 +322,8 @@ async function runOne(ctx, task, variant, n, where) {
     const hostExtensions = variant === 'with' && opts.extensionSdkPath;
     const launchProvider = hostExtensions ? createExtensionLaunchProvider({ accept: (request) => isOurExtension(request, plugin), env: opts.env ?? process.env }) : null;
     launchProviderOf = launchProvider;
+    // 生成プラグインの実行の記録は、ユーザーのふだんの作業の記録と同じ場所に入る。始める前に、今ある記録の番号を控える
+    if (variant === 'with') recordWatch = watchPluginRecords({ pluginName: plugin.name, env: opts.env ?? process.env });
     client = new sdk.CopilotClient({
       connection: sdk.RuntimeConnection.forStdio({ args: variant === 'with' ? ['--plugin-dir', plugin.path] : [], env: runtimeEnv(opts.env ?? process.env) }),
       workingDirectory: workDir,
@@ -346,6 +363,8 @@ async function runOne(ctx, task, variant, n, where) {
     record.error = clipText(error?.message ?? String(error), 500);
   } finally {
     await closeAll({ session, client, closeMs: timing.closeMs });
+    // ランタイムが止まってから（エクステンションが書き込み終わってから）、この実行でできた記録だけを消す。ふだんの作業の記録と、生成プラグインは消さない
+    if (recordWatch) record.pluginRecords = removeEvalRecords(recordWatch, { workDir, sessionId: session?.sessionId });
   }
 
   // 試験全体が止まったときに動いていた実行は、採点しない
