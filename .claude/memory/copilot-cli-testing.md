@@ -1,6 +1,6 @@
 # Copilot CLI の試験機能
 
-2026年10月時点の公式ドキュメントと、Copilot CLI 1.0.98 で実際に試した結果。このリポジトリでは、クリエイターを開発するための試験は Claude Code で行い、最終確認だけ人が手元の Copilot CLI で行う。ユーザーが生成プラグインに行う試験は、Copilot SDK で手元の Copilot CLI を動かして行う（[試験の設計](../../docs/design/testing.md)）。
+2026年10月時点の公式ドキュメントと、Copilot CLI 1.0.98・1.0.102、Copilot SDK 1.0.25 で実際に試した結果（版は項目ごとに書く。どれも偽物のモデルにつないだ Linux x64 で、ログインした本物のアカウントでは試していない）。このリポジトリでは、クリエイターを開発するための試験は Claude Code で行い、最終確認だけ人が手元の Copilot CLI で行う。ユーザーが生成プラグインに行う試験は、Copilot SDK で手元の Copilot CLI を動かして行う（[試験の設計](../../docs/design/testing.md)）。
 
 ## 試験のための専用コマンドはない
 
@@ -18,14 +18,17 @@
 | OpenTelemetry のファイル出力 | スキルが呼ばれたか（`github.copilot.skill.invoked`）、使ったツール、AI クレジットの消費量が分かる |
 | Copilot SDK | プログラムから Copilot CLI を動かす。エージェントの質問に、プログラムで答えられる |
 
+- `--plugin-dir` はトップレベルの選択肢なので、サブコマンドの前に書く（`copilot --plugin-dir <フォルダ> plugin list`。`copilot plugin list --plugin-dir …` は 1.0.102 で unexpected argument になる）。`plugin list --json` には `"source": "external"` と出る。
+
 ## トークンなしでできること（実際に試した結果）
 
-- できる：プラグインのインストール、`copilot plugin list --json`、`copilot skill list --json`、`copilot mcp list --json`。スキルと MCP サーバーが読み込まれたかを、モデルを使わずに確かめられる。
+- できる：プラグインのインストール、`copilot plugin list --json`、`copilot skill list --json`。プラグインとスキルが読み込まれたかを、モデルを使わずに確かめられる。
+- `copilot mcp list --json` は、プラグインの MCP サーバーを出さない（1.0.102。プラグイン直下の `mcp.json` に動く MCP サーバーを置いても、`{"mcpServers": {}}` だった）。プラグインの MCP は、対話モードの起動画面の「MCP Servers reloaded: N server(s) connected」の行と、偽物のモデルに届くツールの一覧で確かめる。
 - できない：カスタムエージェントは、モデルが使えないと読み込み自体が省かれる。フックが読み込まれたかも、確かめられなかった。
 - `plugin list` と `skill list` は `--plugin-dir` のプラグインも出すが、`lsp list` と `instruction list` は出さない。
 - Agent Plugins の形式のプラグインをインストールすると、`com.github.copilot/lsp.json` の LSP サーバーが読み込まれた（`copilot lsp list`）。
 - `-p` での実行は、ログインしないと始まらない（オフラインのモードを除く。下の節）。`--agent` で指定したエージェントがあるかも、確かめられない。
-- フォルダを指定するインストールは、将来廃止されると表示された。マーケットプレイスを通したインストールだけになる。
+- フォルダを直接指定するインストール（`plugin install <フォルダ>`）は、将来廃止されると表示された。マーケットプレイスを通した手元のフォルダは、表示なしで入る（[プラグイン](plugins.md)）。
 
 ## ログインせずに偽物のモデルで動かす（実際に試した結果）
 
@@ -34,7 +37,7 @@
   - `COPILOT_OFFLINE=true`：GitHub のログイン、通信、自動更新を止める。
   - `COPILOT_PROVIDER_BASE_URL`：モデルの窓口の URL（例：`http://127.0.0.1:18080/v1`）。既定は OpenAI 互換の形（`/chat/completions`）。
   - `COPILOT_MODEL`：モデルの名前。エージェントの設定と上限に使う。
-- 偽物の窓口は、決まった返事を返す小さなサーバーでよい。`stream` が真の求めには、SSE で返す。
+- 偽物の窓口は、決まった返事を返す小さなサーバーでよい。`stream` が真の求めには、SSE で返す。Copilot SDK 経由（SDK 1.0.25、ランタイム 1.0.102）では、`stream` なしで呼ばれたので、両方に答えられるようにする。
 - エクステンション、カスタムエージェント、フック、エージェントの起動と取り消しなど、Copilot CLI 側の動きを確かめられる（[生成プラグインの構造](../../docs/design/generated-plugin-structure.md) 11章）。
 - 確かめられないこと：本物のモデルの選び方（プランで使えるか、Auto）、利用の上限の待ち、ログインが要るもの（GitHub の MCP サーバーなど）。
 
@@ -42,21 +45,31 @@
 
 - **モデルに送られるものを全部取る**：偽物のモデルのサーバーが、届いたリクエストの本文をすべてファイルに書く。システムプロンプト、ツールの定義（`ask_user` のスキーマなど）、スキルの本文の載り方、コンパクションの前後の履歴が、そのまま分かる。ドキュメントにない事実の多くはこれで確かめられた。
 - **偽物のモデルにツールを呼ばせる**：最新のユーザーのメッセージに、呼ぶツールと引数を書いておき、偽物のサーバーがそのとおりに `tool_calls` を返す。ツールの実際の結果の文（例：`ask_user` を Ctrl+D で断ったときの文）を取れる。
-- **対話モード（TUI）を動かす**：Python の pty で起動し、端末の模擬（pyte）で画面を文字で取る。キー（Enter、Tab、Esc、Ctrl+D、括弧つき貼り付け）も送れる。色や太字は取れない。
+- **対話モード（TUI）を動かす**：Python の pty で起動し、端末の模擬（pyte）で画面を文字で取る。キー（Enter、Tab、Esc、Ctrl+D、括弧つき貼り付け）も送れる。色や太字は取れない。スキルのスラッシュコマンドは `-p` では展開されないので、スキルを呼んだ形は、この対話モードで見る。
 - **モデルの名前で振る舞いを分けて見る**：`COPILOT_MODEL`（必要なら `COPILOT_PROVIDER_MODEL_ID`）を変える。システムプロンプトはモデル ID の完全一致で族に分かれ、知らない ID は「その他」の族になる。通信の形式は `COPILOT_PROVIDER_TYPE` と `COPILOT_PROVIDER_WIRE_API` で変える。
-- **版を決めて動かすときの落とし穴**：npm の実行ファイルは、`~/.cache/copilot/pkg/<OS>-<CPU>/` に展開された一番新しい版を動かす。古い版を入れても、新しい版が展開済みだとそちらが動く。版ごとに `COPILOT_CACHE_HOME` を分け、`COPILOT_AUTO_UPDATE=false` と `--no-auto-update` を付ける。動いた版は、システムプロンプトの「Version number」で確かめる。
+- **版を決めて動かすときの落とし穴**：npm の実行ファイルは、`~/.cache/copilot/pkg/<OS>-<CPU>/` に展開された一番新しい版を動かす。古い版を入れても、新しい版が展開済みだとそちらが動く。版ごとに `COPILOT_CACHE_HOME` を分け、`COPILOT_AUTO_UPDATE=false` と `--no-auto-update` を付ける。動いた版は、システムプロンプトの「Version number」で確かめる（`copilot --version` でも分かる）。
+- **`COPILOT_HOME` は、絶対パスだけを渡す**：空の値を渡して起動したら、ファイルシステムの根に Copilot CLI の設定とログのフォルダ（約600KB）ができた（1.0.102 で1回起きた。理由は調べていない）。確かめごとに空のフォルダを作って渡すと、ユーザーの `~/.copilot` も混ざらない。
+- **`-p` でエクステンションを読み込む**：`--experimental` に加えて、読み込みのときの確認に答える人がいないので、`--allow-tool='extension-permission-access'`（または `--allow-all-tools`）が要る（1.0.102 の実測。[画面と Copilot CLI のつなぎ方](dashboard-integration.md)）。
 - 限界：自前のモデルの窓口（BYOK）の経路だけを見ている。ログインしたふだんの経路で、送られるものやモデルごとの通信の形式が同じかは確かめていない。結果は [ヒアリングの設計](../../docs/design/hearing.md) 2章にある。
 
-## Copilot SDK で試す（公式ドキュメントとパッケージの中身で調べた結果。モデルを使う動きは、まだ試していない）
+## Copilot SDK で試す（公式ドキュメントとパッケージの中身で調べ、SDK 1.0.25 とランタイム 1.0.102 を偽物のモデルにつないで確かめた）
 
-- `--plugin-dir` でプラグインを読み込む。フック、MCP サーバー、カスタムエージェントも読み込まれる。環境変数 `COPILOT_PLUGIN_DIR_ONLY=true` で、ユーザーがインストールしているほかのプラグインを外せる。読み込まれたプラグインは `rpc.plugins.list()` で分かる。
-  - 形式は、読み込み方ではなく、マニフェストの `$schema` で決まる。Agent Plugins の形式なら、`--plugin-dir` でも `com.github.copilot/` の中が読まれる（Copilot CLI 1.0.98 の実装と更新履歴で確認。スキルが読まれることは実際に動かして確かめた）。
+- `--plugin-dir` でプラグインを読み込む。フック、MCP サーバー、カスタムエージェントも読み込まれる。環境変数 `COPILOT_PLUGIN_DIR_ONLY=true` で、ユーザーがインストールしているほかのプラグインを外せる（ほかのプラグインが混ざらないことは、ほかのプラグインを入れていない環境で試したので、確かめていない）。読み込まれたプラグインは `rpc.plugins.list()` で分かる。要素は `{ name, marketplace, version, enabled }` で、`installedFrom` や `source` は出なかった。名前で見分ける。
+  - 形式は、読み込み方ではなく、マニフェストの `$schema` で決まる。Agent Plugins の形式なら、`--plugin-dir` でも `com.github.copilot/` の中が読まれる（Copilot CLI 1.0.98 の実装と更新履歴で確認。1.0.102 では、スキルとエクステンションが読まれることを、実際に動かして確かめた）。
 - エージェントの質問には `onUserInputRequest`、許可の求めには `onPermissionRequest` で、プログラムから答えられる。
   - 許可の求めは、答える仕組みを登録したすべての相手（SDK のセッション、エクステンション）に届く。先に答えたものが使われ、後の答えは使われない（`extension.js` の `_handleBroadcastEvent`、`rpc.d.ts`）。フックがすでに答えを決めた求め（`resolvedByHook` が真）には答えない。
-- SDK で作ったセッションに、プラグインのエクステンションを読み込ませるには、`requestExtensions: true` を指定する（既定はオフ。`types.d.ts`）。
+- SDK で作ったセッションに、プラグインのエクステンションを読み込ませるには、`requestExtensions: true` だけでは足りない（実測）。それだけだと `session.create` が、「extensionSdkPath is required when standalone extensions are requested」、続いて「No extension launch provider is registered for standalone extensions」で失敗する。次の2つを渡すと、エクステンションが起動する（`extensions.list()` の状態が `running`）。
+  1. セッションの `extensionSdkPath`：SDK パッケージの `dist/` のフォルダ（`index.js` と `extension.js` がある）。ランタイムは、これを子プロセスの環境変数 `COPILOT_SDK_PATH` にして渡す。
+  2. `CopilotClient` の `extensionLaunchProvider`（実験的な API。SDK の版で変わりうる）：`resolve({ id, name, modulePath, source })` が `{ launch: { executable, args, env } }` を返す。起動のしかたを呼ぶ側が決められる。
+  - `launch` を返さなければ、そのエクステンションは起動されず、状態が `failed` になる。ユーザーの `~/.copilot/extensions/` のエクステンション（`user:<名前>`）は、SDK のセッションでも見つかるが、起動を断れば混ざらない。
+  - この方式では、読み込みのときの確認（`extension-permission-access`）は出なかった（フックと許可の受け口を持つエクステンションでも）。
+  - `requestExtensions` を省いたセッションは、エクステンションを見つけもしない（`extensions.list()` が空）。
+  - エクステンションの `process.cwd()` は、セッションの作業フォルダと同じ。そのツールをモデルが呼ぶと、結果がチャット（`assistant.message`）に出て、`tool.execution_*` も届いた。
 - 採点と記録に使えるイベント：`skill.invoked`（スキルが呼ばれた）、`subagent.started`・`subagent.completed`（カスタムエージェントとそのモデル）、`tool.execution_*`（使ったツール）、`user_input.requested`（質問）、`assistant.usage`（呼び出しごとのトークンと費用）、`session.idle`（手番の終わり）。
-- SDK は、対応する版の Copilot のランタイムを同梱している（SDK 1.0.22 は 1.0.98）。手元の Copilot CLI を使うときは `COPILOT_CLI_PATH` で指定する。
+  - 自前のモデルの窓口（BYOK）では、`assistant.usage` に `copilotUsage` がなく、`aiCreditsStatus` は `"unavailable"` だった（Copilot の課金ではないため）。本物のアカウントでは `copilotUsage.totalNanoAiu` が付く見込みだが、確かめていない。
+- SDK は、対応する版の Copilot のランタイムを同梱している（SDK 1.0.22 は 1.0.98、SDK 1.0.25 は 1.0.102）。手元の Copilot CLI を使うときは `COPILOT_CLI_PATH` で指定する。
 - `copilot -p` で使える主な項目：`--allow-tool`、`--deny-tool`、`--no-ask-user`（質問させない）、`--share=PATH`（会話の記録を Markdown に書き出す）。
+- シェルのツール `bash` は、引数 `initial_wait`（30〜600秒）を持つ。それまでに終わらないコマンドは、途中の出力を返したまま動き続け、終わると知らせが来る（1.0.102 でモデルに届いたツールの定義の説明。長いコマンドを実際に動かしては確かめていない）。数十分かかる試験のコマンドは、この知らせを待ち、同じコマンドを動かし直さないようにする。
 
 ## 費用と環境
 
@@ -86,7 +99,7 @@
 
 - [GitHub Copilot CLI command reference](https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-command-reference)
 - [GitHub Copilot CLI plugin reference](https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-plugin-reference)
-- Copilot CLI 1.0.98（`@github/copilot`）と Copilot SDK 1.0.22（`@github/copilot-sdk`）の npm パッケージの中身
+- Copilot CLI 1.0.98・1.0.102（`@github/copilot`）と Copilot SDK 1.0.22・1.0.25（`@github/copilot-sdk`）の npm パッケージの中身。1.0.102 と SDK 1.0.25 は、偽物のモデルにつないで実測した
 - [Copilot SDK: Streaming events](https://docs.github.com/en/copilot/how-tos/copilot-sdk/features/streaming-events)
 - [Copilot SDK: Plugin directories](https://docs.github.com/en/copilot/how-tos/copilot-sdk/features/plugin-directories)
 - [Copilot SDK for Node.js（README）](https://github.com/github/copilot-sdk/blob/main/nodejs/README.md)
