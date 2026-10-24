@@ -220,7 +220,7 @@ def pip_cmd(ctx: Context, packages: List[str]) -> List[str]:
     return [ctx.venv_python, "-m", "pip", "install"] + packages
 
 
-def check_pip_package(ctx: Context, id: str, label: str, venv_ok: bool) -> Dict[str, Any]:
+def check_pip_package(ctx: Context, id: str, label: str, venv_ok: bool, venv_will_exist: bool) -> Dict[str, Any]:
     package = PIP_PACKAGES[id]
     name = "%s（Python の仮想環境の中）" % label
     cmd = pip_cmd(ctx, [package])
@@ -235,7 +235,7 @@ def check_pip_package(ctx: Context, id: str, label: str, venv_ok: bool) -> Dict[
                 if v is None or v[0] < 4:
                     return tool(ctx, id, name + "は 4.0 以上", "stage12", False, version, where=ctx.venv_dir, how=how, command=cmd, installable=True, pip=package)
             return tool(ctx, id, name, "stage12", True, version, where=ctx.venv_dir, pip=package)
-    return tool(ctx, id, name, "stage12", False, "", where=ctx.venv_dir, how=how, command=cmd, installable=venv_ok, pip=package)
+    return tool(ctx, id, name, "stage12", False, "", where=ctx.venv_dir, how=how, command=cmd, installable=venv_will_exist, pip=package)
 
 
 def check_node(ctx: Context) -> Tuple[Dict[str, Any], Dict[str, Any]]:
@@ -345,7 +345,8 @@ def chromium_installed(ctx: Context, node: Optional[str]) -> bool:
     return False
 
 
-def check_browser(ctx: Context, node: Optional[str], node_ok: bool) -> Dict[str, Any]:
+def check_browser(ctx: Context, node: Optional[str], node_ok: bool, will_have_playwright: Optional[str]) -> Dict[str, Any]:
+    """will_have_playwright：Playwright が入っている、またはこれから入る（--install で）フォルダ（node_modules の親）。なければ None"""
     name = "ブラウザー（Chrome か Edge。どちらもなければ Playwright の Chromium）"
     chosen = system_browser(ctx)
     if chosen:
@@ -353,12 +354,10 @@ def check_browser(ctx: Context, node: Optional[str], node_ok: bool) -> Dict[str,
         return tool(ctx, "browser", name, "both", True, "%s（%s）" % (label, path), where=path, channel=channel)
     if chromium_installed(ctx, node):
         return tool(ctx, "browser", name, "both", True, "Playwright の Chromium", where="Playwright の既定の場所（ホームフォルダの中の共通の場所）", channel="chromium")
-    bases = playwright_dirs(ctx)
-    base = bases[0] if bases else None
-    cmd = [node or "node", playwright_cli(base), "install", "chromium"] if base else None
+    cmd = [node or "node", playwright_cli(will_have_playwright), "install", "chromium"] if will_have_playwright else None
     how = ("Chrome か Edge を入れる。入れないときは、`%s` で Playwright の Chromium（約 280 MB）を、Playwright の既定の場所（ホームフォルダの中の共通の場所）に入れる" % command_text(cmd)
            if cmd else "Chrome か Edge を入れる。入れないときは、Playwright を入れた後に、Playwright の Chromium（約 280 MB）を入れる（`node <playwright の cli.js> install chromium`）")
-    return tool(ctx, "browser", name, "both", False, "", where="Playwright の既定の場所（ホームフォルダの中の共通の場所）", how=how, command=cmd, installable=bool(node_ok and cmd), channel=None, step="browser")
+    return tool(ctx, "browser", name, "both", False, "", where="Playwright の既定の場所（ホームフォルダの中の共通の場所）", how=how, command=cmd, installable=bool(node_ok and cmd), channel=None)
 
 
 def check_sandbox(ctx: Context) -> List[Dict[str, Any]]:
@@ -388,16 +387,24 @@ def check_all(ctx: Context) -> List[Dict[str, Any]]:
     tools: List[Dict[str, Any]] = []
     node_tool, npm_tool = check_node(ctx)
     npm_ok = npm_tool["ok"] and node_tool["ok"]
+    pw_base: Optional[str] = None   # Playwright が入っている、またはこれから入るフォルダ
     if stage12:
         python = check_python(ctx)
         venv = check_venv(ctx, python["ok"])
-        tools += [python, venv, check_pip_package(ctx, "pyyaml", "PyYAML", venv["ok"]), check_pip_package(ctx, "jsonschema", "jsonschema", venv["ok"])]
+        will_have_venv = venv["ok"] or venv["installable"]
+        tools += [python, venv, check_pip_package(ctx, "pyyaml", "PyYAML", venv["ok"], will_have_venv), check_pip_package(ctx, "jsonschema", "jsonschema", venv["ok"], will_have_venv)]
     tools += [node_tool, npm_tool]
     if stage12:
-        tools.append(check_playwright_tests(ctx, npm_ok, npm_tool.get("path")))
+        pw = check_playwright_tests(ctx, npm_ok, npm_tool.get("path"))
+        tools.append(pw)
+        if pw["ok"] or pw["installable"]:
+            pw_base = ctx.tests_dir
     if evals:
-        tools += check_eval_tools(ctx, npm_ok, npm_tool.get("path"))
-    tools.append(check_browser(ctx, node_tool.get("path"), node_tool["ok"]))
+        sdk, pw_eval = check_eval_tools(ctx, npm_ok, npm_tool.get("path"))
+        tools += [sdk, pw_eval]
+        if pw_base is None and (pw_eval["ok"] or pw_eval["installable"]):
+            pw_base = ctx.tools_dir
+    tools.append(check_browser(ctx, node_tool.get("path"), node_tool["ok"], pw_base))
     if evals:
         tools += check_sandbox(ctx)
     return tools
@@ -427,59 +434,78 @@ def step(ctx: Context, ids: List[str], what: str, cmd: List[str], where: str, cw
     return {"ids": ids, "what": what, "where": where, "commandText": command_text(cmd), "ok": code == 0, "output": "" if code == 0 else tail(out)}
 
 
-def install(ctx: Context, tools: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """入れられるものを、順に入れる。Python と Node.js そのものは入れない。入れる順：仮想環境、pip、1・2段目の Playwright、EVAL の道具、ブラウザー"""
-    results: List[Dict[str, Any]] = []
+def build_steps(ctx: Context, tools: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """入れる手順を、入れる順に作る。--install なしでは予定として示し、--install では同じものを動かす。
+    順：仮想環境、pip、1・2段目の Playwright、EVAL の道具、ブラウザー（Playwright が入った後）。Python と Node.js そのものは入れない。"""
     by_id = {t["id"]: t for t in tools}
 
     def todo(i: str) -> bool:
         t = by_id.get(i)
-        return bool(t and not t["ok"] and t["installable"])
+        return bool(t and t["required"] and not t["ok"] and t["installable"])
 
+    npm = (by_id.get("npm") or {}).get("path") or "npm"
+    steps: List[Dict[str, Any]] = []
     if todo("venv"):
-        results.append(step(ctx, ["venv"], "Python の仮想環境を作る", by_id["venv"]["command"], ctx.venv_dir, ctx.plugin, TIMEOUTS["venv"]))
-    venv_ready = (not todo("venv")) or results[-1]["ok"]
-    wanted = [i for i in ("pyyaml", "jsonschema") if i in by_id and not by_id[i]["ok"]]
-    if wanted and venv_ready and ctx.exists(ctx.venv_python):
-        results.append(step(ctx, wanted, "Python のパッケージを仮想環境に入れる", pip_cmd(ctx, [PIP_PACKAGES[i] for i in wanted]), ctx.venv_dir, ctx.plugin, TIMEOUTS["pip"]))
-    npm = (by_id.get("npm") or {}).get("path")
+        steps.append({"ids": ["venv"], "what": "Python の仮想環境を作る", "where": ctx.venv_dir, "cmd": by_id["venv"]["command"], "cwd": ctx.plugin, "timeout": TIMEOUTS["venv"]})
+    pips = [i for i in ("pyyaml", "jsonschema") if todo(i)]
+    if pips:
+        steps.append({"ids": pips, "what": "Python のパッケージを仮想環境に入れる", "where": ctx.venv_dir, "cmd": pip_cmd(ctx, [PIP_PACKAGES[i] for i in pips]), "cwd": ctx.plugin, "timeout": TIMEOUTS["pip"]})
     if todo("playwright"):
-        results.append(step(ctx, ["playwright"], "Playwright を生成プラグインの tests/node_modules に入れる", npm_install_tests_cmd(ctx, npm), os.path.join(ctx.tests_dir, "node_modules"), None, TIMEOUTS["npm"]))
-    if todo("eval-sdk") or todo("eval-playwright"):
-        ids = [i for i in ("eval-sdk", "eval-playwright") if i in by_id and not by_id[i]["ok"]]
+        steps.append({"ids": ["playwright"], "what": "Playwright を生成プラグインの tests/node_modules に入れる", "where": os.path.join(ctx.tests_dir, "node_modules"), "cmd": npm_install_tests_cmd(ctx, npm), "cwd": None, "timeout": TIMEOUTS["npm"]})
+    eval_ids = [i for i in ("eval-sdk", "eval-playwright") if todo(i)]
+    if eval_ids:
+        steps.append({"ids": eval_ids, "what": "EVAL の道具（Copilot SDK と Playwright）を道具のフォルダに入れる", "where": ctx.tools_dir, "cmd": npm_install_tools_cmd(ctx, npm), "cwd": ctx.tools_dir, "timeout": TIMEOUTS["npm"], "writePackageJson": True})
+    if todo("browser"):
+        steps.append({"ids": ["browser"], "what": "Playwright の Chromium を入れる（約 280 MB）", "where": "Playwright の既定の場所（ホームフォルダの中の共通の場所）", "cmd": by_id["browser"]["command"], "cwd": None, "timeout": TIMEOUTS["browser"]})
+    return steps
+
+
+def plan_of(steps: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    return [{"ids": s["ids"], "what": s["what"], "where": s["where"], "commandText": command_text(s["cmd"])} for s in steps]
+
+
+def execute(ctx: Context, steps: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """手順を順に動かす。前の手順が失敗したら、それに頼る手順は動かさない（仮想環境なしの pip、Playwright なしのブラウザー）"""
+    results: List[Dict[str, Any]] = []
+    failed: set = set()
+    needs = {"pip": {"venv"}, "browser": {"playwright", "eval-playwright"}}
+    for st in steps:
+        kind = "browser" if st["ids"] == ["browser"] else "pip" if any(i in PIP_PACKAGES for i in st["ids"]) else ""
+        if kind and needs[kind] & failed:
+            results.append({"ids": st["ids"], "what": st["what"], "where": st["where"], "commandText": command_text(st["cmd"]), "ok": False, "output": "前の手順（%s）が失敗したので、動かしませんでした" % "、".join(sorted(needs[kind] & failed))})
+            failed.update(st["ids"])
+            continue
+        cmd = st["cmd"]
+        if kind == "browser":
+            # Playwright が入った後の場所で、コマンドを作り直す（入れる前に決めた場所のものがなければ）
+            if not ctx.exists(cmd[1]):
+                bases = playwright_dirs(ctx)
+                if bases:
+                    cmd = [cmd[0], playwright_cli(bases[0]), "install", "chromium"]
         try:
-            with open(os.path.join(HERE, "package.json"), encoding="utf-8") as f:
-                ctx.write_file(os.path.join(ctx.tools_dir, "package.json"), f.read())
-            results.append(step(ctx, ids, "EVAL の道具（Copilot SDK と Playwright）を道具のフォルダに入れる", npm_install_tools_cmd(ctx, npm), ctx.tools_dir, ctx.tools_dir, TIMEOUTS["npm"]))
+            if st.get("writePackageJson"):
+                with open(os.path.join(HERE, "package.json"), encoding="utf-8") as f:
+                    ctx.write_file(os.path.join(ctx.tools_dir, "package.json"), f.read())
         except OSError as e:
-            results.append({"ids": ids, "what": "EVAL の道具のフォルダを用意する", "where": ctx.tools_dir, "commandText": "", "ok": False, "output": str(e)})
-    browser = by_id.get("browser")
-    if browser and not browser["ok"] and browser["installable"]:
-        pass   # 下で、Playwright が入った後に確かめ直してから入れる
+            results.append({"ids": st["ids"], "what": st["what"], "where": st["where"], "commandText": "", "ok": False, "output": "道具のフォルダを用意できませんでした：%s" % e})
+            failed.update(st["ids"])
+            continue
+        code, out = ctx.run(cmd, cwd=st["cwd"], timeout=st["timeout"])
+        results.append({"ids": st["ids"], "what": st["what"], "where": st["where"], "commandText": command_text(cmd), "ok": code == 0, "output": "" if code == 0 else tail(out)})
+        if code != 0:
+            failed.update(st["ids"])
     return results
-
-
-def install_browser(ctx: Context, results: List[Dict[str, Any]]) -> None:
-    """ブラウザー（手元の Chrome・Edge がなく、Playwright の Chromium もないとき）。Playwright を入れた後に確かめ直して入れる。"""
-    node = ctx.which("node")
-    if system_browser(ctx) or chromium_installed(ctx, node):
-        return
-    bases = playwright_dirs(ctx)
-    if not node or not bases:
-        return
-    cmd = [node, playwright_cli(bases[0]), "install", "chromium"]
-    results.append(step(ctx, ["browser"], "Playwright の Chromium を入れる（約 280 MB）", cmd, "Playwright の既定の場所（ホームフォルダの中の共通の場所）", bases[0], TIMEOUTS["browser"]))
 
 
 # ---------------------------------------------------------------- 入口
 
 def run(ctx: Context, do_install: bool) -> Dict[str, Any]:
     tools = check_all(ctx)
+    steps = build_steps(ctx, tools)
     installed: List[Dict[str, Any]] = []
-    plan = [{"ids": [t["id"]], "what": t["name"], "where": t["where"], "commandText": t["commandText"]} for t in tools if t["required"] and not t["ok"] and t["installable"]]
-    if do_install and plan:
-        installed = install(ctx, tools)
-        install_browser(ctx, installed)
+    plan = plan_of(steps)
+    if do_install and steps:
+        installed = execute(ctx, steps)
         tools = check_all(ctx)   # 入れた後の状態を、もう一度確かめる
     summary = summarize(tools)
     result: Dict[str, Any] = {
