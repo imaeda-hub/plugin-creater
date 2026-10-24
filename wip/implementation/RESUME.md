@@ -105,6 +105,9 @@
 - C3：上位の文書で直すこと（tasks/C3.md）。testing.md 10.4・generated-plugin-structure.md 11章 #1・R2 3.10〜3.11：SDK でエクステンションを読み込むには requestExtensions: true だけでは足りず、extensionSdkPath と CopilotClient の extensionLaunchProvider が要る（本物の SDK 1.0.25 とランタイム 1.0.102 に偽物のモデルをつないで確かめた）。この方式では、読み込みのときの確認が許可の求めとして出ないので、--allow-tool の代わりの案は要らない。ユーザーの ~/.copilot/extensions/ のエクステンションは起動を断って混ぜない。EVAL は COPILOT_CLI_PATH を使わない。testing.md 11.2 の道具に npm が入る（EVAL の道具は npm install --ignore-scripts で約190MB）。
 - C3：要確認（最終確認で人が見る）：assistant.usage の copilotUsage.totalNanoAiu と aiCreditsStatus、session_limits_exhausted.requested が届くか、サブエージェントの許可の求めが onPermissionRequest に届くか、COPILOT_PLUGIN_DIR_ONLY でほかのプラグインが混ざらないか、Node.js 20.19 での動き。extensionLaunchProvider は実験的な API なので SDK の版を固定した。EVAL の AI クレジットの目安は未測定（最初の EVAL で埋める）。
 - C3→A3：1段目で eval.json の check.type の4種類と、種類ごとの必須の項目まで検査できる（今は check.type があることまで）。
+- B3-fix：上位の文書で直すこと14件（tasks/B3-fix.md の同じ節）。主なもの：hearing.md 3.1・10.1 の段階の表に「生成」の行がなく、コンパクションの後の生成の続け方が決まっていない。段階「生成」ではフックが止まるので、生成の途中のコンパクションで読み直しの差し込みがない。「ほかにありますか？」の答えの出どころを「ユーザーが自分から話した」にした。生成の後の承認（道具を入れる、Issue を起票する）に答えが来なかったときの扱い。creator-structure.md 4.1 で組み立てが断ったときに誰が直すかと、その直しを3回に数えるか（数える）。REQ-034 の「読み取って確かめた項目」の範囲。再開の後はいつも URL を示し直す。autopilot の切り方（Shift+Tab）。
+- 最終確認で人が確かめること（B3-fix の依頼）：marketplace.json の source "./" で入れられるか（copilot plugin marketplace add、marketplace browse、plugin install、plugin list --json）。test-plugin が隣の make-plugin の references を読めるか。読み込みの確認の題に出る名前。
+- D1c への引き継ぎ（B3-fix）：会話例を置いたら、README の「置きます」を「あります」に直す。
 - R2：`requestSandboxPermissive` を「サンドボックスの外で動かす」と示さない（generated-plugin-structure.md 6.3）。tasks.list には shell と client のタスクも入る。
 
 ## 後の仕事に渡すこと（作業のエージェントの報告から）
@@ -157,7 +160,7 @@
 | D1b 模擬ユーザー | a28af96a1b11b7fea（FORMAT.md ができたら D1c と H1 を立てる） |
 | D1d 内側の EVAL | afe3eb2243185d726 |
 | B3 の点検 | 4つとも完了（design 19件〔high 2〕、format 7件、models 24件〔high 1〕、language 34件） |
-| B3 を直す | ad474ab788e9b207f（指示は briefs/fix.md。メモは tasks/B3-fix.md） |
+| B3 を直す | ad474ab788e9b207f（完了。84件中81件を直した。上位の文書で直すこと14件は tasks/B3-fix.md） |
 | B1 | a7b491f44bb4b21eb（完了） |
 | C2 | ab07d1229ed5e8971（完了） |
 | C3 | ad65681a2d31da659（完了） |
