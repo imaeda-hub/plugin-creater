@@ -68,7 +68,6 @@
   const ISSUE_SOURCES = { mechanical: '実行の記録から自動で見つけた課題', orchestrator: '統括エージェントが振り返って足した課題' };
   const DEFAULT_UNSTOP_HOW_TO = 'チャットで Esc を2回押すか、Copilot CLI を終えてください。';
   const AUTO_NOTICE = 'Auto のため、役割ごとのモデルが効かないことがあります。実際に動いたモデルは、エージェントごとに表示します。';
-  const OVERRIDE_NOTICE = '実行が終わると、このセッションのほかのエージェントのモデルの指定も消えます。';
   const CLEAR_NOTICE = '実行中は、チャットで /clear（会話を消すコマンド）をしないでください。画面の更新が止まり、実行が途中で切れます。';
 
   const text = (value) => (value == null ? '' : String(value));
@@ -566,7 +565,8 @@
           h('legend', null, '役割ごとのモデル'),
           h('p', { class: 'help' }, '最初は、統括と検証に思考力の高いモデル、作業に費用の低いモデルが選ばれています。'),
           modelFields,
-          h('p', { class: 'help' }, setup.overrideNotice || OVERRIDE_NOTICE),
+          // 上書きを外すと、ほかのエージェントのモデルの指定も消えること（設計書 4.6）。文は中心の処理が決める
+          setup.overrideNotice ? h('p', { class: 'help', id: 'override-notice' }, setup.overrideNotice) : null,
         ),
         h('fieldset', { class: 'group' }, h('legend', null, '繰り返し'), fields.max.el),
         taskFields.length ? h('fieldset', { class: 'group', id: 'task-settings' }, h('legend', null, '作業ごとの設定'), taskFields) : null,

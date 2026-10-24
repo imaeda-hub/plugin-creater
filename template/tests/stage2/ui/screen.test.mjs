@@ -181,7 +181,7 @@ const HTTP_404 = /status of 404/;
 // 起票できないときの手順（中心の処理が決める文。core/github.mjs の STEP_* と同じ書き方の見本）
 const FILE_STEPS = [
   'GitHub にこのプラグインを公開する。',
-  'プラグインの設定ファイル（plugin.json）の repository に、公開したリポジトリの GitHub の URL を書く。手元のフォルダから入れたときは、新しいセッションを始めると反映される。GitHub などから入れたときは、入れ直すと反映される。',
+  'プラグインの設定ファイル（plugin.json）の repository に、公開したリポジトリの GitHub の URL を書く。手元のフォルダから入れたときは、Copilot CLI を起動し直すか、/clear で新しい会話を始めると反映される。GitHub などから入れたときは、直した plugin.json を GitHub に送ってから、入れ直すと反映される。',
   'gh（GitHub の公式のコマンド）を入れて、gh auth login でログインする。',
 ];
 const openAllFolds = (page) => page.evaluate(() => document.querySelectorAll('details').forEach((d) => (d.open = true)));
@@ -941,7 +941,22 @@ describe('開始前の設定（REQ-005、REQ-007、REQ-031）', () => {
       }
       assert.match(await textOf(page, '#s-setup'), /統括エージェントのモデル/);
       assert.match(await textOf(page, '#s-setup'), /最初は、統括と検証に思考力の高いモデル、作業に費用の低いモデルが選ばれています/);
-      assert.match(await textOf(page, '#s-setup'), /ほかのエージェントのモデルの指定も消えます/, '上書きを外すと、ほかも消えること');
+      assert.equal(await textOf(page, '#override-notice'), '実行が終わると、このチャットでほかのエージェントに設定したモデルの指定も消えます。', '上書きを外すと、ほかも消えること（中心の処理の文をそのまま出す）');
+    });
+  });
+
+  test('REQ-007 モデルの指定が消えることの注意は、中心の処理の文だけを出す（画面は文を足さない）', async () => {
+    const state = prepState();
+    state.setup.overrideNotice = null;
+    await withScreen({ state }, async ({ page, core }) => {
+      assert.equal(await page.locator('#override-notice').count(), 0, '文がなければ出さない');
+      assert.ok(!(await visibleText(page)).includes('モデルの指定'));
+      core.set((s) => {
+        s.setup.overrideNotice = '試験用の注意の文です。';
+        return s;
+      });
+      await until(page, () => document.getElementById('override-notice'));
+      assert.equal(await textOf(page, '#override-notice'), '試験用の注意の文です。');
     });
   });
 
@@ -1509,7 +1524,7 @@ describe('分かりやすい表示（REQ-025）', () => {
     });
   }
 
-  test('REQ-025 画面の文に、内部の用語（生成プラグイン・クリエイター）が出ない', async () => {
+  test('REQ-025 画面の文に、内部の用語（生成プラグイン・クリエイター）と、説明のない「セッション」が出ない', async () => {
     const withSteps = finishedState();
     withSteps.run.issues = [{ id: 'i1', title: '案', body: '本文', source: 'mechanical', filing: { state: 'none', url: null, reason: null } }];
     withSteps.run.canFile = { ok: false, reason: 'gh でログインしていません。', code: 'not_logged_in', steps: FILE_STEPS };
@@ -1520,8 +1535,8 @@ describe('分かりやすい表示（REQ-025）', () => {
         if (name.startsWith('準備中') || name.startsWith('前の結果')) await page.click('#s-previous summary');
         await openAllFolds(page);
         const text = await visibleText(page);
-        assert.doesNotMatch(text, /生成プラグイン|クリエイター/, `${name}の画面に内部の用語が出ている`);
-        assert.ok(!(await page.title()).match(/生成プラグイン|クリエイター/));
+        assert.doesNotMatch(text, /生成プラグイン|クリエイター|セッション/, `${name}の画面に内部の用語が出ている`);
+        assert.ok(!(await page.title()).match(/生成プラグイン|クリエイター|セッション/));
         assert.match(text, /このプラグインの GitHub リポジトリに起票されます/);
         if (name.includes('起票の手順')) assert.deepEqual(await page.locator('#cannot-file ol li').allInnerTexts(), FILE_STEPS);
       });

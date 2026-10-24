@@ -62,7 +62,7 @@ export function prepState(overrides = {}) {
       taskDisplays: SAMPLE_TASK.displays,
       isAuto: false,
       autoNotice: null,
-      overrideNotice: null,
+      overrideNotice: '実行が終わると、このチャットでほかのエージェントに設定したモデルの指定も消えます。',
     },
     run: null,
     previous: null,
@@ -199,7 +199,7 @@ export function richRunning() {
     { id: 'i2', title: '振り返りの案', body: '本文', source: 'orchestrator', filing: { state: 'filed', url: 'https://github.com/o/r/issues/1', reason: null } },
   ];
   state.setup.isAuto = true;
-  state.notices = ['このセッションでは、記録を手元のフォルダに書いています。'];
+  state.notices = ['この実行の記録は、手元のフォルダに書いています。'];
   return state;
 }
 
@@ -224,7 +224,7 @@ export function richFinished() {
 
 export function richPrep() {
   return prepState({
-    setup: { ...prepState().setup, isAuto: true, autoNotice: null, overrideNotice: null },
+    setup: { ...prepState().setup, isAuto: true, autoNotice: null },
     notices: ['前回の実行は途中で切れました。'],
     previous: {
       endReason: { kind: 'aborted', detail: 'cut_off', unstoppable: false },

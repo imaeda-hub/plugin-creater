@@ -115,6 +115,8 @@ describe('ツールの返り値と断る文（REQ-024）', () => {
       writeDraft(run.cwd, { maxIterationsDefault: 'たくさん' });
       await call('confirm', confirmArgs({ knowledgeIds: ['K-01', 'K-02', 'K-03'] }));
       writeDraft(run.cwd);
+      await call('confirm', confirmArgs({ knowledgeIds: ['K-01', 'K-02', 'K-03'], evalTasks: [{ prompt: '頼む', settings: { task: { weeks: 'x', style: '超詳細' } } }] }));
+      await call('confirm', confirmArgs({ knowledgeIds: ['K-01', 'K-02', 'K-03'], evalTasks: [{ prompt: '頼む', settings: { task: { style: '詳細' } } }] }));
       const accepted = await call('confirm', confirmArgs({ knowledgeIds: ['K-01', 'K-02', 'K-03'] }));
       assert.equal(accepted.ok, true, accepted.error);
       assert.match(accepted.text, /^作る前の確認で示すものを受け付けました。画面で見られます。作業の画面の見本：http:\/\/127\.0\.0\.1:\d+\/\?k=/);
@@ -231,6 +233,7 @@ describe('ソースの文（ユーザーに見える文を持つファイルの�
     'screen.mjs',
     'issue.mjs',
     'doc-text.mjs',
+    'eval-settings.mjs',
     'zip.mjs',
     'schema-check.mjs',
     'extension.mjs',
