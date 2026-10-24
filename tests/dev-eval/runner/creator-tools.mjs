@@ -25,7 +25,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 export const REPO_ROOT = path.resolve(here, '..', '..', '..');
 export const CREATOR_SERVER_NAME = 'plugin-creator';
 const TOOL_PREFIX = 'plugin-creator_';
-const FAKE_ISSUE_URL = 'https://github.com/imaeda-hub/plugin-creator/issues/9001';
+const FAKE_ISSUE_URL = 'https://github.com/xclang/plugin-creator/issues/9001';
 
 /** エクステンションの creator.mjs を読み込む（クリエイターのプラグインの根を渡す） */
 export async function loadCreatorModule(pluginRoot = REPO_ROOT) {

@@ -160,7 +160,7 @@ describe('想定外の失敗（内部の情報を出さず、記録に残す）'
 
 describe('正常な結果の形（変えていない）', () => {
   test('hearing.md 7.5 成功のときは、これまでどおり文字列を返す（ToolResultObject にしない）', async () => {
-    const ok = { code: 0, stdout: 'https://github.com/imaeda-hub/plugin-creator/issues/7\n', stderr: '', timedOut: false, notFound: false };
+    const ok = { code: 0, stdout: 'https://github.com/xclang/plugin-creator/issues/7\n', stderr: '', timedOut: false, notFound: false };
     await withRun(
       async (run) => {
         const outputs = {};
@@ -181,7 +181,7 @@ describe('正常な結果の形（変えていない）', () => {
         outputs.confirm = await run.callRaw('confirm', confirmArgs());
         for (const [tool, value] of Object.entries(outputs)) assert.equal(typeof value, 'string', `${tool} の成功の結果が文字列でない：${JSON.stringify(value)}`);
         assert.match(outputs.confirm, /^作る前の確認で示すものを受け付けました。/);
-        assert.match(outputs.issue, /^起票しました：https:\/\/github\.com\/imaeda-hub\/plugin-creator\/issues\/7$/);
+        assert.match(outputs.issue, /^起票しました：https:\/\/github\.com\/xclang\/plugin-creator\/issues\/7$/);
       },
       { extra: { runGh: async () => ok } },
     );
