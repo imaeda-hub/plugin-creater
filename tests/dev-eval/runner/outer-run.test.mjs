@@ -13,7 +13,7 @@ import { fileURLToPath } from 'node:url';
 import { ITEMS } from '../../../com.github.copilot/extensions/plugin-creator/names.mjs';
 import { loadPersona } from '../personas/validate.mjs';
 import { createFakeSdk } from './outer-fake-sdk.mjs';
-import { conversationOf, createRecorder, findGeneratedPlugins, placePersonaFiles, runOuterOnce } from './outer-run.mjs';
+import { conversationOf, createRecorder, findGeneratedPlugins, placePersonaFiles, readConvertedAgentModel, runOuterOnce } from './outer-run.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(here, '..', '..', '..');
@@ -36,6 +36,10 @@ function fakeConvert(src, out) {
     warnings: [],
   };
   fs.writeFileSync(path.join(out, '.eval', 'conversion-report.json'), JSON.stringify(report));
+  // 置き換えた版のエージェントの定義：作業は費用の低いモデル、読み取り役は model なし（inherit）
+  fs.mkdirSync(path.join(out, 'agents'), { recursive: true });
+  fs.writeFileSync(path.join(out, 'agents', 'worker.md'), '---\nname: worker\ndescription: 作業\nmodel: claude-haiku-5-5\n---\n本文\n');
+  fs.writeFileSync(path.join(out, 'agents', 'reader.md'), '---\nname: reader\ndescription: 読む\nmodel: inherit\n---\n本文\n');
   return { root: out, report, summary: { ok: true } };
 }
 
@@ -264,6 +268,9 @@ test('REQ-020 生成までたどる：本物の記録のツールで承認まで
       const gen = await ctx.tool(T('progress'), { stage: '生成', approvalQuote: '作ってください' });
       assert.equal(gen.isError, false, gen.text);
       statePath = path.join(ctx.options.env.HOME, '..', 'copilot-home');
+      // 読み取り役は選んだモデルのまま、作業エージェントは費用の低いモデルで動く（REQ-045・REQ-046）
+      await ctx.subagent({ type: 'plugin-creator:reader', description: '読む' }, async (sub) => { await sub.say('読みました'); });
+      await ctx.subagent({ type: 'plugin-creator:worker', description: '書く', model: 'claude-haiku-5-5' }, async (sub) => { await sub.say('書きました'); });
       await ctx.tool('Bash', { command: `python3 -I ${SCAFFOLD} build --hearing STATE --work ${work}/.plugin-creator-work --out ${work}/weekly-report` }, {
         run: () => {
           copySampleParts(work);
@@ -288,8 +295,17 @@ test('REQ-020 生成までたどる：本物の記録のツールで承認まで
   assert.equal(byId['one-plugin-generated'].ok, true);
   assert.equal(byId['embedded:output'].ok, true, byId['embedded:output'].detail);
   assert.equal(byId['task:output'].ok, true, byId['task:output'].detail);
+  assert.equal(byId['main-model'].ok, true, byId['main-model'].detail);
+  assert.equal(byId['worker-model'].ok, true, byId['worker-model'].detail);
+  assert.equal(record.mainModel, 'claude-opus-5-5');
+  assert.deepEqual(record.subagents.map((a) => [a.type, a.model]), [['plugin-creator:reader', 'claude-opus-5-5'], ['plugin-creator:worker', 'claude-haiku-5-5']]);
   assert.equal(record.grading.verdict.ok, true, JSON.stringify(record.grading.verdict));
   assert.equal(record.grading.exampleCandidate, true);
+  // 記録する数が、記録と採点の結果に出る（合否には入らない）
+  const counts = record.grading.counts;
+  assert.equal(counts.questions.askTool, 2);
+  assert.equal(counts.askToolCalls.callsWithMultiple, 0);
+  assert.equal(counts.recordRefusals.total, 0);
   // 記録のツールの呼び出しは、順番つきで残る。承認の記録は、組み立ての前
   const approval = record.toolEvents.find((e) => e.type === 'tool.call' && e.args?.stage === '生成');
   const build = record.items.find((i) => i.kind === 'tool.use' && i.name === 'Bash');
@@ -346,5 +362,116 @@ test('REQ-015 インストラクション（rules）は、Claude Code では読�
   const sdk2 = createFakeSdk({ userRole: () => 'x', agent: async () => '終わり' });
   await runOuterOnce({ ...baseOptions(runRoot), loaded: loadedWeekly, query: sdk2.query, maxExchanges: 1 });
   assert.equal(sdk2.calls.find((c) => c.kind === 'agent').options.systemPrompt.append, undefined);
+  fs.rmSync(runRoot, { recursive: true, force: true });
+});
+
+test('REQ-015 記録する数：1 回の質問のツールの問いの欄の数、問いの数、記録のツールの断りとその後の直しが、記録の採点の結果に出る。合否には入らない', async () => {
+  const runRoot = tmp('counts');
+  const opts = (n) => [{ label: 'A', description: '' }, { label: 'B', description: '' }].map((o) => ({ ...o, label: `${o.label}${n}` }));
+  const sdk = createFakeSdk({
+    userRole: () => '月曜に集計します',
+    agent: async (ctx) => {
+      await ctx.tool(T('progress'), { stage: '始まり' });
+      // 1 回に問いを 1 つ
+      await ctx.ask([{ question: '進め方は？', header: '進め方', options: opts(1) }]);
+      // 1 回に問いを 2 つ（hearing.md 4.1 の「1 回に 1 つ」に反する）
+      await ctx.ask([{ question: '成果物は？', header: '成果物', options: opts(2) }, { question: '入力は？', header: '入力', options: opts(3) }]);
+      // 記録のツールが断る（抜き書きなし）→ 直して成功
+      const refused = await ctx.tool(T('progress'), { items: [{ item: '成果物', status: '聞いた', quote: '' }] });
+      assert.equal(refused.isError, true);
+      const fixed = await ctx.tool(T('progress'), { items: [{ item: '成果物', status: '聞いた', quote: '月曜に集計します' }] });
+      assert.equal(fixed.isError, false, fixed.text);
+      // 種類の名前の誤りで断られる（この後に、同じツールの成功がある）
+      const refused2 = await ctx.tool(T('record'), { knowledge: [{ kind: '種類違い', item: '進め方', text: 'x', source: 'ヒアリングの答え', quote: 'x', status: '決まった' }] });
+      assert.equal(refused2.isError, true);
+      // 保留と AI の判断
+      await ctx.tool(T('progress'), { items: [{ item: '資産', status: '保留', quote: '月曜に集計します', holder: '田中さん' }] });
+      await ctx.tool(T('record'), { knowledge: [{ kind: 'それ以外', item: '進め方', text: '月曜に集計する', source: 'AI の判断（ユーザーが任せた）', quote: '月曜に集計します', status: '決まった' }] });
+      return '以上です';
+    },
+  });
+  const record = await runOuterOnce({ ...baseOptions(runRoot), loaded: loadedWeekly, query: sdk.query, maxExchanges: 1 });
+  const c = record.grading.counts;
+  assert.deepEqual(c.questions, { total: 4, askTool: 3, text: 1 });
+  assert.deepEqual(c.askToolCalls, { calls: 2, maxQuestionsPerCall: 2, callsWithMultiple: 1 });
+  assert.equal(c.recordRefusals.total, 2);
+  assert.equal(c.recordRefusals.fixed, 2);
+  assert.equal(c.recordRefusals.unfixed, 0);
+  assert.deepEqual(c.recordRefusals.byTool.progress, { calls: 4, refused: 1, fixed: 1, unfixed: 0 });
+  assert.deepEqual(c.recordRefusals.byTool.record, { calls: 2, refused: 1, fixed: 1, unfixed: 0 });
+  assert.match(c.recordRefusals.samples[0].reason, /抜き書き/);
+  assert.deepEqual(c.pending, { count: 1, items: ['資産'] });
+  assert.equal(c.aiDecisions.count, 1);
+  // 問いの欄の数は、記録の問いに残る
+  const asks = record.items.filter((i) => i.kind === 'creator.question');
+  assert.deepEqual(asks.map((q) => [q.group, q.groupSize]), [[1, 1], [2, 2], [2, 2]]);
+  assert.equal(JSON.parse(fs.readFileSync(record.recordFile, 'utf8')).grading.counts.askToolCalls.callsWithMultiple, 1);
+  fs.rmSync(runRoot, { recursive: true, force: true });
+});
+
+/** 生成プラグインができた会話（承認の記録はない）で、メインと作業エージェントのモデルだけを変える */
+async function modelRun({ workerModel, readerModel = null, requested = 'claude-opus-5-5', skipWorker = false, runRoot }) {
+  const sdk = createFakeSdk({
+    userRole: () => 'x',
+    agent: async (ctx) => {
+      await ctx.subagent({ type: 'plugin-creator:reader', description: '読む', model: readerModel }, async (sub) => { await sub.say('読みました'); });
+      if (!skipWorker) await ctx.subagent({ type: 'plugin-creator:worker', description: '書く', model: workerModel }, async (sub) => { await sub.say('書きました'); });
+      const dir = path.join(ctx.options.cwd, 'p');
+      await ctx.tool('Bash', { command: 'mkdir p' }, { run: () => { fs.mkdirSync(dir); fs.writeFileSync(path.join(dir, 'plugin.json'), '{}'); return 'ok'; } });
+      return '作りました';
+    },
+  });
+  return runOuterOnce({ ...baseOptions(runRoot), loaded: loadedWeekly, query: sdk.query, model: requested, maxExchanges: 1 });
+}
+
+test('REQ-045 REQ-046 モデル：メインは指定のモデル、作業エージェントは費用の低いモデルで動いたことを、実行の記録から採点する', async () => {
+  const runRoot = tmp('models');
+  const record = await modelRun({ workerModel: 'claude-haiku-5-5', runRoot });
+  const g = Object.fromEntries(record.grading.grades.map((x) => [x.id, x]));
+  assert.equal(g['main-model'].ok, true, g['main-model'].detail);
+  assert.equal(g['worker-model'].ok, true, g['worker-model'].detail);
+  assert.deepEqual(record.mainModels, ['claude-opus-5-5']);
+  assert.deepEqual(record.subagents.map((a) => [a.type, a.models]), [['plugin-creator:reader', ['claude-opus-5-5']], ['plugin-creator:worker', ['claude-haiku-5-5']]]);
+  assert.equal(readConvertedAgentModel(record.creator.converted, 'worker'), 'claude-haiku-5-5');
+  assert.equal(readConvertedAgentModel(record.creator.converted, 'reader'), null, 'inherit は null');
+  assert.equal(readConvertedAgentModel(record.creator.converted, 'ない'), null);
+
+  // 選ぶモデルを変えて始めると、そのモデルで対話が行われる。作業エージェントは変わらず費用の低いモデル
+  const haiku = await modelRun({ workerModel: 'claude-haiku-5-5', requested: 'claude-sonnet-5-5', runRoot });
+  assert.equal(haiku.grading.grades.find((x) => x.id === 'main-model').ok, true);
+  assert.deepEqual(haiku.mainModels, ['claude-sonnet-5-5']);
+  assert.equal(haiku.grading.grades.find((x) => x.id === 'worker-model').ok, true);
+  fs.rmSync(runRoot, { recursive: true, force: true });
+});
+
+test('REQ-046 作業エージェントが高いモデルで動いた・動かなかったときは、不合格になる（思考力の高いモデルの合格が落ちる）', async () => {
+  const runRoot = tmp('models-bad');
+  const wrong = await modelRun({ workerModel: 'claude-opus-5-5', runRoot });
+  const w = wrong.grading.grades.find((x) => x.id === 'worker-model');
+  assert.equal(w.ok, false);
+  assert.match(w.detail, /費用の低いモデルは claude-haiku-5-5 だが、claude-opus-5-5 でも動いた/);
+  assert.ok(wrong.grading.verdict.failed.includes('worker-model'));
+  assert.equal(wrong.grading.verdict.ok, false);
+  const none = await modelRun({ skipWorker: true, runRoot });
+  assert.match(none.grading.grades.find((x) => x.id === 'worker-model').detail, /作業エージェントが動かなかった/);
+  fs.rmSync(runRoot, { recursive: true, force: true });
+});
+
+test('REQ-045 メインのメッセージのモデルが指定と違えば不合格（SDK が別のモデルに切り替えたとき）', async () => {
+  const runRoot = tmp('models-switch');
+  const sdk = createFakeSdk({
+    userRole: () => 'x',
+    agent: async (ctx) => {
+      await ctx.say('一つ目');
+      await ctx.say('切り替わった後', null, 'claude-sonnet-5-5');
+      return '作れません';
+    },
+  });
+  const record = await runOuterOnce({ ...baseOptions(runRoot), loaded: loadedWeekly, query: sdk.query, model: 'claude-opus-5-5', maxExchanges: 1 });
+  const g = record.grading.grades.find((x) => x.id === 'main-model');
+  assert.equal(g.ok, false);
+  assert.deepEqual(record.mainModels, ['claude-opus-5-5', 'claude-sonnet-5-5']);
+  // 生成プラグインができていなければ、作業エージェントの観点はない
+  assert.ok(!record.grading.grades.some((x) => x.id === 'worker-model'));
   fs.rmSync(runRoot, { recursive: true, force: true });
 });

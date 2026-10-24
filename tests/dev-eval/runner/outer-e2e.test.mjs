@@ -13,7 +13,7 @@ import { fileURLToPath } from 'node:url';
 import * as sdk from '@anthropic-ai/claude-agent-sdk';
 
 import { loadPersona } from '../personas/validate.mjs';
-import { startFakeAnthropic } from './fake-anthropic.mjs';
+import { guardSdk, startFakeAnthropic } from './fake-anthropic.mjs';
 import { REPO_ROOT } from './creator-tools.mjs';
 import { convertPlugin, runOuterOnce } from './outer-run.mjs';
 
@@ -68,12 +68,9 @@ test('REQ-015 本物の SDK で通す：質問のツールにユーザー役が�
   assert.equal(converted.summary.validate.ok, true);
 
   // 守り：模擬の API につながっていない query は、始める前に断る（実際のモデルを呼ばないため。ユーザー役の呼び出しも同じ）
-  const guardedQuery = (params) => {
-    if (params.options?.env?.ANTHROPIC_BASE_URL !== api.url) throw new Error('模擬の API につながっていない query の呼び出しです（実際のモデルを呼ぶところでした）。');
-    return sdk.query(params);
-  };
+  const guarded = guardSdk(sdk, api);
   const record = await runOuterOnce({
-    loaded, runRoot, sandbox: false, query: guardedQuery, convertedCreator: converted.root, maxExchanges: 2, model: 'claude-opus-5-5',
+    loaded, runRoot, sandbox: false, query: guarded.query, convertedCreator: converted.root, maxExchanges: 2, model: 'claude-opus-5-5',
     envExtra: { ...FAKE_ENV, ANTHROPIC_BASE_URL: api.url },
     runStages: async () => ({ skipped: true, reason: 'x' }),
   });
@@ -110,4 +107,13 @@ test('REQ-015 本物の SDK で通す：質問のツールにユーザー役が�
   // 続きの会話（resume）に、ユーザー役の返事が渡った
   assert.ok(log.some((l) => l.role === 'creator' && l.text.includes('weekly_report.md')));
   assert.ok(record.costUsd.creator > 0);
+  // 記録する数（testing.md 6.5）が、本物の SDK の流れでも出る：質問のツールの問い 1 つ（1 回に 1 つ）、文章の問い、断りなし
+  const counts = record.grading.counts;
+  assert.equal(counts.questions.askTool, 1);
+  assert.deepEqual(counts.askToolCalls, { calls: 1, maxQuestionsPerCall: 1, callsWithMultiple: 0 });
+  assert.ok(counts.questions.text >= 1);
+  assert.equal(counts.recordRefusals.total, 0);
+  // メインのメッセージのモデルは、指定のモデル（REQ-045）
+  assert.deepEqual(record.mainModels, ['claude-opus-5-5']);
+  assert.equal(record.grading.grades.find((g) => g.id === 'main-model').ok, true);
 });

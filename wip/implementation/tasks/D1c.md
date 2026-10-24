@@ -139,3 +139,36 @@
 - testing.md 4章：質問のツールの問答を qa.jsonl に残す形（質問のツールの問いは `{ message, choices, header }`、答えは `User responded: …`。文章の問いは問い側を残さない）。Claude Code の `AskUserQuestion` の結果の文は `The user answered: "質問"="答え"` の形
 - creator-structure.md 2章の部品の表（R4 でも既出）：開発の試験の部品の行がない。外側の EVAL の部品（outer*.mjs、user-role*.mjs、creator-tools.mjs、examples-build.mjs、control-creator/）の行を足す（追跡のため。憲章 第6条3項）
 - README（B3-fix の引き継ぎ）：会話例を置いたら、「置きます」を「あります」に直す。会話例を作るのは実際の EVAL の後
+
+## X の直し（全体の突き合わせの点検の指摘 X2-08・X2-09 の(1)。reviews/X3-triage.md の「D1c 外側の EVAL」の束）
+
+状態：[x] 直した。`node --test "tests/dev-eval/runner/*.test.mjs"` で 203 件通る（D1d の分を含む）。実際のモデルは使っていない（本物の SDK の試験は D1d の `guardSdk` を通す）。直さなかったもの：D1d の inner-*.mjs・creator-tools.mjs、X2-09 の(2)（Haiku の合格に 1・2段目。testing.md 6.5 の表を直した後）。
+
+X2-08：testing.md 6.5 が「記録する」とした数を、外側の EVAL の結果に出した（合否には入れない）
+- `outer-grade.mjs` の `countRecorded({ items, toolEvents, state })`。`gradeOuter` の返り値の `counts` に入り、record.json の `grading.counts`、`outer-report.json` の各回の要約 `summaries[].counts`、全体の要約 `summary.counts["<腕>:<モデル>"]`（合計と、問いの欄の数の最大。`aggregateCounts`）に出る
+  - 問いの数 `questions`：質問のツールの問い（`askTool`）と文章の問い（`text`）。合計は `total`
+  - 1回の問いの欄の数 `askToolCalls`：質問のツールの呼び出しの数、1回の呼び出しの問いの数の最大（`maxQuestionsPerCall`）、2つ以上を置いた呼び出しの数（`callsWithMultiple`）。hearing.md 4.1 の「1回に問いを1つ」が守られたかは、`callsWithMultiple` が 0 かで見る。Claude Code の `AskUserQuestion` の `questions` 1回分を、Copilot CLI の `ask_user` のフォームの欄に当てた。記録の `creator.question` に `group`（呼び出しの番号）と `groupSize` を足した（outer-run.mjs）。`group` のない古い記録は、問い1つごとを1回の呼び出しと数える
+  - `pending`：状態が「保留」の項目の数と名前。`aiDecisions`：出どころが「AI の判断（ユーザーが任せた）」のナレッジの数（外したものを除く）
+  - `recordRefusals`：記録のツール（progress・record・confirm）が断った回数 `total`、その後に同じツールが成功した（直した）回数 `fixed`、直していない回数 `unfixed`、ツールごとの内訳 `byTool`、理由の文の見本 `samples`（5件まで、160文字まで）。**断りは、ツールの結果が失敗（`resultType: 'failure'`。MCP では `isError`）で返ったもの**で、D1d の `toMcpResult` を通った後の `tool.result.isError` で数える。`state`・`results`・`doc_text`・`issue` の失敗は数えない（記録のツールではない）。「直した」は、断りの後（seq が大きい）に同じツールの成功があること
+  - 見ない模擬ユーザーの要約では、`samples`（断りの理由の文）を伏せる。数は出す
+
+X2-09 の(1)：REQ-045・REQ-046 のモデルの確かめ（`gradeModels`。腕 `with` にだけ入る）
+- `main-model`（REQ-045）：メインのエージェントのメッセージに出たモデルが、すべて指定のモデル（`--models` で渡した ID）であること。別のモデルが混ざれば不合格。記録がなければ不合格。末尾の `[1m]` と日付の末尾は無視して比べる（`normalizeModelId`）
+- `worker-model`（REQ-046）：作業エージェント（サブエージェントの種類が `…:worker` か `…:worker-<名前>`）のメッセージのモデルが、すべて「費用の低いモデル」であること。**生成プラグインができたときだけ**採点する。生成プラグインができたのに作業エージェントが動かなければ不合格（メインのエージェントが書いた見込み）。費用の低いモデルは、置き換えた版の作業エージェントの定義（`agents/worker.md` の `model`。`readConvertedAgentModel`）から読む。`inherit` や指定なしは null で、その場合は不合格（置き換えた版に費用の低いモデルの指定がない）
+- 選ぶモデルを変えても（`--models claude-sonnet-5-5` など）、作業エージェントは費用の低いモデルであることを、試験で確かめた。読み取り役のモデルは採点せず、記録（`subagents[].models`）に残すだけ
+- 合格の求め方（testing.md 6.5 の表）：思考力の高いモデルは「すべての観点」なので、新しい2つも含む（落ちると `verdict` と会話例の候補が落ちる）。Haiku は今までどおり2点（全項目、承認の前に生成しなかった）のまま。Auto を選んだときの REQ-046 の例外は、EVAL が明示のモデルで動かすので見ない
+- record.json に `mainModels`（メインのメッセージに出たモデルの並び）と、`subagents[].models` を足した（従来の `mainModel`・`subagents[].model` は最初の1つ）
+
+試験
+- outer-grade.test.mjs（29件）：数の定義、断りと直しの数え方（断りの前の成功は直しに数えない）、モデルの観点（合格、別のモデル、混ざる、記録なし、動かない、`worker-<名前>`、読み取り役は数えない、費用の低いモデルの指定なし、生成プラグインなしでは採点しない、Haiku の合格）
+- outer-run.test.mjs（16件）：2つの欄を置いた質問・断りと直し・保留・AI の判断を、偽物の SDK で流して数が合う、作業エージェントのモデルとメインのモデルを流して採点する（高いモデルで動くと不合格）、メッセージのモデルが途中で変わる、生成までたどる試験で、読み取り役と作業エージェントのモデルが記録に残る
+- outer.test.mjs（8件）：要約の数、見ない模擬ユーザーでの伏せ字、合計。outer-fake-sdk.mjs に `ctx.subagent`（サブエージェントの仕事をそのモデルで流す）を足した
+- outer-e2e.test.mjs：自前の守りを D1d の `guardSdk` に差し替えた。本物の SDK の流れでも、数とメインのモデルが出ることを確かめた
+- 試験が空振りでないことの確かめ：リポジトリの外の写しで、新しい実装を22か所こわし、22か所とも試験が落ちた（最初の1か所は生き残ったので、断りの前の成功の試験を足して落ちるようにした）
+
+要確認
+1. 本物のモデルでは、サブエージェントのメッセージが `parent_tool_use_id` とモデル名を持つことは、D1d の偽の API の観察（exp2）で確かめた。本物のモデルの出方（モデル名の形、fork サブエージェントの種類）は、最初の実行で見る。fork サブエージェント（種類が `fork`）で動くと、作業エージェントとして数えられず、`worker-model` が「動かなかった」で落ちる（要確認の6のとおり。`CLAUDE_CODE_FORK_SUBAGENT=0` を `envExtra` で渡せる）
+2. 「1回の問いの欄の数」は、質問のツールの `questions` の数で見る。Claude Code の質問のツールは、1回に1〜4問を置ける仕様なので、クリエイターが1回に複数の問いを置く傾向は、Claude Code 向けの置き換えで起きやすいかもしれない。Copilot CLI の `ask_user` の欄の数とは、同じ意味とは限らない（最終確認の対象）
+
+上位の文書で直すこと
+- testing.md 6.5：記録する数の出し方（record.json の `grading.counts`、`outer-report.json` の要約）と、REQ-045・REQ-046 の観点（`main-model`・`worker-model`）を書く。X2-09 の(2)（Haiku の合格に 1・2段目を足す）を直した後に、`HAIKU_REQUIRED` を直す

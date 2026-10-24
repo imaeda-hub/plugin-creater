@@ -149,6 +149,30 @@ const mean = (xs) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : nu
 /** 見ない模擬ユーザーの要約では、ナレッジの id を伏せる（人が中身を推測できないように） */
 const redactGrade = (g, redact, order) => (redact ? { ...g, id: g.id.replace(/:(.+)$/, (_, k) => `:#${order.indexOf(k) + 1}`), detail: '' } : g);
 
+function redactCounts(counts, heldout) {
+  if (!counts) return null;
+  if (!heldout) return counts;
+  return { ...counts, recordRefusals: { ...counts.recordRefusals, samples: [] } };
+}
+
+/** 実行の要約の数（counts）を、まとめる。合計と、問いの欄の数の最大 */
+export function aggregateCounts(summaries) {
+  const list = summaries.map((s) => s.counts).filter(Boolean);
+  const sum = (pick) => list.reduce((n, c) => n + (pick(c) ?? 0), 0);
+  return {
+    runs: list.length,
+    questions: { total: sum((c) => c.questions.total), askTool: sum((c) => c.questions.askTool), text: sum((c) => c.questions.text) },
+    askToolCalls: {
+      calls: sum((c) => c.askToolCalls.calls),
+      maxQuestionsPerCall: list.reduce((m, c) => Math.max(m, c.askToolCalls.maxQuestionsPerCall ?? 0), 0),
+      callsWithMultiple: sum((c) => c.askToolCalls.callsWithMultiple),
+    },
+    pending: sum((c) => c.pending.count),
+    aiDecisions: sum((c) => c.aiDecisions.count),
+    recordRefusals: { total: sum((c) => c.recordRefusals.total), fixed: sum((c) => c.recordRefusals.fixed), unfixed: sum((c) => c.recordRefusals.unfixed) },
+  };
+}
+
 /** 1 回の記録の要約 */
 export function summarizeRecord(record, { heldout = false } = {}) {
   const order = record.grading.trace.map((t) => t.id);
@@ -165,6 +189,8 @@ export function summarizeRecord(record, { heldout = false } = {}) {
     exampleCandidate: heldout ? false : record.grading.exampleCandidate,
     faults: heldout ? record.grading.faults.length : record.grading.faults,
     costUsd: Number(((record.costUsd?.creator ?? 0) + (record.costUsd?.userRole ?? 0)).toFixed(4)),
+    // 設計書（testing.md 6.5）が「記録する」とした数。合否には入れない。見ない模擬ユーザーでは、断りの理由の文は伏せる
+    counts: redactCounts(record.grading.counts, heldout),
     ...(heldout
       ? {}
       : {
@@ -200,10 +226,12 @@ export function summarizeAll(records, summaries) {
   const groups = {};
   for (const s of summaries) (groups[key(s)] ??= []).push(s);
   const scores = Object.fromEntries(Object.entries(groups).map(([k, xs]) => [k, { runs: xs.length, score: mean(xs.map((x) => x.score)), verdictOk: xs.filter((x) => x.verdictOk).length }]));
+  const counts = Object.fromEntries(Object.entries(groups).map(([k, xs]) => [k, aggregateCounts(xs)]));
   const withScores = summaries.filter((s) => s.arm === 'with').map((s) => s.score);
   const withoutScores = summaries.filter((s) => s.arm === 'without').map((s) => s.score);
   return {
     scores,
+    counts,
     delta: withScores.length && withoutScores.length ? mean(withScores) - mean(withoutScores) : null,
     control: evaluateControl(records),
     costUsd: Number(summaries.reduce((a, s) => a + s.costUsd, 0).toFixed(4)),

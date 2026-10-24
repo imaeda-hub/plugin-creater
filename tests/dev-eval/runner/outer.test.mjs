@@ -14,6 +14,7 @@ import {
   CONTROL_DIR,
   HELDOUT_DIR,
   OuterEvalError,
+  aggregateCounts,
   discoverPersonaDirs,
   estimateUsd,
   evaluateControl,
@@ -194,4 +195,35 @@ test('REQ-015 利用枠の上限で止まったら、残りは飛ばして statu
   assert.ok(!JSON.stringify(report2.summaries).includes('training-survey'));
   fs.rmSync(outDir, { recursive: true, force: true });
   fs.rmSync(outDir2, { recursive: true, force: true });
+});
+
+test('REQ-015 記録する数は、各回の要約と全体の要約に出る。見ない模擬ユーザーでは、断りの理由の文を伏せる', async () => {
+  const record = await makeRecord({ loaded: weekly });
+  record.grading.counts = {
+    questions: { total: 5, askTool: 4, text: 1 },
+    askToolCalls: { calls: 3, maxQuestionsPerCall: 2, callsWithMultiple: 1 },
+    pending: { count: 1, items: ['資産'] },
+    aiDecisions: { count: 2 },
+    recordRefusals: { total: 3, fixed: 2, unfixed: 1, byTool: {}, samples: [{ tool: 'progress', seq: 1, reason: '抜き書きがありません' }] },
+  };
+  const open = summarizeRecord(record);
+  assert.equal(open.counts.questions.total, 5);
+  assert.equal(open.counts.recordRefusals.samples.length, 1);
+  const hidden = summarizeRecord(record, { heldout: true });
+  assert.equal(hidden.counts.questions.total, 5, '数は出す');
+  assert.deepEqual(hidden.counts.recordRefusals.samples, [], '理由の文は伏せる');
+  assert.equal(record.grading.counts.recordRefusals.samples.length, 1, 'もとの記録は変えない');
+
+  const second = { ...open, counts: { ...open.counts, askToolCalls: { calls: 1, maxQuestionsPerCall: 3, callsWithMultiple: 1 }, recordRefusals: { total: 1, fixed: 0, unfixed: 1 } } };
+  const total = aggregateCounts([open, second, { arm: 'with' /* 飛ばした実行には数がない */ }]);
+  assert.equal(total.runs, 2);
+  assert.equal(total.questions.total, 10);
+  assert.deepEqual(total.askToolCalls, { calls: 4, maxQuestionsPerCall: 3, callsWithMultiple: 2 });
+  assert.equal(total.pending, 2);
+  assert.equal(total.aiDecisions, 4);
+  assert.deepEqual(total.recordRefusals, { total: 4, fixed: 2, unfixed: 2 });
+  assert.deepEqual(aggregateCounts([]), { runs: 0, questions: { total: 0, askTool: 0, text: 0 }, askToolCalls: { calls: 0, maxQuestionsPerCall: 0, callsWithMultiple: 0 }, pending: 0, aiDecisions: 0, recordRefusals: { total: 0, fixed: 0, unfixed: 0 } });
+  const all = summarizeAll([record], [open, second]);
+  assert.equal(all.counts['with:claude-opus-5-5'].runs, 2);
+  assert.equal(all.counts['with:claude-opus-5-5'].questions.total, 10);
 });

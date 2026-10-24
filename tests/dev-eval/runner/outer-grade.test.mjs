@@ -12,12 +12,15 @@ import { loadPersona } from '../personas/validate.mjs';
 import {
   HAIKU_REQUIRED,
   collectGeneratedFiles,
+  countRecorded,
   gradeAllItemsHeard,
   gradeFirstRun,
   gradeHurryOptions,
+  gradeModels,
   gradeNoGenerationBeforeApproval,
   gradeOuter,
   knowledgeTrace,
+  normalizeModelId,
   normalizeQuote,
   quoteFound,
   scopes,
@@ -365,4 +368,182 @@ test('REQ-015 ユーザー役の誤り：聞かれていないのに隠すべき
   const r = gradeOuter({ persona, personaFiles: [], items: s.items, toolEvents: [], state: null, generatedCount: 0, generatedFiles: null, stages: null, inner: null, userSignals: [], model: 'claude-opus-5-5', arm: 'without' });
   assert.ok(r.faults.some((f) => f.kind === 'instruction-words' && f.answerIndex === 1), JSON.stringify(r.faults));
   assert.equal(r.exampleCandidate, false);
+});
+
+// ---- 記録する数（testing.md 6.5。X2-08） ----------------------------------------------------------------
+
+/** 記録のツールの呼び出し 1 回（結果つき）。失敗の結果は isError: true */
+function toolCalls(list) {
+  let seq = 0;
+  let callId = 0;
+  const events = [];
+  for (const [tool, args, isError, result] of list) {
+    callId += 1;
+    events.push({ seq: (seq += 1), type: 'tool.call', callId, tool, args });
+    events.push({ seq: (seq += 1), type: 'tool.result', callId, tool, isError, result: result ?? (isError ? '断りの理由' : '記録しました') });
+  }
+  return events;
+}
+
+test('REQ-015 記録する数：問いの数は、質問のツールの問いと文章の問いの合計。1 回の呼び出しの問いの欄の数の最大と、2 つ以上の欄を置いた回数も数える', () => {
+  const q = (group, groupSize, n) => ({ seq: n, kind: 'creator.question', header: '', question: `問い${n}`, options: [], group, groupSize });
+  const items = [q(1, 1, 1), q(2, 2, 2), q(2, 2, 3), q(3, 3, 4), q(3, 3, 5), q(3, 3, 6), { seq: 7, kind: 'creator.question-text', text: '文章の問い' }, { seq: 8, kind: 'creator.question-text', text: 'もう 1 つ' }];
+  const c = countRecorded({ items, toolEvents: [], state: null });
+  assert.deepEqual(c.questions, { total: 8, askTool: 6, text: 2 });
+  assert.deepEqual(c.askToolCalls, { calls: 3, maxQuestionsPerCall: 3, callsWithMultiple: 2 });
+  // 1 回に 1 つだけなら、2 つ以上の欄を置いた呼び出しは 0 回
+  const single = countRecorded({ items: [q(1, 1, 1), q(2, 1, 2)], toolEvents: [], state: null });
+  assert.deepEqual(single.askToolCalls, { calls: 2, maxQuestionsPerCall: 1, callsWithMultiple: 0 });
+  // group のない古い記録は、問い 1 つごとを 1 回の呼び出しと数える
+  const old = countRecorded({ items: [{ seq: 1, kind: 'creator.question', question: 'a' }, { seq: 2, kind: 'creator.question', question: 'b' }], toolEvents: [], state: null });
+  assert.deepEqual(old.askToolCalls, { calls: 2, maxQuestionsPerCall: 1, callsWithMultiple: 0 });
+  assert.deepEqual(countRecorded({ items: [], toolEvents: [], state: null }).askToolCalls, { calls: 0, maxQuestionsPerCall: 0, callsWithMultiple: 0 });
+});
+
+test('REQ-015 記録する数：保留の項目と AI の判断のナレッジの数（外したナレッジは数えない）', () => {
+  const state = {
+    items: { purpose: { status: 'asked' }, output: { status: 'pending' }, rules: { status: 'pending' }, tools: { status: 'none' } },
+    knowledge: [
+      { id: 'K-01', source: 'ai_decision', status: 'decided' },
+      { id: 'K-02', source: 'ai_decision', status: 'candidate' },
+      { id: 'K-03', source: 'ai_decision', status: 'dropped' },
+      { id: 'K-04', source: 'answer', status: 'decided' },
+    ],
+  };
+  const c = countRecorded({ items: [], toolEvents: [], state });
+  assert.deepEqual(c.pending, { count: 2, items: ['成果物', '決まった書き方やルール'] });
+  assert.deepEqual(c.aiDecisions, { count: 2 });
+  assert.deepEqual(countRecorded({ items: [], toolEvents: [], state: null }).pending, { count: 0, items: [] });
+});
+
+test('REQ-015 記録する数：記録のツールが断った回数（失敗の結果）と、その後に同じツールが成功した（直した）回数', () => {
+  const toolEvents = toolCalls([
+    ['progress', { stage: '始まり' }, false],
+    ['progress', { items: [] }, true, '抜き書き（quote）を添えてください'],
+    ['progress', { items: [] }, false],
+    ['record', { knowledge: [] }, true, '種類の名前が違います'],
+    ['confirm', {}, true, '未着手の項目が残っています'],
+    ['confirm', {}, true, 'もう一度断る'],
+    ['confirm', {}, false],
+    ['state', {}, true, '状態取得ツールの失敗は、記録のツールの断りに数えない'],
+  ]);
+  const r = countRecorded({ items: [], toolEvents, state: null }).recordRefusals;
+  assert.deepEqual(r.byTool.progress, { calls: 3, refused: 1, fixed: 1, unfixed: 0 });
+  assert.deepEqual(r.byTool.record, { calls: 1, refused: 1, fixed: 0, unfixed: 1 });
+  assert.deepEqual(r.byTool.confirm, { calls: 3, refused: 2, fixed: 2, unfixed: 0 });
+  assert.equal(r.total, 4);
+  assert.equal(r.fixed, 3);
+  assert.equal(r.unfixed, 1);
+  assert.equal(r.samples.length, 4);
+  assert.deepEqual(r.samples[0], { tool: 'progress', seq: 3, reason: '抜き書き（quote）を添えてください' });
+  // 断りの前の成功は、直しに数えない（断りの後に、同じツールが成功したときだけ）
+  const before = countRecorded({ items: [], toolEvents: toolCalls([['progress', {}, false], ['progress', {}, true, '断り']]), state: null }).recordRefusals;
+  assert.deepEqual(before.byTool.progress, { calls: 2, refused: 1, fixed: 0, unfixed: 1 });
+  // 断りの文は、長ければ 160 文字で切る。見本は 5 件まで
+  const many = toolCalls(Array.from({ length: 9 }, () => ['progress', {}, true, 'あ'.repeat(300)]));
+  const m = countRecorded({ items: [], toolEvents: many, state: null }).recordRefusals;
+  assert.equal(m.total, 9);
+  assert.equal(m.samples.length, 5);
+  assert.equal(m.samples[0].reason.length, 160);
+});
+
+test('REQ-015 記録する数は、採点の合否に入らない：数が多くても grades・score・verdict は変わらない', () => {
+  const s = passingRun();
+  const personaFiles = weekly.files.map((f) => ({ src: f.src, place: f.place, role: f.role }));
+  const persona = JSON.parse(JSON.stringify(weekly.persona));
+  persona.knowledge = persona.knowledge.filter((k) => k.id === 'output');
+  const files = goodFiles();
+  files[2] = file('tests/eval/T-01/inputs/先週の売上.csv', fs.readFileSync(weekly.files.find((f) => f.role === 'input').src, 'utf8'));
+  const args = { persona, personaFiles, items: s.items, toolEvents: s.toolEvents, state: allItemsState({ stage: 'generate' }), generatedCount: 1, generatedFiles: files, stages: { stage1: { ok: true }, stage2: { ok: true } }, inner: null, userSignals: [], model: 'claude-opus-5-5' };
+  const base = gradeOuter(args);
+  const extra = toolCalls(Array.from({ length: 5 }, () => ['record', {}, true])).map((e, i) => ({ ...e, seq: 1000 + i, callId: 100 + e.callId }));
+  const noisy = gradeOuter({ ...args, toolEvents: [...s.toolEvents, ...extra] });
+  assert.equal(noisy.counts.recordRefusals.total, 5);
+  assert.deepEqual(noisy.grades, base.grades);
+  assert.equal(noisy.score, base.score);
+  assert.deepEqual(noisy.verdict, base.verdict);
+  assert.ok(base.counts.questions.total >= 0 && base.counts.recordRefusals.total === 0);
+});
+
+// ---- モデル（REQ-045・REQ-046。X2-09 の(1)） ----------------------------------------------------------------
+
+test('REQ-045 モデルの ID：[1m] のような末尾の印と日付の末尾をそろえて比べる', () => {
+  assert.equal(normalizeModelId('claude-opus-5-5[1m]'), 'claude-opus-5-5');
+  assert.equal(normalizeModelId('claude-haiku-5-5-20261001'), 'claude-haiku-5-5');
+  assert.equal(normalizeModelId('claude-sonnet-5-5'), 'claude-sonnet-5-5');
+  assert.equal(normalizeModelId(undefined), '');
+});
+
+test('REQ-045 メインのエージェントのメッセージのモデルがすべて指定のモデルなら合格。ほかのモデルが混ざれば不合格', () => {
+  const use = (main) => ({ requested: 'claude-opus-5-5', main, subagents: [], lowCost: 'claude-haiku-5-5' });
+  const ok = gradeModels({ use: use(['claude-opus-5-5']), generatedCount: 0 });
+  assert.deepEqual(ok.map((g) => [g.id, g.ok, g.req]), [['main-model', true, 'REQ-045']]);
+  assert.equal(gradeModels({ use: use(['claude-opus-5-5[1m]']), generatedCount: 0 })[0].ok, true);
+  const mixed = gradeModels({ use: use(['claude-opus-5-5', 'claude-sonnet-5-5']), generatedCount: 0 })[0];
+  assert.equal(mixed.ok, false);
+  assert.match(mixed.detail, /claude-sonnet-5-5 でも動いた/);
+  const none = gradeModels({ use: use([]), generatedCount: 0 })[0];
+  assert.equal(none.ok, false);
+  assert.match(none.detail, /モデルの記録がない/);
+  // 選ぶモデルを変えて始めると、変えたモデルで対話が行われる
+  const haiku = gradeModels({ use: { requested: 'claude-haiku-5-5', main: ['claude-haiku-5-5'], subagents: [], lowCost: null }, generatedCount: 0 })[0];
+  assert.equal(haiku.ok, true);
+});
+
+test('REQ-046 作業エージェントがすべて費用の低いモデルで動いたら合格。生成プラグインができたのに動かなければ不合格。できていなければ採点しない', () => {
+  const base = { requested: 'claude-opus-5-5', main: ['claude-opus-5-5'], lowCost: 'claude-haiku-5-5' };
+  const worker = (models, type = 'plugin-creator:worker') => ({ type, models });
+  const find = (g, id) => g.find((x) => x.id === id);
+  const ok = gradeModels({ use: { ...base, subagents: [worker(['claude-haiku-5-5']), worker(['claude-haiku-5-5']), { type: 'plugin-creator:reader', models: ['claude-opus-5-5'] }] }, generatedCount: 1 });
+  assert.equal(find(ok, 'worker-model').ok, true);
+  assert.match(find(ok, 'worker-model').detail, /作業エージェント 2 回/);
+  assert.equal(find(ok, 'worker-model').req, 'REQ-046');
+  // 作業エージェントの 1 つが高いモデルで動いた
+  const wrong = gradeModels({ use: { ...base, subagents: [worker(['claude-haiku-5-5']), worker(['claude-opus-5-5'])] }, generatedCount: 1 });
+  assert.equal(find(wrong, 'worker-model').ok, false);
+  assert.match(find(wrong, 'worker-model').detail, /claude-opus-5-5 でも動いた/);
+  // 名前つきの作業エージェント（worker-<名前>）も作業エージェント。読み取り役は数えない
+  const named = gradeModels({ use: { ...base, subagents: [worker(['claude-haiku-5-5'], 'plugin-creator:worker-report'), { type: 'plugin-creator:reader', models: ['claude-opus-5-5'] }] }, generatedCount: 1 });
+  assert.equal(find(named, 'worker-model').ok, true);
+  // 動かなかった（メインのエージェントが書いた見込み）
+  const none = gradeModels({ use: { ...base, subagents: [{ type: 'plugin-creator:reader', models: ['claude-opus-5-5'] }] }, generatedCount: 1 });
+  assert.equal(find(none, 'worker-model').ok, false);
+  assert.match(find(none, 'worker-model').detail, /作業エージェントが動かなかった/);
+  // モデルの記録がない
+  assert.equal(find(gradeModels({ use: { ...base, subagents: [worker([])] }, generatedCount: 1 }), 'worker-model').ok, false);
+  // 変換後の定義に費用の低いモデルの指定がない
+  assert.match(find(gradeModels({ use: { ...base, lowCost: null, subagents: [worker(['claude-haiku-5-5'])] }, generatedCount: 1 }), 'worker-model').detail, /指定がない/);
+  // 生成プラグインができていなければ、作業エージェントの観点はない
+  assert.equal(find(gradeModels({ use: { ...base, subagents: [] }, generatedCount: 0 }), 'worker-model'), undefined);
+  // 主のモデルを変えても（Haiku で始めても）、作業エージェントは費用の低いモデル
+  const haikuMain = gradeModels({ use: { requested: 'claude-haiku-5-5', main: ['claude-haiku-5-5'], lowCost: 'claude-haiku-5-5', subagents: [worker(['claude-haiku-5-5'])] }, generatedCount: 1 });
+  assert.deepEqual(haikuMain.map((g) => g.ok), [true, true]);
+});
+
+test('REQ-045 REQ-046 全体の採点：腕 with にだけ、モデルの観点が入る。落ちると、思考力の高いモデルの合格と会話例の候補が落ちる。Haiku の合格は変わらない', () => {
+  const s = passingRun();
+  const personaFiles = weekly.files.map((f) => ({ src: f.src, place: f.place, role: f.role }));
+  const persona = JSON.parse(JSON.stringify(weekly.persona));
+  persona.knowledge = persona.knowledge.filter((k) => k.id === 'output');
+  const files = goodFiles();
+  files[2] = file('tests/eval/T-01/inputs/先週の売上.csv', fs.readFileSync(weekly.files.find((f) => f.role === 'input').src, 'utf8'));
+  const run = (modelUse, o = {}) => gradeOuter({ persona, personaFiles, items: s.items, toolEvents: s.toolEvents, state: allItemsState({ stage: 'generate' }), generatedCount: 1, generatedFiles: files, stages: { stage1: { ok: true }, stage2: { ok: true } }, inner: null, userSignals: [], model: 'claude-opus-5-5', modelUse, ...o });
+  const good = { requested: 'claude-opus-5-5', main: ['claude-opus-5-5'], lowCost: 'claude-haiku-5-5', subagents: [{ type: 'plugin-creator:worker', models: ['claude-haiku-5-5'] }] };
+  const ok = run(good);
+  assert.deepEqual(ok.grades.filter((g) => g.req === 'REQ-045' || g.req === 'REQ-046').map((g) => [g.id, g.ok]), [['main-model', true], ['worker-model', true]]);
+  assert.equal(ok.verdict.ok, true);
+  assert.equal(ok.exampleCandidate, true);
+  // 作業エージェントが高いモデルで動いた
+  const bad = run({ ...good, subagents: [{ type: 'plugin-creator:worker', models: ['claude-opus-5-5'] }] });
+  assert.deepEqual(bad.verdict.failed, ['worker-model']);
+  assert.equal(bad.verdict.ok, false);
+  assert.equal(bad.exampleCandidate, false);
+  // Haiku のクリエイターの合格は、2 点のまま（testing.md 6.5 の表）。モデルの観点が落ちても合否には効かない
+  const haiku = run({ ...good, requested: 'claude-haiku-5-5', main: ['claude-haiku-5-5'], subagents: [] }, { model: 'claude-haiku-5-5' });
+  assert.deepEqual(haiku.verdict.required, HAIKU_REQUIRED);
+  assert.equal(haiku.verdict.ok, true);
+  assert.equal(haiku.grades.find((g) => g.id === 'worker-model').ok, false);
+  // 対照とプラグインなしの腕、modelUse を渡さないときは、モデルの観点がない
+  for (const o of [{ arm: 'control' }, { arm: 'without' }]) assert.ok(!run(good, o).grades.some((g) => g.id === 'main-model' || g.id === 'worker-model'));
+  assert.ok(!run(null).grades.some((g) => g.id === 'main-model'));
 });

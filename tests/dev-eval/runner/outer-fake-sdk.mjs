@@ -11,6 +11,7 @@
 //   ctx.prompt, ctx.turn（このセッションの何回目の query か）, ctx.sessionId, ctx.options
 //   await ctx.say(text)                      メインのエージェントの文
 //   await ctx.ask(questions)                 AskUserQuestion。canUseTool に渡し、答え（{ 質問の文: 答え }）を返す
+//   await ctx.subagent({ type, model }, async (sub) => { await sub.say('…'); await sub.tool(…); })   サブエージェントの仕事（そのモデルで流す）
 //   await ctx.tool(name, input, opts)        ツールの呼び出し。mcp__<サーバー名>__ のツールは、MCP のクライアントで本物のサーバーに呼ぶ
 //                                            それ以外は opts.run(input) か、既定の 'ok'。opts.parent で、サブエージェントの中の呼び出しにする
 //   台本が文字を返すと、それが最後の発言（assistant の文）と result の文になる。何も返さなければ、最後の ctx.say の文
@@ -77,7 +78,7 @@ export function createFakeSdk({ userRole, agent, model = 'claude-sonnet-5-5', co
     const started = Date.now();
 
     const emit = (message) => out.push({ session_id: sessionId, ...message });
-    const assistant = (content, parent = null) => emit({ type: 'assistant', message: { model: options.model ?? model, content }, parent_tool_use_id: parent });
+    const assistant = (content, parent = null, modelOverride = null) => emit({ type: 'assistant', message: { model: modelOverride ?? options.model ?? model, content }, parent_tool_use_id: parent });
     const userResult = (toolUseId, text, parent = null, isError = false) =>
       emit({ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: toolUseId, content: [{ type: 'text', text }], ...(isError ? { is_error: true } : {}) }] }, parent_tool_use_id: parent });
 
@@ -98,9 +99,29 @@ export function createFakeSdk({ userRole, agent, model = 'claude-sonnet-5-5', co
       turn,
       sessionId,
       options,
-      async say(text, parent = null) {
+      async say(text, parent = null, modelOverride = null) {
         if (parent === null) lastText = text;
-        assistant([{ type: 'text', text }], parent);
+        assistant([{ type: 'text', text }], parent, modelOverride);
+        await tick();
+      },
+      /**
+       * サブエージェントの 1 回の仕事。Agent の呼び出しを流し、fn の中の発言とツールの呼び出しを、そのサブエージェントのものとして流す
+       * （parent_tool_use_id が Agent の呼び出しの番号、メッセージのモデルが model）。fn には { say, tool } を渡す。
+       */
+      async subagent({ type, description = '', model: subModel = null }, fn) {
+        const id = nextId('toolu');
+        assistant([{ type: 'tool_use', id, name: 'Agent', input: { subagent_type: type, description, prompt: '頼み' } }]);
+        await tick();
+        const sub = {
+          id,
+          say: async (text) => {
+            assistant([{ type: 'text', text }], id, subModel);
+            await tick();
+          },
+          tool: (name, input, opts = {}) => ctx.tool(name, input, { ...opts, parent: id, model: subModel }),
+        };
+        const returned = await fn?.(sub);
+        userResult(id, typeof returned === 'string' ? returned : '終わりました');
         await tick();
       },
       async ask(questions) {
@@ -117,9 +138,9 @@ export function createFakeSdk({ userRole, agent, model = 'claude-sonnet-5-5', co
         await tick();
         return answers;
       },
-      async tool(name, input = {}, { run, parent = null, agentId } = {}) {
+      async tool(name, input = {}, { run, parent = null, agentId, model: modelOverride = null } = {}) {
         const id = nextId('toolu');
-        assistant([{ type: 'tool_use', id, name, input }], parent);
+        assistant([{ type: 'tool_use', id, name, input }], parent, modelOverride);
         await tick();
         const mcp = /^mcp__(.+?)__(.+)$/.exec(name);
         let text;
