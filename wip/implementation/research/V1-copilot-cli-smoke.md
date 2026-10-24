@@ -1,6 +1,6 @@
 # V1 本物の Copilot CLI での読み込みの確かめ（偽物のモデルで）
 
-状態：途中（1・2 の節まで書いた。3・4・5 はこれから）
+状態：途中（1〜4 の節まで書いた。5・6 はこれから）
 
 担当の指示：`wip/implementation/briefs/V1.md`。作業のメモ：`wip/implementation/tasks/V1.md`。
 リポジトリのファイルは変えていない。スクリプトと結果の生データはスクラッチ（`/tmp/claude-0/-home-user-plugin-creater/f6e65e0d-9c94-5351-8ee1-475927b3b43e/scratchpad/v1/`、以下 `v1/`）にある。
@@ -39,6 +39,7 @@
 
 - **スキルを読んだときの「Related files」が 97 件、約 17.7KB ある。** スキルのフォルダの下のファイルがすべて（`assets/template/` の 81 件、`references/` の 15 件、`scripts/scaffold.py`）、1 つの絶対パスずつ並ぶ。make-plugin の SKILL.md は「`assets/template/` は自分では読まない（読むとコンテキストウィンドウが早く埋まる）」と書いているが、Copilot CLI はこの一覧を自分で足す。make-plugin を読むたびに（コンパクションの後の読み直しも）届くメッセージの全体が約 25KB で、そのうち約 7 割がこの一覧である（この環境のパスは長い。実際のインストール先のパスはもっと短い）。ひな形のファイルが増えると、一覧も増える。実装の不具合ではないが、ひな形をスキルの外（例：`assets/` を残してもよいが、`template/` をアーカイブ 1 つにする、スキルのフォルダの外に置く）に出す余地がある。要判断（上位の文書で直すことに書く）。
 - 手元のフォルダのマーケットプレイスは「live」で入る。設計書やナレッジが書いていた「手元のフォルダからのインストールは将来廃止」は、フォルダを直接指定する `plugin install <フォルダ>` の話で、マーケットプレイスを通した手元のフォルダは廃止の表示なしで入った。README の「マーケットプレイス経由」の案内で問題ない。
+- フォルダを直接指定する `copilot plugin install <フォルダ>` は、入るが「Warning: Direct plugin installs (repos, URLs, local paths) are deprecated. Only plugin@marketplace installs will be supported in a future release.」と出た（空の `COPILOT_HOME` で確かめた）。マーケットプレイスを通した手元のフォルダ（`marketplace add <フォルダ>` → `install <名前>@<マーケットプレイス>`）では、この警告は出なかった。
 - GitHub の公開リポジトリ（`imaeda-hub/plugin-creator`）からの `marketplace add` は、リポジトリがまだ公開されていないので試していない（確かめられない）。
 
 ## 2. エクステンション（`--experimental`）
@@ -71,3 +72,66 @@
 - 設計・実装と食い違うことはなかった（確認の文、名前、ツールの載り方は R2 のとおり）。
 - `-p` でクリエイターを動かすには許可の指定が要る。クリエイターは対話モードで使うスキルなので支障はないが、README やスキルが `-p` を案内する場合は、`--allow-tool='extension-permission-access'` が要ることを書く。make-plugin の SKILL.md は `-p` で起動したときの断り（「`-p` と `--no-ask-user` を付けずに、対話モードで起動し直す」）を持っている。
 - 画面のサーバーの `GET /` が返す HTML は、静的ファイルの参照に `?k=<合言葉>` を付けて返す（`index.html` の `%%K%%` の置き換え）。ブラウザーでは、画面の読み込みが合言葉つきで通る設計である（実ブラウザーでは確かめていない）。
+
+## 3. 見本の生成プラグイン（組み立てのスクリプトで作ったもの）
+
+### やったこと
+
+1. `tests/creator/scaffold/sample/`（見本のヒアリングの記録 `state.json` と作業エージェントが書いた部分 `parts/`）から、本物のひな形で `python3 skills/make-plugin/scripts/scaffold.py build --hearing <state.json> --work <作業フォルダ>/.plugin-creator-work --out <作業フォルダ>/weekly-report` を動かして、`weekly-report` を作った（`v1/gen/folder/weekly-report/`）。結果は `ok: true`、`warnings: []`、最初のコミット付き、`.plugin-creator-work/` は消えた。
+2. 1 節と同じ手順で、手元のフォルダのマーケットプレイスとして入れた（`marketplace add` → `browse` → `install weekly-report@weekly-report` → `plugin list --json` → `skill list --json`）。
+3. 対話モードで `--experimental` を付けて起動し、確認に答え、偽物のモデルに `@@CALL weekly-report_open` を送った。
+4. 返った URL に `probe.py` でつなぎ、`GET /api/state` を読み、`POST /api/start`（`{"models":{…},"maxIterations":1,"task":{"week":"2026-W42"}}`）を送った。統括・作業・検証の通しの台本（`v1/behavior.mjs`）で、統括が `plan` → `task`（作業）→ `task`（検証）→ `review` → `finish` を呼ぶようにした。
+5. 作業の途中で `POST /api/stop` を送った（統括が計画中のとき、作業エージェントが動いているとき）。
+
+### 結果
+
+| 確かめること | 結果 |
+| --- | --- |
+| マーケットプレイスから入れる | 通った。「Installed 1 skill.」（クリエイターは 2）。`source: "live"`。入口のスキル `weekly-report` が `skill list --json` に出た |
+| 読み込みのときの確認 | 題：`Extension "plugin:weekly-report:weekly-report" wants elevated permissions`。本文：`This extension wants to: skip tool permission prompts, register hooks, handle permission requests.`（3 項目。クリエイターは 2 項目）。選択肢は同じ 3 つ |
+| `<名前>_open` | 通った。ツールの結果：「Web管理画面の URL：http://127.0.0.1:8731/?k=<合言葉>」＋「ユーザーに伝えてください：」の 2 項目（`/clear` を使わない、確認はチャットで答える）。番号は、既定の 8731 が空いていたのでそのまま 8731（ふさがっていれば OS に選ばせる設計） |
+| 127.0.0.1 からつながるか | つながった。`GET /api/state` は 200（`plugin.name: "weekly-report"`、`setup.taskSettings`、`run: null`）。 |
+| 選べるモデルの一覧 | 空だった（`session.rpc.model.list()` が `{"list":[],"modelPriceCategories":[],"quotaSnapshots":{}}` を返した。偽物のモデル〔自前のモデルの窓口〕のため）。そのため、画面のモデルの選択肢は、エージェントの定義の先頭のモデルと今のモデルだけの代わりの一覧（`claude-sonnet-5.5`、`gpt-6-luna`、`fake-model`）になり、一覧にないモデルを指定した開始は「統括エージェントのモデル「gpt-6.1-sol」は、選べるモデルにありません。」で断られた。`session.rpc.model.getCurrent()` は `{"modelId":"fake-model"}`。本物のログインでの一覧の要素の形は確かめられなかった |
+| `POST /api/start` → 統括が起動するか | 起動した。`tasks.startAgent({ agentType: "weekly-report:orchestrator", name: "統括 <実行番号>", prompt, model })` で、偽物のモデルに統括の定義の本文がシステムプロンプトとして、指示文（実行の番号、頼まれた作業、繰り返しの上限、作業ごとの設定の値、基準）がユーザーのメッセージとして届いた。リクエストの `model` は開始に渡したモデル（`claude-sonnet-5.5`）。対話モードの `/tasks` に `◎ 統括 20261024-044657-3fad78 [background] (8s)  model claude-sonnet-5.5` と出た |
+| 統括だけ話した場合（台本なし） | 統括が文だけで答えて終わると、実行は `aborted`／`orchestrator_ended`、まとめは「計画が記録される前に終わりました。」、課題 `M1` が自動で足された（設計どおり） |
+| 通しの台本（統括 → 作業 → 検証） | 作業・検証の定義が読み込まれ、`task` で `weekly-report:worker`／`weekly-report:verifier` が起動し、作業のモデルは `gpt-6-luna`、検証は `claude-sonnet-5.5`（`updateSubagentSettings` の上書きが効いた。統括のシステムプロンプトに `<subagent_model_preferences>` として載る）。作業の `show` の値が画面の状態の `displays.draft` に入った。**ただし、そのままでは検証が `<名前>_verdict` を使えず、実行は途中で終わった（5 節の不具合 1）。** 統括の `tools` に `<名前>_verdict`・`edit`・`execute` を足した写しでは、`all_passed` で終わった（まとめ「1回の試行で、2つの基準を満たしました。」、3 体とも `completed`、最後の返事が各枠に入った） |
+| `POST /api/stop` → 取り消されるか | 取り消された。統括が計画中のとき：実行は `finished`、`endReason: user_stopped`、統括 `stopped`、`/tasks` は「No subagents」。作業エージェントが動いている途中：統括も作業も `tasks.list` で `cancelled`、状態は統括 `stopped`・作業 `stopped`・検証 `standby`、`unstopped` は空、`/tasks` は「No subagents」（統括を取り消すと、`task` で起動した同期の作業エージェントも取り消された） |
+| 終わったあと | Copilot CLI を終えると、画面のサーバーは閉じ、エクステンションのプロセスは残らなかった |
+
+実行中の `/tasks` の見え方：統括は `◎ 統括 <実行番号> [background]`、その下に作業が `◎ 週報を書く [sync]`（`task` の `description` の文字）で出た。
+
+### 設計・実装との食い違い、気づいたこと
+
+- **イベントの届き方（B1 の要確認 1〜3、10 が解決）**
+  - `subagent.started` の `agentName` と `agentType` は、どちらも `<プラグイン>:<エージェント>`（`weekly-report:orchestrator` など）で届く。B1 の「そろえ方」は不要だったが、害はない。`agentDisplayName` は短い名前（`orchestrator`、`worker`、`verifier`）で、`agentDescription` はエージェントの定義の説明の文。
+  - `onSubagentStop` は、`agentId`・`agentName`・`agentType`・`response`（最後の返事）つきで、`subagent.completed` より前に届く。作業・検証・統括のすべてで、そうだった。
+  - `onPreToolUse` は、メインのエージェントのツール（`agentId` なし）、統括、作業、検証のすべてのツール呼び出しで呼ばれ、`agentId`・`agentType`（`<プラグイン>:<エージェント>`）・`parentAgentId` が付く。
+  - 統括は `tasks.list` で `status: idle`（手番が終わった後。多手番の裏のエージェント）→ 取り消しで `cancelled`。`subagent.completed` が統括に 2 回届く（手番が終わったとき：`cancelled` なし。取り消した後：`cancelled: true`）。実行は `all_passed` で正しく終わったので、中心の処理は 2 回目を問題なく扱っている。
+- **画面の枠の「担当」（`task` 欄）が、呼び出しの説明ではなく、エージェントの短い名前になる。** B1 は、`subagent.started` の `agentDisplayName` に `task` の `description`（例：「週報を書く」）が入ると想定して作ったが、実機では `agentDisplayName` は `worker`・`verifier` だった（状態の `agents[].task` が `worker`、`verifier`）。`task` の `description` は、`tool.execution_start`（統括の `task` 呼び出し。`arguments.description`、`toolCallId`）にあり、`subagent.started.data.toolCallId` と同じ番号で結べる。`/tasks` の画面にも同じ文字が出る。ユーザーへの影響は、画面の「担当」の欄の見え方だけ。
+- **`weekly-report_open` の引数 `requestText` は必須と宣言されているが、`{}` で呼んでも通った**（Copilot CLI は必須の引数を検査しない。エクステンションの中が受け付ける）。ツールの引数の `minimum`・`minLength`・`minItems` は、モデルに届く定義では説明の末尾の `{minimum: 1}` のような文字になる（検査は Copilot CLI ではなく、エクステンションの `handleTool` がする設計のままで足りる）。
+- サブエージェントの システムプロンプトには、Copilot CLI が定義の本文の後ろに、`<tool_calling>`、「**CRITICAL: Ensure a response is returned to your caller.** … Do NOT use output redirection (`>`, `>>`, `tee`) to save results to files. Do NOT use `cat > /path` or heredocs to create output files.」、`<subagent_usage>`（「Default to doing the work yourself. … Use custom agents sparingly」）、`<environment_context>` を足す。作業エージェントの仕事はファイルを作ることなので、編集のツールがないと、この「シェルでファイルを作るな」と衝突する（5 節の不具合 1 に関係）。統括は `<subagent_usage>` を受けるが、統括の定義が `task` で頼む手順を明示しているので、台本どおりに `task` が使われた。
+
+## 4. カスタムエージェントの定義
+
+### やったこと
+
+- 生成プラグインの 3 体（統括・作業・検証）は、3 節の通しで動かした。クリエイターの読み取り役（`reader`）と作業エージェント（`worker`）は、メインのセッションから `task` ツールで起動した（`@@CALL task {"agent_type":"plugin-creator:reader",…}`）。
+- 偽物のモデルに届いたリクエストの `model` と `tools`、システムプロンプトを読んだ。
+
+### 結果
+
+| 確かめること | 結果 |
+| --- | --- |
+| 定義が読み込まれるか | 読み込まれた。メインの `task` ツールの `agent_type` の選択肢に `plugin-creator:reader`、`plugin-creator:worker`（生成プラグインでは `weekly-report:orchestrator`・`verifier`・`worker`）が、定義の `description` つきで並ぶ。起動した子のシステムプロンプトは定義の本文 |
+| 統括・作業・検証の定義の `description` が「チャットの頼みでは呼ばない」でも | メインの `task` の選択肢には載る（呼べる状態）。`disable-model-invocation` は使っていない（R1 のとおり、使うと `task` で起動できなくなる） |
+| `model` のリスト | `tasks.startAgent` や `updateSubagentSettings` の指定がないとき、クリエイターの作業エージェント（`model: [gpt-6-luna, claude-haiku-5.5]`）は、リストの先頭の `gpt-6-luna` で動いた。`model` のない読み取り役は、メインのセッションのモデル（`fake-model`）で動いた。リストの 2 番目への切り替わり（先頭が使えないとき）は、自前のモデルの窓口では確かめられない。開始の指定（`tasks.startAgent` の `model`）と `updateSubagentSettings` の上書きは、リストより優先して効いた |
+| `tools` の別名 `read`・`search` | 子のモデルの族で名前が変わる。Claude の族：`read` → `view`、`search` → `grep`・`glob`。GPT の族（`gpt-6-luna`、`gpt-6.1-sol`）：`read` → `view`、`search` → `rg`・`glob`、`edit` → `apply_patch`（`type: "custom"` のツール）。`execute` → `bash`・`read_bash`・`stop_bash`・`list_bash`。`agent` → `task`・`read_agent`・`list_agents`・`write_agent` |
+| `tools` の別名 `web`（読み取り役） | **確かめられなかった。** 読み取り役のツールは `view`、`grep`、`glob`、`plugin-creator_doc_text` で、`web` に当たるツールは載らなかった。メインのセッションにも Web のツール（`web_fetch` など）がない（`fetch_copilot_cli_documentation` だけ）ので、`web` が解決されない理由が別名の扱いか、この環境（自前のモデルの窓口）にないためかは分からない |
+| `skill` を外したとき | 統括・作業・検証・読み取り役・作業エージェントのどれにも、`skill` ツールは載らなかった（`tools` に書かない限り載らない）。`ask_user` も載らない（サブエージェントは質問できない。ナレッジのとおり） |
+| 拡張のツール（`<名前>_*`）を `tools` に書く | 書いたツールだけが載る（統括：`plan`・`review`・`issue`・`finish`・`show`。作業：`show`。検証：`verdict`。読み取り役：`plugin-creator_doc_text`）。ただし**親が持つツールの範囲内**（5 節の不具合 1） |
+| 内蔵の指示ファイル | 子のシステムプロンプトに AGENTS.md 等の中身が入るかは、この環境の作業フォルダに指示ファイルを置いていないので確かめていない（R1 の「`include-custom-instructions` を付けない限り受け取らない」の確認は未実施） |
+
+### 設計・実装との食い違い、気づいたこと
+
+- 5 節の不具合 1（子のツールは親のツールの範囲内）。
+- 読み取り役の `web` が解決されるかは、ログインした本物のアカウントで見る必要がある（6 節）。

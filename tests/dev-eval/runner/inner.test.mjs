@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 import * as sdk from '@anthropic-ai/claude-agent-sdk';
 
 import { firstUserText, startFakeAnthropic } from './fake-anthropic.mjs';
-import { describeFailure, InnerEvalError, innerEval, main, parseArgs, scoresOf, summarizeRun } from './inner.mjs';
+import { describeFailure, InnerEvalError, innerEval, main, parseArgs, scoresOf, summarizeRun, userRoleFunction } from './inner.mjs';
 import { buildSamplePlugin, pythonHasModules, scriptedModel, tmpDir } from './inner-test-support.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -221,4 +221,15 @@ test('REQ-041 始められなかった誤り：部品（npm のパッケージ�
   assert.deepEqual(describeFailure(missing), { error: 'tools_missing', message: "必要な部品が入っていません。tests/dev-eval で npm install を実行してください（Cannot find package 'playwright' imported from /x/inner.mjs）。" });
   assert.deepEqual(describeFailure(new InnerEvalError('sandbox_missing', '足りません')), { error: 'sandbox_missing', message: '足りません' });
   assert.deepEqual(describeFailure(new Error('x')), { error: 'failed', message: 'x' });
+});
+
+test('REQ-007 ユーザー役の関数：質問のしかた（via）と印（meta）をユーザー役に渡す。省いたときは、選択肢の有無で決める', async () => {
+  const calls = [];
+  const role = { cost: 0.5, answer: async (...args) => { calls.push(args); return { answer: '答え' }; } };
+  const fn = userRoleFunction(role);
+  assert.equal(await fn({ question: 'Q1', choices: ['a'] }), '答え');
+  assert.equal(await fn({ question: 'Q2' }), '答え');
+  assert.equal(await fn({ question: 'Q3', choices: [], via: 'setting', meta: { setting: 'week' } }), '答え');
+  assert.deepEqual(calls, [['Q1', ['a'], 'AskUserQuestion', {}], ['Q2', [], 'text', {}], ['Q3', [], 'setting', { setting: 'week' }]]);
+  assert.equal(fn.cost(), 0.5);
 });

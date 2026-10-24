@@ -77,9 +77,7 @@ export function normalizeSettingAnswer(def, answer) {
     case 'select': {
       const options = (def.options ?? []).map(optionOf);
       const text = plain.normalize('NFKC');
-      const exact = options.find((o) => o.value.normalize('NFKC') === text || o.label.normalize('NFKC') === text);
-      if (exact) return { ok: true, value: exact.value };
-      // 答えの中に選択肢の言葉がある（長い言葉を先に見る）
+      // 答えが選択肢の言葉そのもの、または答えの中に選択肢の言葉がある（長い言葉を先に見る）
       const inside = [...options].sort((a, b) => b.label.length - a.label.length).find((o) => (o.label !== '' && text.includes(o.label.normalize('NFKC'))) || (o.value !== '' && text.includes(o.value.normalize('NFKC'))));
       return inside ? { ok: true, value: inside.value } : { ok: false, reason: 'no_such_option' };
     }

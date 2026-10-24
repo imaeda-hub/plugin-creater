@@ -222,6 +222,16 @@ function convertPlugin(pluginRoot, convertedRoot) {
   if (run.status !== 0) throw new InnerEvalError('convert_failed', `置き換えに失敗しました（終了コード ${run.status}）：${(run.stdout || run.stderr).slice(-600)}`);
 }
 
+/**
+ * D1c のユーザー役（createUserRole の返り値）を、内側の EVAL が呼ぶ形 ({ question, choices, via, meta }) => 答えの文字 にする。
+ * via は、質問のしかた（AskUserQuestion、text、setting）。省くと、選択肢があれば AskUserQuestion、なければ text。
+ */
+export function userRoleFunction(role) {
+  const fn = async ({ question, choices, via, meta }) => (await role.answer(question, choices ?? [], via ?? ((choices ?? []).length > 0 ? 'AskUserQuestion' : 'text'), meta ?? {})).answer;
+  fn.cost = () => role.cost;
+  return fn;
+}
+
 /** 始められなかった誤りを、{ error, message } にする。部品（npm のパッケージ）が入っていないときは、入れ方を示す */
 export function describeFailure(error) {
   if (error?.code === 'ERR_MODULE_NOT_FOUND') {
@@ -256,9 +266,7 @@ export async function main(argv = process.argv.slice(2)) {
     const userRoleFor = (task, arm, n) => {
       const home = fs.mkdtempSync(path.join(os.tmpdir(), `plugin-creator-dev-user-${task.id}-${arm}-${n}-`));
       const role = createUserRole({ persona: personaOf.get(task.id), styleName: args.style, query: sdk.query, home, envExtra });
-      const fn = async ({ question, choices, via, meta }) => (await role.answer(question, choices ?? [], via ?? ((choices ?? []).length > 0 ? 'AskUserQuestion' : 'text'), meta ?? {})).answer;
-      fn.cost = () => role.cost;
-      return fn;
+      return userRoleFunction(role);
     };
     const record = await innerEval({
       sdk, chromium, pluginRoot, convertedRoot, tasks: loaded.map((l) => l.task), userRoleFor, outDir, runs: args.runs, arms: args.arms, models: args.models, taskSettings: args.settings,

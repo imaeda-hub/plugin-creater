@@ -51,7 +51,19 @@ test('REQ-007 答えを欄の値にする：文字は最初の行から飾りを
   assert.deepEqual(value(FORCE, 'はい（チェックを入れる）'), { ok: true, value: true });
   assert.deepEqual(value(FORCE, 'いいえ（チェックを入れない）'), { ok: true, value: false });
   assert.deepEqual(value(FORCE, 'チェックは入れない'), { ok: true, value: false });
+  assert.deepEqual(value(FORCE, 'いいえ'), { ok: true, value: false });
+  assert.deepEqual(value(FORCE, 'オフ'), { ok: true, value: false });
+  assert.deepEqual(value(FORCE, 'チェックを入れる'), { ok: true, value: true });
+  assert.deepEqual(value(FORCE, 'オンにします'), { ok: true, value: true });
   assert.deepEqual(value(FORCE, 'どちらでも'), { ok: false, reason: 'unclear' });
+  // 選択肢の言葉が、ほかの選択肢の言葉の一部のとき、長いほうを選ぶ
+  const NESTED = { key: 'tone', type: 'select', options: ['です', 'です・ます'] };
+  assert.deepEqual(value(NESTED, 'です'), { ok: true, value: 'です' });
+  assert.deepEqual(value(NESTED, 'です・ます調で'), { ok: true, value: 'です・ます' });
+  // 選択肢が { value, label } の形でも、見出しか値のどちらで答えても当たる
+  const OBJECTS = { key: 'mode', type: 'select', options: [{ value: 'plain', label: 'ふつう' }, { value: 'short', label: '短く' }] };
+  assert.deepEqual(value(OBJECTS, '短くしてください'), { ok: true, value: 'short' });
+  assert.deepEqual(value(OBJECTS, 'plain'), { ok: true, value: 'plain' });
 });
 
 test('REQ-007 決められない答え（決まっていません、そのまま、空）は値にしない。長い答えは、中に似た言葉があっても値として扱う', () => {

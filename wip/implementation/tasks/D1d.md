@@ -15,13 +15,14 @@
 - [x] 偽の API で、本物の Agent SDK 0.3.310 の Claude Code を動かして、つなぎ方を確かめた（分かったことは下の節）
 - [x] 共通の部品：package.json、model-map.mjs、isolation.mjs、mcp-tools.mjs、fake-anthropic.mjs と、それぞれの試験
 - [x] inner-adapter.mjs（内側のつなぎ口）と試験 inner-adapter.test.mjs（17 件）
-- [x] inner-run.mjs（実行1回。あり・なし）と試験 inner-run.test.mjs（15 件）
+- [x] inner-run.mjs（実行1回。あり・なし）と試験 inner-run.test.mjs（19 件）
 - [x] inner-judge.mjs（モデルで判定する関数の Agent SDK 版）と試験 inner-judge.test.mjs（5 件）
-- [x] inner.mjs（入口。コマンドラインと innerEval）と試験 inner.test.mjs（9 件）
-- [x] inner-e2e.test.mjs（5 件）：本物の Agent SDK と Claude Code の本体、本物の生成プラグイン〔C2 の見本を組み立てて D1a の変換スクリプトで置き換えたもの〕の画面と Playwright を、偽の Anthropic API につないで、ありの実行・なしの実行・チャットの返事・質問のツール・止めるを通した
-- [x] 通しの確認：tests/dev-eval/runner/ の試験すべて（D1c の分を含む）157 件が通った。D1d の分は 72 件（共通の部品 21 件を含む）。D1d の分を 3回続けて動かしても通った
+- [x] inner.mjs（入口。コマンドラインと innerEval）と試験 inner.test.mjs（10 件）
+- [x] inner-e2e.test.mjs（7 件）：本物の Agent SDK と Claude Code の本体、本物の生成プラグイン〔C2 の見本を組み立てて D1a の変換スクリプトで置き換えたもの〕の画面と Playwright を、偽の Anthropic API につないで、ありの実行・なしの実行・チャットの返事・質問のツール・止める・設定の欄をユーザー役が決めること（決められたとき、決められなかったとき）を通した
+- [x] 通しの確認：tests/dev-eval/runner/ の試験すべて（D1c の分を含む）172 件が通った。D1d の分は 87 件（共通の部品 21 件を含む）。D1d の分を続けて動かしても通った
 - [x] 変異試験（わざと壊す検査）：下の「変異試験」
-- [x] 最後の返事
+- [x] 最後の返事（1回目）
+- [x] 続きの仕事（統括の決定）：画面の開始前の設定の欄を、ユーザー役が読んで決める（inner-settings.mjs）。下の「画面の設定の欄を決める」
 
 動かし方（リポジトリの根から。事前に `cd tests/dev-eval && npm install`）：
 
@@ -51,6 +52,7 @@ node tests/dev-eval/runner/inner.mjs --plugin <生成プラグインのフォル
 | `runner/inner-run.mjs` | 実行1回 `runInnerArm({ arm, task, runDir, sdk, userRole, judge, screen, ... })`。流れは先頭のコメント。`asksForReply`（返事を求めているかの見分け）、`buildChecks`（動きの確かめ） |
 | `runner/inner-judge.mjs` | `createAgentSdkJudge({ sdk, model })`。grade.mjs の buildJudgePrompt と parseJudgeReply を使う |
 | `runner/inner.mjs` | `innerEval(...)`（課題 × 回数 × あり・なし。点数とその差。利用枠の上限で止まったら残りを skipped）、`main(argv)`、`parseArgs`、`scoresOf`、`summarizeRun` |
+| `runner/inner-settings.mjs` | 画面の開始前の設定の欄を、ユーザー役が決める。`decideSettings`（値を決める順と記録）、`describeSetting`（ユーザー役に聞く文）、`normalizeSettingAnswer`（答えを欄の値にする）、`previewInputs`（渡したファイルの先頭）。試験は `inner-settings.test.mjs`（8 件） |
 | `runner/inner-test-support.mjs` | 試験の道具。`buildSamplePlugin()`（C2 の見本から組み立てて、D1a の convert.py で置き換える）、`scriptedModel(scenario)`（偽の API の台本。メイン・統括・作業・検証・ユーザー役・判定を見分けて、決まった順にツールを呼ぶ） |
 
 ## 共通の部品（D1c と分け合うもの。置き場所と形）
@@ -99,7 +101,20 @@ D1c は、次の部品を使っている（isolation・mcp-tools・model-map・f
 16. **環境変数**：試されるエージェントに渡すのは `ENV_ALLOW` だけ。認証が要る環境では `--pass-env NAME,…` で明示する。
 17. **出力のフォルダ名**：`inner-runs/`（D1c の outer-inner.mjs が同じ outDir を使うので、`runs/` のような一般的な名前を避けた）。
 18. **ユーザー役**：D1c の `createUserRole` を、コマンドラインの入口から使う。`innerEval` 自体は、`userRoleFor(task, arm, n)` が返す関数 `({ question, choices }) => 答えの文字` を受け取るだけ（試験は偽物を渡す）。
-19. **必須の設定がある生成プラグイン**：模擬ユーザーの `inner/eval.json` の `settings.task` は、生成プラグインごとに違う設定の欄を知らない。`--setting 鍵=値` で足せる。足さないと「画面で開始できませんでした（「〜」を入力してください）」で incomplete になる（下の「上位の文書で直すこと」）。
+19. **画面の作業ごとの設定の欄**（統括の決定どおり。下の節）：ユーザー役が決める。`--setting 鍵=値` は、決めた値を上書きするために残した。
+
+## 画面の設定の欄を決める（統括の決定。D1d の続きの仕事）
+
+生成プラグインの作業ごとの設定の欄は、クリエイターが作るときに決まるので、模擬ユーザーの `inner/eval.json` の `settings.task` の鍵と合わないのが普通である。testing.md 7章の「人と同じ流れ（設定 → 開始 → 監視 → 結果）」に合わせ、ユーザー役が欄を読んで値を決める。
+
+- **いつ**：チャットに画面の URL が出て、画面を開く前（`inner-run.mjs` の `resolveScreenSettings`）。画面を開くツールが呼ばれた後なので、中心の処理の状態の `setup.taskSettings`（見出し・説明・種類・選択肢・必須か・初めの値）が読める。画面に出ている欄と同じ元の値を、画面の描画の前に読む（画面の見た目を読み取らない。画面の欄は `taskSettings` を描くだけなので、同じ内容）。
+- **値を使う順**：`--setting 鍵=値`（補い）＞ 課題の `settings.task` に同じ鍵があればそれ ＞ ユーザー役が決めた値。ユーザー役に聞くのは、前の2つにない欄だけ。役割ごとのモデルと繰り返しの上限は、今までどおり試験の仕組み（課題の `settings.maxIterations`、`models` の引数）が決める。
+- **聞く文**（`describeSetting`）：欄の見出し・説明・種類・必須か・初めの値・選べるもの、ユーザーが頼んだこと（課題の `prompt`）、渡したファイル（`inputs` の場所と、先頭の最大 3 件・各 800 文字までの中身）。「入れる値だけを答えてください。決められないときは『決まっていません』と答えてください」で終わる。欄ごとに1回聞く。選択の欄は選択肢、チェックの欄は「はい／いいえ」を選択肢として付ける。
+- **答えを値にする**（`normalizeSettingAnswer`）：文字と場所は最初の行（「」や引用符、文末の「。」を除く）。数は答えの中の最初の数（全角、コンマも読む）。選択は選択肢に当てる（答えの中に選択肢の言葉があればそれ）。チェックは「いいえ・入れない・オフ」を先に、「はい・入れる・オン」を次に見る。短い答え（40 文字以内）が「決まっていません」「分かりません」「そのまま」「初期値」などなら、決められなかったものとする。
+- **決められなかった欄**：値を入れず、画面の初めの値のままにする。必須の欄で値がなければ、画面が開始を断り、実行は `incomplete`（理由に、入れなかった欄の見出しが入る）。ユーザー役の呼び出しが失敗したときは、画面を開始せず、`error`（理由：ユーザー役の呼び出しに失敗しました）にする。
+- **記録**：`result.settings`（結果の `inner-result.json` の実行ごとの `settings`、`events.jsonl` の `settings`）に、欄ごとに `{ key, label, type, required, source, value, question, answer, note }`。`source` は `cli`・`eval-json`・`user-role`（ユーザー役が決めた）・`default`（決められず、初めの値のまま。`note` に abstain・not_a_number・no_such_option・unclear）。ユーザー役に聞いたものだけ `question` と `answer` が付く。
+- **ユーザー役の関数の形**：`userRole({ question, choices, history, via, meta })`。設定の欄の質問は `via: 'setting'`、`meta: { setting: <鍵> }`。`inner.mjs` の入口は、これを D1c の `role.answer(question, choices, via, meta)` に渡す。D1c の `outer-inner.mjs` の関数は `via` と `meta` を渡していないので、そのままでも動くが、`via`・`meta` を渡すと、ユーザー役の記録に設定の質問と分かる印が付く（D1c への頼み、任意）。
+- **ユーザー役の答え方への注意**：D1c のユーザー役の決まりは「選択肢の言葉だけで済ませない」。選択の欄でも、答えの中に選択肢の言葉があれば拾う作りにした。本物のモデルで、値だけを答えるか（長い文で答えて値を取り損なわないか）は、最初の EVAL の記録（`settings` の `answer` と `value`）で確かめる。
 
 ## 要確認（本物のモデル・手元の環境でしか確かめられないこと）
 
@@ -110,7 +125,8 @@ D1c は、次の部品を使っている（isolation・mcp-tools・model-map・f
 5. **fork のサブエージェント**：Claude Code 2.1.302 から fork が既定でオン（R4 注 D-8）。統括が `subagent_type` を省くか `fork` にすると、fork が動き、`agent_type` が `fork` で届く。そのときの画面の枠・採点への影響は、本物の EVAL で見る（強制では切らない）。
 6. **利用枠の上限**：結果の文が `USAGE_LIMIT_ERROR_PREFIXES`（SDK の一覧）で始まるかで見分ける。本物の上限の文は偽の API では出せないので、偽の Agent SDK の応答で試験した。
 7. **`AskUserQuestion` の複数選択の答えの形**：ユーザー役の文章をそのまま答えにしている（公式の説明では、ラベルの配列か `, ` でつないだ文字列、自由な答えも可）。本物のモデルが複数選択を使ったときの動きは未確認。
-8. **ブラウザーの手元の Chrome・Edge**：screen.mjs が Chrome、Edge、Chromium の順に試す。この環境は `PLUGIN_TEST_BROWSER_CHANNEL=chromium` で試験した。
+8. **ユーザー役が設定の欄を決める答え方**：上の節の最後のとおり。本物のモデルの答えが、値だけか、文章かを、最初の EVAL の `settings`（`answer`・`value`）で見る。外れが多ければ、`normalizeSettingAnswer` を直すか、質問の終わりの文言を直す。
+9. **ブラウザーの手元の Chrome・Edge**：screen.mjs が Chrome、Edge、Chromium の順に試す。この環境は `PLUGIN_TEST_BROWSER_CHANNEL=chromium` で試験した。
 
 ## 上位の文書で直すこと
 
@@ -123,7 +139,7 @@ D1c は、次の部品を使っている（isolation・mcp-tools・model-map・f
 2. **BLUEPRINT 3.1 / generated-plugin-structure.md 3.2 の中立のイベント**：`agent.started` の `model` は、Agent SDK では始まりの時点で分からない（実際のモデルは最初の assistant メッセージで分かる）ので、始まりに `model` を付けず、`agent.configured` で届ける。Copilot CLI の `subagent.started` には `model` が付く。core は `model` がなくても動く（確かめた）が、設計書に「始まりの `model` は省かれることがある」と書く。
 3. **生成プラグインの adapter.mjs**：`describeOpened`（画面を開くツールの返り値の文）を export するか、core/tools.mjs に移すと、内側の EVAL のつなぎ口が写さずに済む（今は inner-adapter.mjs に同じ形を写した。二重管理になる）。
 4. **C3 の screen.mjs（A2 の画面の欄の id の決まりも）**：画面で選ぶモデルの欄（`#setting-model-<役割>`）を操作する窓口が screen.mjs にない。今は `settings.task` に `model-<役割>` を足して渡している（欄の id の規則に頼る）。`operate({ settings: { models } })` を足すと、規則に頼らずに済む。
-5. **D1b の FORMAT.md 3章 / testing.md 7章**：模擬ユーザーの `inner/eval.json` の `settings.task` は、生成プラグインごとに違う画面の設定の欄を知らない。必須の設定（例：「対象の週」）がある生成プラグインでは、開始できない。選択肢：(a) 設定の値を、ユーザー役が画面の設定の見出しと説明を読んで、模擬ユーザーのナレッジから埋める（人と同じ流れに近いが、ユーザー役の呼び出しが増える）、(b) 模擬ユーザーに「設定の欄の見出し → 値」の対応を持たせる、(c) 今のコマンドラインの `--setting 鍵=値`。統括に判断を仰ぐ。
+5. **D1b の FORMAT.md 3章 / testing.md 7章**：統括の決定で、作業ごとの設定の欄はユーザー役が決めることにした（上の「画面の設定の欄を決める」）。FORMAT.md 3章に「`inner/eval.json` の `settings.task` は、生成プラグインの設定の欄の鍵と合うときだけ使う。ふつうは書かない。欄の値はユーザー役が、頼みの文と入力のファイルとナレッジから決める」と足す。testing.md 7章にも、設定の値をユーザー役が決めることを足す。
 6. **creator-structure.md 2章の部品の表**：R4 が挙げたとおり、開発の試験の部品（変換スクリプト、EVAL の実行の仕組み〔内側：tests/dev-eval/runner/inner*.mjs と共通の部品〕、模擬ユーザー、ユーザー役の試験）の行がない。追跡のため足す。
 7. **testing.md 11.1**：Agent SDK の版を 0.3.307 から 0.3.310（Claude Code 2.1.310）に上げた。npm の最新で、手元の `claude` も 2.1.310。peer の `@anthropic-ai/sdk`・`@modelcontextprotocol/sdk`・`zod` も固定が要る。
 8. **ナレッジ agent-sdk-eval.md**：上の「確かめて分かったこと」のうち、MCP のツールの `alwaysLoad`、`agent` とシステムプロンプトのプリセット、`Agent` の既定が裏であること、`run_in_background: false`、`claudecode/toolUseId` を足す価値がある（ナレッジの追加は PR の前に統括がユーザーに提案する。CLAUDE.md 7章）。
@@ -140,3 +156,4 @@ D1c は、次の部品を使っている（isolation・mcp-tools・model-map・f
 
 D1d の本体と共通の部品の 28 か所を1つずつ壊した写し（tests/dev-eval/runner-mut/ に写して動かし、終わりに消した）を、関係する試験にかけた。壊す箇所：ツールの拒み、ツール名の戻し、モデルの書き換え、取り消しのイベント、query の閉じ、親の結び付け、実行のしかた、呼んだエージェントの結び付け、利用枠の上限、実際のモデルの名前、先に届いたモデル、返事を求めているかの見分け、URL が出た後の返事、プラグインが読み込まれたかの確かめ、なしにプラグインを渡さないこと、返事の上限、インストラクションの追加、点数の差の向き、利用枠の上限で止まった後の扱い、採点しない実行を平均に入れないこと、判定の誤りの印、判定に道具を渡さないこと、alwaysLoad、ハンドラーの例外、設定を読ませないこと、作業フォルダの外への書き込み、環境変数の絞り込み、表にないモデル。
 - 最初は 23 か所を試験が見つけ、5 か所を見逃した（親の結び付け：統括が親でない場合、先に届いたモデルの反映、URL が出た後の返事、インストラクションの追加、判定の誤りの印）。見逃した分に試験を足して、28 か所すべて見つけられるようになった。
+- 続きの仕事（設定の欄をユーザー役が決める）の分は、別に 15 か所（値を使う順、決められない答えの扱い、チェックの読み方、聞く文に入れるもの、記録、ユーザー役の失敗、via の受け渡しなど）を壊した。2 か所を見逃したので、試験を足した（チェックの「いいえ」を先に見ること、ユーザー役の関数の via の受け渡し）。また 1 か所は、選択肢の完全一致の分岐が、そのあとの「答えの中の選択肢の言葉」の分岐と同じ結果になる無駄だったので、分岐を消した。
