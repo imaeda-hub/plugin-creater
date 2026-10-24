@@ -60,7 +60,7 @@ Denying will prevent this extension from loading.
 | 選択肢 | 意味 |
 | --- | --- |
 | Yes | 今回だけ許可します。Copilot CLI を起動するたびと、`/clear` のたびに、また確認が出ます |
-| Yes, and always allow "plugin:plugin-creator:plugin-creator" in this directory（後ろにフォルダの場所が付きます） | このフォルダでは常に許可します。このフォルダでは、次から確認が出ません（`/clear` の後も、起動し直しても）。ほかのフォルダでは、また出ます |
+| Yes, and always allow "plugin:plugin-creator:plugin-creator" in this directory（後ろにフォルダの場所が付きます。作業フォルダが Git のリポジトリのときは、`in this directory` の代わりに `in this repo` と出ます） | このフォルダでは常に許可します。このフォルダでは、次から確認が出ません（`/clear` の後も、起動し直しても）。ほかのフォルダでは、また出ます |
 | Yes, and don't ask again for "plugin:plugin-creator:plugin-creator" this session | フォルダが分からないときに、上の選択肢の代わりに出ます。このセッション（Copilot CLI の1つの会話。`/clear` で新しいセッションになります）の間は、確認が出ません |
 | No (Esc) | 断ります。plugin-creator は読み込まれません |
 

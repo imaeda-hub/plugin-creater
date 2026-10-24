@@ -51,7 +51,7 @@ Copilot CLI が、統括エージェント（`{{plugin_name}}:orchestrator`。�
      - `register hooks`：画面で止めた実行のエージェントが、ツールを使えないようにする。また、統括エージェントが、{{plugin_name}} の許していないツール（ファイルの書き込みやコマンドなど。これらは作業エージェントが行う）を使えないようにする。
      - `handle permission requests`：エージェントの許可の求めを見て、画面に「チャットで確認を待っています」と示す。答えはしない（許可も拒否も、ユーザーがチャットで行う）。
    - 許可する理由：断ると読み込まれず、画面で開始も監視もできない。
-   - 選び方：「Yes」は今回だけ許可し、Copilot CLI を起動するたびと `/clear` のたびに、また確認が出る。「Yes, and always allow "plugin:{{plugin_name}}:{{plugin_name}}" in this directory」（後ろにフォルダの場所が付く）は、このフォルダでは次から確認が出ない。
+   - 選び方：「Yes」は今回だけ許可し、Copilot CLI を起動するたびと `/clear` のたびに、また確認が出る。「Yes, and always allow "plugin:{{plugin_name}}:{{plugin_name}}" in this directory」（後ろにフォルダの場所が付く。作業フォルダが Git のリポジトリのときは、`in this directory` の代わりに `in this repo` と出る）は、このフォルダでは次から確認が出ない。
 3. エクステンションを使わない設定（`/extensions mode` の Disabled）になっている：`/extensions mode` で Load & Augment か Load Only に戻す。Disabled は、次のセッションにも残る。
 
 直したら、もう一度チャットで作業を頼むよう伝える。
