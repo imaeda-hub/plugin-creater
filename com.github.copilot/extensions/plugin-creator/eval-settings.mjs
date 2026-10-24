@@ -4,7 +4,7 @@
 // 1段目（template/tests/stage1/check_structure.py の settings_problems）と同じ決まりを、重ねて持つ：
 //   - 値の名前（key）が、案の設定にある
 //   - 値の型が、案の設定の種類に合う（text・path は文字、number は数、checkbox は true か false、select は選択肢のどれか）
-//   - 必須で、初めの値がなく、種類が checkbox でない設定には、値がある
+//   - 必須で、初めの値がなく、種類が checkbox でない設定には、値がある（課題が settings.task を省いたときも、空の値として比べる）
 // ずれは tests/creator/extension/eval-settings.test.mjs が見張る（同じ場合分けを Python の関数にも渡して、誤りの数を比べる）。
 // 返す文は、モデルが読む。words.md の表の言葉で書く。
 

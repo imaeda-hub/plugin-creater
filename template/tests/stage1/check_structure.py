@@ -1018,8 +1018,12 @@ def check_eval(ctx: Context, c: Check) -> None:
         if isinstance(data.get("inputs"), list):
             for problem in input_problems(os.path.dirname(path), data["inputs"], label):
                 c.error(problem)
-        if isinstance(ctx.task, dict) and isinstance(data.get("settings"), dict) and isinstance(data["settings"].get("task"), dict):
-            for problem in settings_problems(ctx.task, data["settings"]["task"], label):
+        # settings.task を省いた課題も、空の値として比べる（必須で初めの値のない設定があれば、画面で開始できない）。
+        # settings や settings.task が辞書でないときは、形の誤りとして eval_task_problems が知らせているので、ここでは比べない
+        eval_settings = data.get("settings", {})
+        given_task = eval_settings.get("task", {}) if isinstance(eval_settings, dict) else None
+        if isinstance(ctx.task, dict) and isinstance(given_task, dict):
+            for problem in settings_problems(ctx.task, given_task, label):
                 c.error(problem)
         for item in data.get("criteria") if isinstance(data.get("criteria"), list) else []:
             if ctx.task is None or not isinstance(item, dict) or not isinstance(item.get("id"), str):
