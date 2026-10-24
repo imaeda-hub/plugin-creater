@@ -125,6 +125,18 @@
 - D1c：要確認。生成プラグインの tests/run.py が Playwright 不足で止まり、クリエイターが道具の用意を提案する（EVAL の中の扱いは最初の実行で決める）。週報の模擬ユーザーの headings.asked が一般の問いに当たる、headings.leak の「来週の予定」が成果物の fact にも出る（偽陽性が出たら絞る）。
 - D1c→統括：会話例を置いたら、README の「置きます」を「あります」に直す。EVAL の前に `node tests/dev-eval/runner/outer.mjs --persona … --dry-run` で回数と費用の見込みを出せる。
 - R2：`requestSandboxPermissive` を「サンドボックスの外で動かす」と示さない（generated-plugin-structure.md 6.3）。tasks.list には shell と client のタスクも入る。
+- V1（本物の Copilot CLI 1.0.102 と偽物のモデル。報告は research/V1-copilot-cli-smoke.md）：
+  - 不具合1【重大】サブエージェントのツールは、親（統括エージェント）の `tools` の範囲に絞られる（更新履歴 1.0.67・1.0.68）。今の統括の `tools` では、検証エージェントが `<名前>_verdict` を、作業エージェントが `edit`・`execute` を使えず、実行が `all_passed` にならない。統括の `tools` に足しても、統括が Claude の族・作業が GPT の族（既定の組み合わせ）だと作業は `apply_patch` を受け取れない。統括の `tools:` を書かない形（全ツール）なら、族を混ぜても通る。直し方はユーザーに確認中。設計書 4.4・4.7・4.8、testing.md の1段目、R2 に効く。
+  - 不具合2【重大】ツールの処理が投げた例外の文はモデルに届かない（「Tool execution failed」だけになる）。断るときは `{ textResultForLlm: '<理由>', resultType: 'failure' }` を返す（確かめた）。R2 3.3 の「例外の文がモデルに返る」は誤り。generated-plugin-structure.md の記録のツールの断りと creator-structure.md も直す。
+  - 不具合3【軽】`subagent.started.agentDisplayName` は `worker`・`verifier`（短い名前）で、`task` の `description` ではない。`description` は統括の `task` 呼び出しの `tool.execution_start.arguments.description` にあり、`toolCallId` で結べる。設計書 4.5 と BLUEPRINT 3.1 を直す。
+  - `/experimental on` は動くが deprecated（`copilot help config`：`--experimental` か `/settings experimental on`）。`--experimental` は一度付けると `settings.json` に残る。案内している場所：README、setup.md、ひな形の入口のスキル・README・設計書・仕様書、creation-requirements.md、output-requirements.md、generated-plugin-structure.md、creator-structure.md。
+  - make-plugin を読むたびに、スキルのフォルダの全ファイル（ひな形の84件を含む約100件）が「Related files」として届く。ふつうのパスで約2,700トークン（うちひな形が約2,400）。SKILL.md の本文（約4,900）と合わせると、hearing.md 12章の5,000トークンの狙いを超える。置き場所はユーザーに確認中。
+  - `-p` では、エクステンションの読み込みの確認に答える人がおらず読み込まれない。`--allow-tool='extension-permission-access'` か `--allow-all-tools` が要る（R2 3.10 の見込みが確かめられた）。
+  - 生成プラグインの入口のスキルのコマンドは `/<名前>`（スキルの名前がプラグインの名前と同じため）。クリエイターは `/plugin-creator:make-plugin`。
+  - Copilot CLI は、サブエージェントのシステムプロンプトに「Do NOT use output redirection … to create output files」と `<subagent_usage>`（「Default to doing the work yourself」）を足す。作業エージェントに編集のツールが要る理由になる。
+  - 必須の引数が欠けても Copilot CLI は止めない（`minimum` などは説明の末尾の文字になる）。検査は handleTool のままでよい。
+  - 確かめられなかった（ログインが要る・環境にない）：`defer: "never"`、`model.list` の要素の形と Auto の見分け、`model` のリストの2番目への切り替わり、読み取り役の `web`、`assistant.usage`、指示ファイルを受け取らないこと、GitHub からの marketplace add、実ブラウザー、Windows・macOS。
+  - V1 が誤って、ファイルシステムの根に `/home-gen-a/`（Copilot CLI の設定とログ、約600KB）を作った。安全の検査で消せないので、ユーザーに消してもらう（最後の報告で伝える）。
 
 ## 後の仕事に渡すこと（作業のエージェントの報告から）
 
@@ -167,23 +179,23 @@
 | A2 | a4dd7b3736f4dd2a9（完了） |
 | A3 | a6ae7ad9d3151a163（完了） |
 | A4 | afd1d4ef4c0e6d043（完了） |
-| C1 | ad77758fe8b6dfff7（完了。続きとして、B3 の説明の文の取り込みと、候補の出どころを頼んだ） |
+| C1 | ad77758fe8b6dfff7（完了。2026-10-24 に V1 の不具合2〔guard〕の直しを頼んだ） |
 | B3（書く） | a85fc7bf7ada9e044（完了。次は点検：briefs/review.md） |
 | B2 | ae0285d8193b30123（完了） |
 | B2 の点検 | 4つとも完了（design 8件、format 6件、models 19件、language 9件。high はなし） |
 | B2 を直す | aacc17a8675d68a69（完了。42件中36件を直した） |
 | D1a 変換 | a94162dfbb0aaf6aa（完了） |
 | D1b 模擬ユーザー | a28af96a1b11b7fea（完了。週報・議事録・研修のアンケートの集計の3人） |
-| D1d 内側の EVAL | afe3eb2243185d726（完了） |
+| D1d 内側の EVAL | afe3eb2243185d726（完了。2026-10-24 に、断りの文が内側の EVAL でもモデルに届くかの確かめを頼んだ） |
 | D1c 外側の EVAL | af526bb1af09f9618（完了） |
 | X1 突き合わせ（生成プラグインの側） | a573cbefd6ad8b7da（指示は briefs/X.md。指摘は reviews/X1.md） |
 | X2 突き合わせ（クリエイターの側） | a015be8b3c3f5b5f0（指摘は reviews/X2.md） |
 | T1 すべての試験の通し | a7e9349258395fe6a（完了。約1,500件が通り、落ちたのは会話例がないこと〔REQ-037。EVAL の後に作る〕だけ。組み立てた生成プラグインの tests/run.py も、Playwright を入れた後に合格） |
-| V1 Copilot CLI の読み込みの確かめ | a2958fd3e81866605（指示は briefs/V1.md。報告は research/V1-copilot-cli-smoke.md） |
+| V1 Copilot CLI の読み込みの確かめ | a2958fd3e81866605（完了。報告は research/V1-copilot-cli-smoke.md。不具合3件。道具は scratchpad/v1/） |
 | H1 見ない模擬ユーザー | ac4ca894931c3fb3d（完了。形の確かめに通った。tests/dev-eval/heldout/h1/ に作る。統括はこのフォルダの中身を読まない。git の出力も `grep -v heldout` で外して見る） |
 | B3 の点検 | 4つとも完了（design 19件〔high 2〕、format 7件、models 24件〔high 1〕、language 34件） |
 | B3 を直す | ad474ab788e9b207f（完了。84件中81件を直した。上位の文書で直すこと14件は tasks/B3-fix.md） |
-| B1 | a7b491f44bb4b21eb（完了） |
+| B1 | a7b491f44bb4b21eb（完了。2026-10-24 に V1 の不具合2・3の直しを頼んだ） |
 | C2 | ab07d1229ed5e8971（完了） |
 | C3 | ad65681a2d31da659（完了） |
 
