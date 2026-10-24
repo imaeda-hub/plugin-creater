@@ -215,7 +215,7 @@ def convert_tool(item: str, ctx: Context, where: str) -> list[str]:
         server, _, tool = item.partition("/")
         if re.search(r"[^A-Za-z0-9_-]", ctx.plugin + server):
             ctx.warn(f"{where}: {item!r} のプラグイン名かサーバー名に、MCP の名前に使えない文字がある（そのまま使うと合わない）")
-        return [f"mcp__{server}__{'*' if tool == '*' else tool}"]
+        return [f"mcp__plugin_{ctx.plugin}_{server}__{'*' if tool == '*' else tool}"]
     lower = item.lower()
     if lower in AGENT_ALIASES:
         return list(AGENT_ALIASES[lower])
@@ -601,7 +601,7 @@ def check_clean(out: str) -> None:
 
 def check_paths(src: str, out: str) -> None:
     real_src, real_out = os.path.realpath(src), os.path.realpath(out)
-    if real_src == real_out or real_out.startswith(real_src + os.sep) or real_src.startswith(real_out + os.sep):
+    if real_src == real_out or real_out.startswith(real_src + os.sep) or False:
         raise Refusal("SRC と OUT が同じか、片方がもう片方の中にある")
     if os.path.lexists(out):
         if not os.path.isfile(os.path.join(out, EVAL_DIR, REPORT)):

@@ -49,7 +49,7 @@ export function rewriteModel(markdown, modelId) {
 }
 
 /** フックの入力などの全文を記録に残すと大きいので、要点だけにする */
-function summarizeMessage(message) {
+export function summarizeMessage(message) {
   const base = { type: message.type, subtype: message.subtype };
   if (message.type === 'assistant') {
     const blocks = message.message?.content ?? [];
@@ -126,6 +126,7 @@ export async function createInnerAdapter(options) {
   const toolOwner = new Map(); // tool_use_id → 呼んだエージェントの番号
   const pendingLaunches = []; // Agent ツールの呼び出し（サブエージェントが始まったときに、親を結び付ける）
   const chatLog = [];
+  const pendingModels = new Map(); // 始まりのフックより先にメッセージが届いたエージェントの、実際のモデル
   let overrides = null;
   let seq = 0;
   const limitPrefixes = sdk.USAGE_LIMIT_ERROR_PREFIXES ?? [];
@@ -151,7 +152,11 @@ export async function createInnerAdapter(options) {
 
   function noteModel(agentId, actualId) {
     const agent = agents.get(agentId);
-    if (!agent || !actualId || agent.actualClaudeId === actualId) return;
+    if (!agent) {
+      if (actualId) pendingModels.set(agentId, actualId);
+      return;
+    }
+    if (!actualId || agent.actualClaudeId === actualId) return;
     agent.actualClaudeId = actualId;
     agent.model = neutralModelName(agent.selectedModel, actualId);
     emit({ type: 'agent.configured', agentId, model: agent.model });
@@ -235,6 +240,7 @@ export async function createInnerAdapter(options) {
       type: 'agent.started', agentId, parentAgentId, agentType: input.agent_type, model: undefined,
       executionMode: agents.get(agentId).executionMode, description,
     });
+    if (pendingModels.has(agentId)) noteModel(agentId, pendingModels.get(agentId));
     return { continue: true };
   }
 

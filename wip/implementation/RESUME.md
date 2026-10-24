@@ -112,6 +112,7 @@
 - D1c への引き継ぎ（B3-fix）：会話例を置いたら、README の「置きます」を「あります」に直す。
 - B2-fix：上位の文書で直すこと（tasks/B2-fix.md）。BLUEPRINT 8章：差し込み口の見出しは ### 以下、統括の差し込み口は作業エージェントに渡すもので検証エージェントにはナレッジを渡さない。generated-plugin-structure.md 4.8 の3：検証エージェントに渡すものに、作業ごとの設定の値と入力のファイルの場所を足す。REQ-011・4.3・4.8：頼みの文と合否の基準が食い違うときの決まりがない（ユーザーに確認）。
 - A1（続き）：上位の文書で直すこと。設計書 4.3 の統括への指示文の中身に最初の1文を足す。6.2 の表と 4.2 に「実行中に呼ばれたら頼みの文は受け付けず、始められない旨の知らせを返す」を足す。ひな形の docs/design/design.md も同じ。
+- D1b：上位の文書で直すこと（tasks/D1b.md）。creator-structure.md 2章の部品の表に模擬ユーザー（tests/dev-eval/personas/、validate.mjs）の行がない。testing.md 6.1：ファイルに入れる決まりに、4つ目の答え「違う」に当たるもの（wrong）を足す。6.2：決まりの確かめへの答え（confirm）が7観点にない。6.3・6.5：急ぐ合図を signal で足す形にした。6.5：課題の入力のファイルは、示すファイルのうち role が input のもの。
 - R2：`requestSandboxPermissive` を「サンドボックスの外で動かす」と示さない（generated-plugin-structure.md 6.3）。tasks.list には shell と client のタスクも入る。
 
 ## 後の仕事に渡すこと（作業のエージェントの報告から）
@@ -161,7 +162,7 @@
 | B2 の点検 | 4つとも完了（design 8件、format 6件、models 19件、language 9件。high はなし） |
 | B2 を直す | aacc17a8675d68a69（完了。42件中36件を直した） |
 | D1a 変換 | a94162dfbb0aaf6aa（指示は briefs/D1.md） |
-| D1b 模擬ユーザー | a28af96a1b11b7fea（FORMAT.md ができたら D1c と H1 を立てる） |
+| D1b 模擬ユーザー | a28af96a1b11b7fea（完了。週報・議事録・研修のアンケートの集計の3人） |
 | D1d 内側の EVAL | afe3eb2243185d726 |
 | D1c 外側の EVAL | af526bb1af09f9618 |
 | H1 見ない模擬ユーザー | ac4ca894931c3fb3d（tests/dev-eval/heldout/h1/ に作る。統括はこのフォルダの中身を読まない。git の出力も `grep -v heldout` で外して見る） |

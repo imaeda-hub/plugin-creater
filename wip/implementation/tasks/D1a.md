@@ -45,6 +45,35 @@
 
 ## 決めたこと
 
+設計書（testing.md 4章）と R4 の直しのとおりに作り、決まっていない細かいところは、目的に合う最も単純なやり方にした。
+
+試作の convert.py からの直し（R4 注 C）
+- モデル：リストのとき、候補の最初の Claude を ID にする。Claude がなければ、価格表で同じ値段の Claude にする（表は5つ。ブリーフのとおり）。どれにも当たらなければ `inherit` にして警告する。`model` のないエージェントは `model: inherit`。別名（sonnet など）は使わない。`model-policy`・`modelPolicy` は外して警告。`reasoningEffort` は `effort`（low、medium、high、xhigh、max のときだけ。ほかは外して警告）。
+- エクステンションのツール名：`<エクステンション>_<ツール>` を `mcp__<エクステンション>__<ツール>` にする。エージェントの tools、本文のバッククォートの名前、本文のどこにあっても（英字と下線だけのツール名の形で、エクステンションの名前で始まるもの）。`` `<エクステンション>_` `` だけの「名前の頭」の言い方も `` `mcp__<エクステンション>__` `` にする（B2 の統括の本文に「名前が `<名前>_` で始まるもの」がある）。サーバー名に使えない文字（`.` など）は下線にし、警告する（レポートの `server` を見る）。
+- 会話例を外す：トップの `examples/` を写さない（クリエイターのスキルのフォルダの外にある。BLUEPRINT 1章）。
+- 置き換えの直後に `claude plugin validate`：既定で動かす。警告は不合格にしない（終了コード 0 なら合格）。`--skip-validate` で飛ばせる。
+- 小さな不具合：tools が文字列でも1文字ずつ処理しない。フックの `timeout`（`timeoutSec` の別名）と `powershell` だけの項目を扱う。
+- 試作のうち使わなかったもの：`.eval/rules.md` はそのまま使う（クリエイターに rules はないが、生成プラグインが持つかもしれない）。
+- スキルの本文は、`SKILL.md` だけでなく、スキルのフォルダの中の Markdown（`references/` など）も置き換える。`assets/`（ひな形。Copilot CLI 向けの生成プラグインの元）と `scripts/` の中は置き換えない。クリエイターの references に `plugin-creator_*` と `task` と `ask_user` が多数ある。
+- 本文の `${PLUGIN_ROOT}` は置き換えない（R4 注 C-5 の「本文も置き換える」は採らなかった）。理由：Copilot CLI は本文で展開しないので、本文に書かれていても実行時の意味がなく、クリエイターの作業エージェントの本文は「生成プラグインの mcp.json に書く例」として `${PLUGIN_ROOT}` を載せている。Claude Code は本文の `${CLAUDE_PLUGIN_ROOT}` を読み込みのときに実際のパスにするので、置き換えると例が壊れる。設定ファイル（mcp.json、フック、lsp.json）の中だけ置き換える。
+
+統括の task の引数（B2 からの引き継ぎ。公式で確かめた）
+- Claude Code の Agent の引数は、Agent SDK 0.3.307 の `sdk-tools.d.ts` の `AgentInput`（公式の型）で確かめた：`description`、`prompt`、`subagent_type`、`model`、`effort`、`run_in_background`、`name`、`isolation`。`mode` は「廃止。無視される（権限モード）」の別の意味で、`"sync"` を渡しても働かない。サブエージェントの既定は裏で動く（`run_in_background` の説明：「Agents run in the background by default」。sub-agents の公式ページも同じ）。
+- 置き換え：`` `task` `` → `` `Agent` ``、`` `agent_type` `` → `` `subagent_type` ``、`` `mode` `` → `` `run_in_background` ``、`` `"sync"` `` → `` `false` ``、`` `"background"` `` → `` `true` ``。統括の本文は「実行のしかた（`mode`）に `"sync"` を指定し」「`"background"` で呼んだりしない」と書いているので、置き換えると「実行のしかた（`run_in_background`）に `false` を指定し」「`true` で呼んだりしない」になる。1体ずつ終わりを待つ（前面で動かす）という意味が、Claude Code でも保たれる。
+- 範囲：`` `agent_type` ``、`` `"sync"` ``、`` `"background"` `` のどれかがバッククォートで書かれている本文でだけ。`` `mode` `` は普通の単語なので、その本文にだけ（生成プラグインの作業ごとの文に `mode` という設定名があっても、巻き込まない）。
+- `description`、`prompt` は両方で同じ名前なので置き換えない。
+
+そのほか
+- 写さないもの：トップの `docs/`、`tests/`、`examples/`、`wip/`、`.git`、`.github`、`.claude`、`CLAUDE.md`、`AGENTS.md`、`.gitignore`、`plugin.json`、`mcp.json`、`com.github.copilot/`（部品ごとに置き換える）。どこにあっても `heldout`、`node_modules`、`__pycache__`、`.venv`、`.pyc`。シンボリックリンクは追わず、警告して写さない。**試作は全部を写していた**ので、そのままでは `wip/` と見ない模擬ユーザーが、試されるクリエイターから読める場所に入った。いまは `tests/` を入り口で外し、中を一覧もしない（試験で、`heldout` を一覧も開きもしないことを確かめた）。
+- 生成プラグインのルートの `scripts/`、`mcp/` など、MCP サーバーやフックが `${PLUGIN_ROOT}` で指すものは写す。
+- OUT：ない、または前の変換の出力（`.eval/conversion-report.json` がある）のときだけ使う。ほかのフォルダは消さずに断る。SRC と OUT が重なるときも断る。
+- 検証に通らなくても OUT は残す（直す手がかり）。
+- Agent の `skill` → `Skill`：公式の対応表にないが、Claude Code のスキルを読み込むツールの名前が `Skill` で働きが同じなので足した。表にないもの（`task_complete`、`write_agent` など。クリエイターの本文に「あれば」の形である）は、Claude Code に同じ働きのツールがないので、そのまま残す。
+- エージェントの `tools` の別名の順：`edit` は Edit、Write。`search` は Grep、Glob。`web` は WebFetch、WebSearch（testing.md 4章の表の順）。
+- 本文のバッククォートの別名（`web`、`read` など、`tools` の別名）は置き換えない。testing.md 4章は「実行時のツール名」だけを本文で置き換えるとある（別名は `tools` の欄の言葉）。読み取り役の本文の「`web` は…」は、そのまま残る。`tools` の欄は WebFetch、WebSearch になっているので、意味は通る。
+- 変換するのは `.md`（スキルとエージェント）、`mcp.json`、`com.github.copilot/hooks`・`commands`・`lsp.json`・`rules`、`plugin.json`。SKILL.md のフロントマターは、`allowed-tools` があるときだけ作り直し（リストにする）、ほかは元の文字のまま。
+- 試験の置き場所：tests/dev-eval/test_convert.py（unittest）。
+
 ## 要確認
 
 ## 上位の文書で直すこと
