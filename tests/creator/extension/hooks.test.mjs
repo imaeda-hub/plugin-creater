@@ -69,7 +69,7 @@ describe('問答の記録（onPostToolUse、onUserPromptSubmitted）', () => {
         knowledgeIds: ['K-01', 'K-02'],
         behavior: '案',
         taskPath: '.plugin-creator-work/draft/task.json',
-        evalTasks: [{ prompt: '課題', criteria: ['K-02'] }],
+        evalTasks: [{ prompt: '課題', criteria: ['K-02'], settings: { task: { week: 'W42' } } }],
       });
       await run.fake.askUser({ message: 'この内容で作ってよいですか？', answer: 'User responded: 作る' });
       assert.equal(run.readQa().length, 2, '生成に進む前の問答は記録される');
@@ -182,7 +182,7 @@ describe('コンパクションの後の差し込み（onPreToolUse）', () => {
         knowledgeIds: ['K-01', 'K-02'],
         behavior: '案',
         taskPath: '.plugin-creator-work/draft/task.json',
-        evalTasks: [{ prompt: '課題', criteria: ['K-02'] }],
+        evalTasks: [{ prompt: '課題', criteria: ['K-02'], settings: { task: { week: 'W42' } } }],
       });
       complete(run);
       await run.call('progress', { stage: '生成', approvalQuote: '作る' });

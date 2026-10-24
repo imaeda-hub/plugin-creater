@@ -190,6 +190,8 @@ export function confirmArgs(overrides = {}) {
         prompt: '今週の週報を作ってください。',
         inputs: [{ path: 'inputs/前回の週報.docx', provisional: true }],
         criteria: ['K-02'],
+        // 作業の定義の案（writeDraft）の「対象の週」は、必須で初めの値がないので、課題が値を入れる（省くと断られる）
+        settings: { task: { week: '2026-W42' } },
       },
     ],
     ...overrides,

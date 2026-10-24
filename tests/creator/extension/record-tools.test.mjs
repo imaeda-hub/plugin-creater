@@ -586,7 +586,7 @@ describe('生成前の確認（plugin-creator_confirm）と、段階「生成」
     await withRun(async (run) => {
       await readyToConfirm(run);
       await run.call('record', { knowledge: [knowledge({ kind: '合否の決め方', item: '合否の決め方', text: '二つ目の基準', quote: 'もう1つ' })] });
-      const text = await run.call('confirm', confirmArgs({ knowledgeIds: ['K-03', 'K-01', 'K-02', 'K-03'], evalTasks: [{ prompt: 'x', criteria: ['K-03', 'K-02'] }] }));
+      const text = await run.call('confirm', confirmArgs({ knowledgeIds: ['K-03', 'K-01', 'K-02', 'K-03'], evalTasks: [{ prompt: 'x', criteria: ['K-03', 'K-02'], settings: { task: { week: 'W42' } } }] }));
       assert.deepEqual(run.readState().confirmation.knowledgeIds, ['K-01', 'K-02', 'K-03']);
 
       // 見本の基準は、番号の小さい順：C-01 が K-02、C-02 が K-03
@@ -685,10 +685,10 @@ describe('課題の設定の値（plugin-creator_confirm の evalTasks.settings�
   test('REQ-038 REQ-020 課題ごとの、作業の画面に入れる設定の値（繰り返しの上限と作業ごとの設定）を渡すと、記録に残る。省くと空のまとまり', async () => {
     await withRun(async (run) => {
       await readyToConfirm(run);
-      // 案の設定：対象の週（文字）、書き方（選択肢）、厳しく見る（チェック）、件数（数）
+      // 案の設定：対象の週（文字。必須でない）、書き方（選択肢）、厳しく見る（チェック）、件数（数）
       writeDraft(run.cwd, {
         settings: [
-          { key: 'week', label: '対象の週', type: 'text', default: '', required: true },
+          { key: 'week', label: '対象の週', type: 'text', default: '', required: false },
           { key: 'style', label: '書き方', type: 'select', default: '簡易', options: ['簡易', '詳細'] },
           { key: 'strict', label: '厳しく見る', type: 'checkbox', default: false },
           { key: 'count', label: '件数', type: 'number', default: 3 },
@@ -751,8 +751,30 @@ describe('課題の設定の値（plugin-creator_confirm の evalTasks.settings�
       const second = await run.callSafe('confirm', confirmArgs({ evalTasks: [task({ task: { week: 'W42' } }), task({ task: { week: 'W43', style: 'x' } })] }));
       assert.match(second.error, /課題 2 の作業ごとの設定「style」の値/);
       // 合っていれば受け付ける。設定の値を省いた課題や、task を省いた課題は、比べない（1段目と同じ）
-      const ok = await run.call('confirm', confirmArgs({ evalTasks: [task({ task: { week: 'W42', style: '詳細', strict: true, count: 2, report: 'inputs/a.docx' } }), task(), task({ maxIterations: 2 })] }));
+      const ok = await run.call('confirm', confirmArgs({ evalTasks: [task({ task: { week: 'W42', style: '詳細', strict: true, count: 2, report: 'inputs/a.docx' } }), task({ task: { week: 'W43' } }), task({ maxIterations: 2, task: { week: 'W44' } })] }));
       assert.match(ok, /受け付けました/);
+    });
+  });
+
+  test('REQ-038 作業ごとの設定（task）を省いた課題も、空の値として比べる：案に必須で初めの値のない設定があれば断る。なければ省ける（X4-04 の続き）', async () => {
+    await withRun(async (run) => {
+      await readyToConfirm(run);
+      // 既定の案：「対象の週」は必須で、初めの値がない
+      for (const omitted of [undefined, {}, { maxIterations: 2 }, { task: {} }]) {
+        const r = await run.callSafe('confirm', confirmArgs({ evalTasks: [task(omitted)] }));
+        assert.equal(r.ok, false, JSON.stringify(omitted));
+        assert.match(r.error, /課題 1 の作業ごとの設定に、必須の設定「対象の週」（week）の値がありません（案に初めの値がないので、画面で開始できません）。/, JSON.stringify(omitted));
+        assert.equal(run.readState().confirmation, null);
+      }
+      // 2つ目の課題だけが省いている：2つ目と示す
+      const second = await run.callSafe('confirm', confirmArgs({ evalTasks: [task({ task: { week: 'W42' } }), task()] }));
+      assert.match(second.error, /課題 2 の作業ごとの設定に、必須の設定「対象の週」（week）の値がありません/);
+      // 初めの値がある・必須でない・チェックの設定なら、省いてよい
+      for (const week of [{ default: '2026-W01' }, { required: false }, { type: 'checkbox', default: false }]) {
+        writeDraft(run.cwd, { settings: [{ key: 'week', label: '対象の週', type: 'text', default: '', required: true, ...week }] });
+        const ok = await run.callSafe('confirm', confirmArgs({ evalTasks: [task()] }));
+        assert.equal(ok.ok, true, `${JSON.stringify(week)}：${ok.error}`);
+      }
     });
   });
 

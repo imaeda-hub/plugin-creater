@@ -240,7 +240,7 @@ describe('クリエイターの画面のサーバー', () => {
       const text = await run.call('confirm', confirmArgs({
           evalTasks: [
             { prompt: '今週の週報を作ってください。', inputs: [{ path: 'inputs/前回の週報.docx', provisional: true }, { path: 'inputs/実績.xlsx' }], criteria: ['K-02'], settings: { maxIterations: 2, task: { week: '2026-W42', style: '詳細' } } },
-            { prompt: '先週の分も作ってください。', criteria: ['K-02'] },
+            { prompt: '先週の分も作ってください。', criteria: ['K-02'], settings: { task: { week: '2026-W41' } } },
           ],
         }),
       );
@@ -264,7 +264,7 @@ describe('クリエイターの画面のサーバー', () => {
           prompt: '先週の分も作ってください。',
           inputs: [],
           criteria: [{ id: 'K-02', text: '見出しが「今週の実績」「来週の予定」の順に並んでいれば合格' }],
-          settings: { task: [] },
+          settings: { task: [{ key: 'week', label: '対象の週', value: '2026-W41' }] },
         },
       ]);
       assert.equal(c.rebuild, null);

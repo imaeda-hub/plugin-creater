@@ -626,6 +626,7 @@ class Eval(Sandbox):
         self.edit_json("%s/task.json" % EXT, lambda d: d["criteria"].append({"id": "C-02", "text": "別の基準", "knowledge": "K-01"}))
         self.write("tests/eval/T-02/eval.json", json.dumps({
             "id": "T-02", "prompt": "別の頼み", "inputs": [],
+            "settings": {"task": {"topic": "天気"}},   # 作業の定義の「題材」は、必須で初めの値がないので、省かずに値を入れる
             "criteria": [{"id": "C-02", "text": "別の基準", "grading": "model"}]}))
         self.assertPasses("eval")
 
@@ -731,6 +732,32 @@ class Eval(Sandbox):
         self.assertPasses("eval")
         self.edit_json("%s/task.json" % EXT, lambda d: d["settings"][0].update({"default": "", "required": False}))
         self.assertPasses("eval")
+
+    def test_REQ_011_omitted_settings_task_is_compared_as_empty(self):
+        # 課題が settings.task を省いても、必須で初めの値のない設定があれば、画面で開始できない
+        def given(settings):
+            def edit(d):
+                d.pop("settings", None)
+                if settings != "$absent":
+                    d["settings"] = settings
+            self.edit_json(self.EVAL, edit)
+        for omitted in ("$absent", {}, {"maxIterations": 2}, {"task": {}}):
+            given(omitted)
+            self.assertFailsWith("eval", "必須の設定「題材」（topic）の値がない", "画面で開始できない")
+        # 初めの値がある・必須でないなら、省いてよい
+        for omitted in ("$absent", {}, {"maxIterations": 2}, {"task": {}}):
+            given(omitted)
+            self.edit_json("%s/task.json" % EXT, lambda d: d["settings"][0].update({"default": "天気", "required": True}))
+            self.assertPasses("eval")
+            self.edit_json("%s/task.json" % EXT, lambda d: d["settings"][0].update({"default": "", "required": False}))
+            self.assertPasses("eval")
+            self.edit_json("%s/task.json" % EXT, lambda d: d["settings"][0].update({"default": "", "required": True}))
+        # settings や task が辞書でないのは、形の誤りとして示す。必須の値なしは重ねて示さない
+        for broken in (None, [], "x", {"task": []}, {"task": None}):
+            given(broken)
+            problems = self.problems("eval")
+            self.assertTrue(problems, broken)
+            self.assertFalse(any("必須の設定" in p for p in problems), problems)
 
     def test_REQ_011_a_broken_task_definition_does_not_make_the_eval_check_crash(self):
         for broken in (None, 5, {"a": 1}, [None, 3, {"key": 7}]):

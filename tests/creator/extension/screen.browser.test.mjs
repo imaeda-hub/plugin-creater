@@ -219,6 +219,13 @@ describe('クリエイターの画面（ブラウザー）', { skip: skipReason 
       const view = await openPage(url);
       try {
         await readyToConfirm(run);
+        // 「対象の週」を必須でなくして、設定の値を省いた課題を出せるようにする（必須で初めの値のない設定があると、省いた課題は断られる）
+        writeDraft(run.cwd, {
+          settings: [
+            { key: 'week', label: '対象の週', type: 'text', default: '', required: false },
+            { key: 'style', label: '書き方', type: 'select', default: '簡易', options: ['簡易', '詳細'] },
+          ],
+        });
         const text = await run.call(
           'confirm',
           confirmArgs({

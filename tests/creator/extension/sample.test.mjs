@@ -313,7 +313,7 @@ describe('Web管理画面の見本', () => {
       // ユーザーの指摘で、作業の定義の案（画面）を直す。作業エージェントが書き直した、という想定
       writeDraft(run.cwd, { name: '直した週報', settings: [{ key: 'month', label: '対象の月', type: 'text', default: '2026-10', required: true }] });
       await run.call('record', { knowledge: [{ id: 'K-02', text: '見出しが「実績」「予定」の順に並んでいれば合格', quote: '短くしたい' }] });
-      const text = await run.call('confirm', confirmArgs());
+      const text = await run.call('confirm', confirmArgs({ evalTasks: [{ prompt: '今週の週報を作ってください。', criteria: ['K-02'] }] })); // 案の設定を替えたので、既定の設定の値は渡さない
       assert.ok(text.endsWith(url), '見本の URL は変わらない');
 
       const state = await sampleState(url);
@@ -330,7 +330,7 @@ describe('Web管理画面の見本', () => {
     await withRun(async (run) => {
       await readyToConfirm(run);
       writeDraft(run.cwd, { workers: [{ agent: 'worker', label: '書く係' }, { agent: 'worker-table', label: '表の係' }], settings: [], displays: [] });
-      const text = await run.call('confirm', confirmArgs());
+      const text = await run.call('confirm', confirmArgs({ evalTasks: [{ prompt: '今週の週報を作ってください。', criteria: ['K-02'] }] })); // 案の設定を替えたので、既定の設定の値は渡さない
       const url = /見本：(\S+)/.exec(text)[1];
       await sampleApi(url, '/api/start', { method: 'POST', body: {} });
       const r = (await sampleState(url)).run;

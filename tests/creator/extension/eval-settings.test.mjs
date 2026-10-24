@@ -11,7 +11,7 @@ import { pathToFileURL } from 'node:url';
 import { EXTENSION_DIR, REPO_ROOT } from './helpers.mjs';
 import { leftWordsIn } from './words.mjs';
 
-const { evalSettingsProblems, settingLabels } = await import(pathToFileURL(path.join(EXTENSION_DIR, 'eval-settings.mjs')).href);
+const { evalSettingsProblems, evalTaskSettingsProblems, settingLabels } = await import(pathToFileURL(path.join(EXTENSION_DIR, 'eval-settings.mjs')).href);
 
 const STAGE1 = path.join(REPO_ROOT, 'template', 'tests', 'stage1', 'check_structure.py');
 
@@ -69,6 +69,17 @@ describe('作業ごとの設定の値の確かめ（eval-settings.mjs）', () =>
     }
   });
 
+  test('REQ-038 作業ごとの設定（task）を省いた課題は、空の値として比べる：必須で初めの値のない設定があれば誤りになる（X4-04 の続き）', () => {
+    for (const evalSettings of [undefined, {}, { maxIterations: 2 }, { task: {} }]) {
+      const problems = evalTaskSettingsProblems(ALL, evalSettings, 'T ');
+      assert.equal(problems.length, 1, JSON.stringify(evalSettings));
+      assert.match(problems[0], /^T の作業ごとの設定に、必須の設定「対象の週」（week）の値がありません/);
+      // 必須で初めの値のある設定、必須でない設定、チェックの設定だけなら、省いてよい
+      assert.deepEqual(evalTaskSettingsProblems([{ ...WEEK, default: '2026-W01' }, STYLE, STRICT, COUNT], evalSettings, 'T '), []);
+      assert.deepEqual(evalTaskSettingsProblems([], evalSettings, 'T '), []);
+    }
+  });
+
   test('REQ-038 案にない名前の文は、案にある設定の名前（key）を、案の並びのまま示す。なければ「なし」', () => {
     assert.deepEqual(evalSettingsProblems(ALL, { weeks: 'x', week: 'W42' }, '課題 1 '), [
       '課題 1 の作業ごとの設定「weeks」が、画面と合格の条件の設定の案の設定にありません（案にある設定の名前：week、style、strict、count、report）。',
@@ -122,4 +133,47 @@ describe('1段目との食い違いの見張り', { skip: stage1Missing() }, () 
     });
     assert.equal(counts.length, CASES.length);
   });
+
+  test('REQ-038 作業ごとの設定を省いた課題も、1段目の check_eval と誤りの数が同じである（省き方：settings なし、settings のみ、task が空）', () => {
+    // 課題の settings の書き方の違い。"$absent" は settings 自体を書かない
+    const variants = (given) =>
+      Object.keys(given).length === 0 ? ['$absent', {}, { maxIterations: 2 }, { task: {} }] : [{ task: given }, { maxIterations: 2, task: given }];
+    // 値が null の例は除く（confirm は形の誤りとして先に断り、1段目は check_eval の形の検査が別の誤りを足すため、数が合わない）
+    const combos = CASES.filter(([, , given]) => !Object.values(given).includes(null)).flatMap(([name, settings, given]) => variants(given).map((evalSettings) => ({ name, settings, evalSettings })));
+    const script = [
+      'import importlib.util, json, os, sys, tempfile',
+      `spec = importlib.util.spec_from_file_location("check_structure", ${JSON.stringify(STAGE1)})`,
+      'cs = importlib.util.module_from_spec(spec)',
+      'spec.loader.exec_module(cs)',
+      'combos = json.load(sys.stdin)',
+      'root = tempfile.mkdtemp()',
+      'os.makedirs(os.path.join(root, "tests", "eval", "T-01"))',
+      'counts = []',
+      'for c in combos:',
+      '    task = {"id": "T-01", "prompt": "x", "criteria": []}',
+      '    if c["evalSettings"] != "$absent":',
+      '        task["settings"] = c["evalSettings"]',
+      '    with open(os.path.join(root, "tests", "eval", "T-01", "eval.json"), "w", encoding="utf-8") as f:',
+      '        json.dump(task, f)',
+      '    ctx = cs.Context(root)',
+      '    ctx.task = {"settings": c["settings"], "criteria": []}',
+      '    check = cs.Check("eval", "eval")',
+      '    cs.check_eval(ctx, check)',
+      '    counts.append(len([e for e in check.errors if ".settings.task" in e]))',
+      'print(json.dumps(counts))',
+    ].join('\n');
+    const python = spawnSync('python3', ['-I', '-c', script], { input: JSON.stringify(combos), encoding: 'utf8' });
+    assert.equal(python.status, 0, python.stderr);
+    const counts = JSON.parse(python.stdout);
+    assert.equal(counts.length, combos.length);
+    combos.forEach(({ name, settings, evalSettings }, i) => {
+      const js = evalTaskSettingsProblems(settings, evalSettings === '$absent' ? undefined : evalSettings, 'T ').length;
+      assert.equal(js, counts[i], `${name}／課題の settings：${JSON.stringify(evalSettings)}：1段目は ${counts[i]} 件`);
+    });
+    // 省いた課題が空振りでないこと：必須で初めの値のない設定のある案では、省くと誤りになる
+    const omitted = combos.map((c, i) => [c, counts[i]]).filter(([c]) => c.name === '必須で初めの値がなく、値もない');
+    assert.equal(omitted.length, 4);
+    for (const [, count] of omitted) assert.equal(count, 1);
+  });
 });
+

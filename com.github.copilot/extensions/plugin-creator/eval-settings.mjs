@@ -64,6 +64,16 @@ export function evalSettingsProblems(settings, given, label) {
   return out;
 }
 
+/**
+ * 課題1つの、作業の画面に入れる設定の値（evalTasks[].settings）を、案の設定と突き合わせる。
+ * 作業ごとの設定（task）を省いた課題は、空の値として比べる（1段目の check_eval と同じ）。
+ * @param {unknown} settings 作業の定義の案の settings（画面の欄の一覧）
+ * @param {{ task?: Record<string, string|number|boolean> }|undefined} evalSettings 課題の settings（省かれたら undefined か {}）
+ */
+export function evalTaskSettingsProblems(settings, evalSettings, label) {
+  return evalSettingsProblems(settings, evalSettings?.task ?? {}, label);
+}
+
 /** 案の設定の、名前（key）→ 画面の見出し（label）。画面に出すとき、見出しを引く */
 export function settingLabels(settings) {
   const labels = {};

@@ -11,7 +11,7 @@ import path from 'node:path';
 import { DRAFT_TASK_SUFFIX } from './constants.mjs';
 import { DEFAULT_PLUGIN_ROOT, createScreen, createUiLoader, listExamples } from './screen.mjs';
 import { DocTextError, documentText } from './doc-text.mjs';
-import { evalSettingsProblems, settingLabels } from './eval-settings.mjs';
+import { evalTaskSettingsProblems, settingLabels } from './eval-settings.mjs';
 import { Refusal, createHearing, taskFileHash } from './hearing.mjs';
 import { createHooks } from './hooks.mjs';
 import { IssueError, fileIssue, runGh as defaultRunGh } from './issue.mjs';
@@ -152,7 +152,7 @@ export function createCreator({
     }
     if (evalTasks) {
       // 作業ごとの設定を省いた課題は、空の値として比べる（必須で初めの値のない設定があれば、画面で開始できない）
-      const found = evalTasks.flatMap((t, i) => evalSettingsProblems(draft.settings, t.settings?.task ?? {}, `試しに動かして採点する試験の課題 ${i + 1} `));
+      const found = evalTasks.flatMap((t, i) => evalTaskSettingsProblems(draft.settings, t.settings, `試しに動かして採点する試験の課題 ${i + 1} `));
       if (found.length) {
         const shown = found.slice(0, 8).join('\n');
         throw new Refusal(`課題の、作業の画面に入れる設定の値（settings.task）が、画面と合格の条件の設定の案（${taskPath}）に合いません。直してから、もう一度知らせてください。\n${shown}${found.length > 8 ? `\nほか${found.length - 8}件` : ''}`);
