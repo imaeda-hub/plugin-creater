@@ -296,6 +296,17 @@ test('REQ-015 ユーザー役の試験の質問が足りない（compound の対
   assert.ok(hasError(r, 'userRoleTests.unknown'));
 });
 
+test('REQ-015 recall と confirm と compound の質問が、そのナレッジの asked に当たらないと不合格になる', async () => {
+  const r = await mutate('weekly-report', (p) => {
+    p.userRoleTests.recall[2].questions[0] = 'あのことは、どうですか？';
+    p.userRoleTests.confirm[0].question = 'あのことは、決まりですか？';
+    p.userRoleTests.compound[0].question = 'ルールはありますか？';
+  });
+  assert.ok(hasError(r, 'ナレッジ「ijou」の markers.asked'));
+  assert.ok(hasError(r, 'ナレッジ「headings」の markers.asked'));
+  assert.ok(hasError(r, 'ナレッジ「man-yen」の markers.asked'));
+});
+
 test('REQ-015 ナレッジごとの具体的な質問（recall か confirm）がないと不合格になる', async () => {
   const r = await mutate('meeting-minutes', (p) => {
     p.userRoleTests.recall = p.userRoleTests.recall.filter((x) => x.knowledge !== 'output');

@@ -260,6 +260,11 @@ function validateUserRoleTests(persona, errors, context) {
   checkRegex(t.abstain, 'userRoleTests.abstain', errors);
 
   const covered = new Set();
+  // 質問が、そのナレッジの asked に当たること（聞いたかを言葉で見るので、試験の質問が見えないと記録が合わない）
+  const askedMatches = (id, question, label) => {
+    const re = regexOf(context.knowledgeById.get(id)?.markers?.asked);
+    if (re && isText(question) && !re.test(question)) errors.push(`${label} の質問「${question}」が、ナレッジ「${id}」の markers.asked に当たらない`);
+  };
   const knowledgeIdOf = (entry, label) => {
     if (!isObject(entry) || !context.ids.has(entry.knowledge)) {
       errors.push(`${label}.knowledge「${entry?.knowledge ?? ''}」が、knowledge の id にない`);
@@ -273,6 +278,7 @@ function validateUserRoleTests(persona, errors, context) {
       const id = knowledgeIdOf(r, `userRoleTests.recall[${i}]`);
       if (id) covered.add(id);
       if (!isTextList(r?.questions, 2)) errors.push(`userRoleTests.recall[${i}].questions は、質問を 2 つ以上、文字で並べる`);
+      else if (id) for (const q of r.questions) askedMatches(id, q, `userRoleTests.recall[${i}]`);
     });
   }
   if (!Array.isArray(t.compound) || t.compound.length === 0) errors.push('userRoleTests.compound がない（1 件以上）');
@@ -282,7 +288,7 @@ function validateUserRoleTests(persona, errors, context) {
       if (!isText(c?.question)) errors.push(`${label}.question がない`);
       if (!Array.isArray(c?.expect) || c.expect.length < 2 || c.expect.some((id) => !context.ids.has(id))) {
         errors.push(`${label}.expect は、knowledge の id を 2 つ以上並べる`);
-      }
+      } else for (const id of c.expect) askedMatches(id, c.question, label);
     });
   }
   if (!Array.isArray(t.context) || t.context.length === 0) errors.push('userRoleTests.context がない（1 件以上）');
@@ -315,6 +321,7 @@ function validateUserRoleTests(persona, errors, context) {
         if (context.knowledgeById.get(id).from !== 'file') errors.push(`${label}.knowledge「${id}」は、from が file のナレッジではない`);
       }
       if (!isText(c?.question)) errors.push(`${label}.question がない`);
+      else if (id) askedMatches(id, c.question, label);
       checkRegex(c?.expect, `${label}.expect`, errors);
     });
   }

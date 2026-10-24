@@ -25,7 +25,8 @@ tests/dev-eval/heldout/<id>/        クリエイターを直すときに見な�
 ```
 
 - `id` は、英小文字・数字・ハイフンだけ（例：`weekly-report`）。
-- docx・xlsx は、Python の仮想環境に `requirements.txt` の部品を入れて、`make_files.py` で作る。作ったファイルも置くので、試験を動かすときに Python は要らない。
+- docx・xlsx は、Python の仮想環境に `requirements.txt` の部品を入れて、`make_files.py` で作る。作ったファイルも置くので、試験を動かすときに Python は要らない。見ない模擬ユーザーの `make_files.py` も、同じ版（`tests/dev-eval/personas/requirements.txt`）を使う。
+- `make_files.py` は `--out <フォルダ>` を受け、既定の出力先は `files/` にする。作るたびに中身が変わらないよう、作成日時を固定する。
 
 ## 2. persona.json
 
@@ -126,6 +127,7 @@ JSON である。文字は UTF-8。正規表現と書いてあるところは、
 | `confirm` | 答える（決まりの確かめ） | `{ "knowledge": id, "question": 質問, "expect": 正規表現 }` の並び。`from` が `file` のナレッジごとに 1 件以上。選択肢は `validate.mjs` の `CONFIRM_CHOICES`（hearing.md 6.1 の順で、そうしないときもある、違う、決まりではなく、たまたま、このとおり）を付ける | 答えが `expect` に当たる（`answer` の選択肢を選ぶ） |
 
 - 「指示のことを話さない」の観点は、すべての答えを見る。指示の言葉（答える条件、自分から話す、答え方の決まりなど）の一覧は、ユーザー役を動かす側が持つ。
+- `recall`、`compound`、`confirm` の質問は、そのナレッジの `markers.asked` に当たる言葉を含める（`validate.mjs` が確かめる）。質問が `asked` に当たらないと、ユーザー役の試験とクリエイターの質問とで「聞いたか」の見方がずれるためである。
 - 質問を聞く回数と、合格の割合は、ユーザー役を動かす側が決める。
 - `unknown` の質問は、ナレッジの `fact` にも、示すファイルの中にもないことにする。
 

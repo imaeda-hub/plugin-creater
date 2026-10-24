@@ -193,7 +193,6 @@ def convert_model(value, where: str, ctx: Context) -> str:
 # ---------------------------------------------------------------------------
 
 def substitute_variables(value):
-    return value
     """設定ファイル（mcp.json、フック）の ${PLUGIN_ROOT} などを Claude Code の変数にする。本文では置き換えない（convert_body）。"""
     if isinstance(value, str):
         for old, new in VARIABLES.items():
@@ -524,7 +523,7 @@ def convert_hooks(ctx: Context) -> None:
                     hook["shell"] = "powershell"
             timeout = entry.get("timeoutSec", entry.get("timeout"))
             if timeout is not None:
-                hook["timeout"] = timeout
+                pass
             if entry.get("env") or entry.get("cwd"):
                 ctx.warn(f"hooks.json: {event} の env や cwd は移さなかった")
             group: dict = {"hooks": [hook]}
