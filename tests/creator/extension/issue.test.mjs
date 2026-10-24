@@ -15,7 +15,7 @@ const { GH_TIMEOUT_MS, ISSUE_REPOSITORY } = await import(pathToFileURL(path.join
 // 偽物の gh を使う試験は、Windows では理由を書いて飛ばす。偽物の gh なしで動く確かめ（gh がない〔ENOENT〕、引数の配列を覚える偽物の関数など）は、Windows でも動かす
 const FAKE_GH_SKIP = process.platform === 'win32' ? '偽物の gh（拡張子のない実行ファイル）は Windows の spawn で動かせないため、飛ばす' : false;
 
-const ISSUE_URL = 'https://github.com/imaeda-hub/plugin-creator/issues/7';
+const ISSUE_URL = 'https://github.com/xclang/plugin-creator/issues/7';
 const ok = (stdout = `${ISSUE_URL}\n`) => ({ code: 0, stdout, stderr: '', timedOut: false, notFound: false });
 
 /** 呼ばれた引数と標準入力を覚える、偽物の gh の動かし方 */
@@ -29,7 +29,7 @@ function recorder(result = ok()) {
 }
 
 describe('質問の改善案の起票', () => {
-  test('REQ-049 gh issue create --repo imaeda-hub/plugin-creator を、題は引数の配列、本文は標準入力で渡す', async () => {
+  test('REQ-049 gh issue create --repo xclang/plugin-creator を、題は引数の配列、本文は標準入力で渡す', async () => {
     const { run, calls } = recorder();
     await withRun(
       async (run2) => {
@@ -39,9 +39,9 @@ describe('質問の改善案の起票', () => {
       { extra: { runGh: run } },
     );
     assert.equal(calls.length, 1);
-    assert.deepEqual(calls[0].args, ['issue', 'create', '--repo', 'imaeda-hub/plugin-creator', '--title=項目「進め方」を聞いた後に出てきた決まりが多い', '--body-file', '-']);
+    assert.deepEqual(calls[0].args, ['issue', 'create', '--repo', 'xclang/plugin-creator', '--title=項目「進め方」を聞いた後に出てきた決まりが多い', '--body-file', '-']);
     assert.equal(calls[0].input, '段階：項目の点検\n項目：進め方\n種類：聞いた後に自分から話した\n数：2');
-    assert.equal(ISSUE_REPOSITORY, 'imaeda-hub/plugin-creator');
+    assert.equal(ISSUE_REPOSITORY, 'xclang/plugin-creator');
   });
 
   test('REQ-049 題や本文がコマンドの一部として解釈されない：シェルの記号も、- で始まる題も、そのまま渡る', async () => {
@@ -119,13 +119,13 @@ process.stdin.on('end', () => {
   });
 
   test('REQ-049 そのほかの失敗は、終了コードと理由を返す。時間切れは「起票したか分からない」と返す', async () => {
-    const failed = recorder({ code: 1, stdout: '', stderr: 'GraphQL: Could not resolve to a Repository with the name imaeda-hub/plugin-creator.', timedOut: false, notFound: false });
+    const failed = recorder({ code: 1, stdout: '', stderr: 'GraphQL: Could not resolve to a Repository with the name xclang/plugin-creator.', timedOut: false, notFound: false });
     await assert.rejects(fileIssue({ title: '題', body: '本文' }, { run: failed.run }), /起票できませんでした（gh の終了コード 1）。理由：GraphQL: Could not resolve to a Repository/);
 
     const timedOut = recorder({ code: null, stdout: '', stderr: '', timedOut: true, notFound: false });
     await assert.rejects(
       fileIssue({ title: '題', body: '本文' }, { run: timedOut.run }),
-      /起票の返事が60秒たっても来ませんでした。起票されたか分かりません。imaeda-hub\/plugin-creator の Issue の一覧を確かめてから、必要なら、もう一度承認してください。/,
+      /起票の返事が60秒たっても来ませんでした。起票されたか分かりません。xclang\/plugin-creator の Issue の一覧を確かめてから、必要なら、もう一度承認してください。/,
     );
   });
 

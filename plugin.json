@@ -3,5 +3,5 @@
   "name": "plugin-creator",
   "version": "0.1.0",
   "description": "仕事のやり方と決まりを対話で聞き取り、それを組み込んだ Copilot CLI のプラグインを作って試験する。",
-  "repository": "https://github.com/imaeda-hub/plugin-creator"
+  "repository": "https://github.com/xclang/plugin-creator"
 }
