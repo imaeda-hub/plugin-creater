@@ -35,3 +35,33 @@
 
 ## 指摘
 
+### F-1（medium）生成プラグインの名前と入口のスキルの description の決まりが足りず、組み立てで断られたときに直す者がいない
+
+- ファイルと場所：skills/make-plugin/references/generate.md「## 1. 部品の分け方を決める」の「生成プラグインの名前（英小文字・数字・ハイフン。作業が分かる英語）と、1行の説明」「入口のスキルの名前と description。description は日本語で、何ができあがるかを手順でない短い1句で書き、…」と、「## 3. 組み立て」の「3. 失敗したら、返った理由を作業エージェントに渡して直させ、もう一度動かす。」
+- 問題：メインのエージェントが manifest.json に書く名前と description に、公式の形の決まりの一部しか書いていない。
+  - 名前：「1〜64文字」「ハイフンで始めず・終えず」「`--` を含めない」がない。入口のスキルの名前には、決まりが何も書かれていない。
+  - description：「1行」「1024文字以内」「`<`・`>` を入れない」「『I can …』『You can …』の形にしない」がない。
+  - 組み立てのスクリプトはこれらを断り（scaffold.py の `NAME_RE`・64文字、`check_description` の「1行で書いてください」「1024 文字以内」）、1段目は `<`・`>` と「I can」を不合格にする（template/tests/stage1/check_structure.py 439〜442行）。一方、3の3は断られた理由を作業エージェントに渡すが、作業エージェントは manifest.json を「読むだけで、書き換えない」（worker.agent.md「## B 生成プラグインの部品」）。名前や description で断られると、直せないまま直しの回数を使い切るおそれがある。
+- 根拠：R1 (1) の SKILL.md の2「`name` は1〜64文字の英小文字・数字・ハイフンにし、ハイフンで始めず・終えず、`--` を含めない」、3「`description` は1024文字以内にする」「『I can …』『You can …』の形にしない。XML のタグ（`<`、`>`）を入れない」。Agent Skills の仕様（agentskills.io/specification、2026-10-24 に取得）の `name` と `description` の欄。ユーザーの答え11（「クリエイターが書く生成プラグインのスキルにも効く」）。
+- 直し方：generate.md の1に次の2点を足す。
+  - 「生成プラグインの名前と入口のスキルの名前は、1〜64文字の英小文字・数字・ハイフンにし、ハイフンで始めず・終えず、`--` を含めない。」
+  - 「description は1行・1024文字以内にし、`<` と `>` を入れず、『I can』『You can』で始めない。」
+  - 3の3を「manifest.json の誤りで断られたら、自分で manifest.json を直す。それ以外は、返った理由を作業エージェントに渡して直させる」に分ける。
+- 確かさ：確か（scaffold.py 66・84・240〜246・313〜331行、check_structure.py 434〜442行、worker.agent.md 42行で確かめた）
+
+### F-2（medium）マーケットプレイスの `source: "./"`（リポジトリの直下）が通るかを確かめていない
+
+- ファイルと場所：.github/plugin/marketplace.json の `"source": "./"`。README.md「## インストール」の `copilot plugin install plugin-creator@plugin-creator`
+- 問題：公式ドキュメントの `source` の例は、どれも下のフォルダ（`./plugins/frontend-design` など）を指す。リポジトリの直下を指す例はない。通らなければ、README に書いた入れ方が唯一の入れ方なのに動かない。作業のメモの「要確認3」、C2・A4 のメモにも同じ未確認がある。
+- 根拠：R3「確かめられなかったこと」の「マーケットプレイスの `source` に、リポジトリの直下のプラグイン（`./`）を指定できるか。docs に記述がない」。公式の plugin reference の「Plugin entry fields」（`source`：「Where to fetch the plugin (relative path, GitHub, or URL)」）と plugins-marketplace（例は `"source": "./plugins/frontend-design"`）。どちらも github/docs の main から 2026-10-24 に取得した。1.0.102 の文字列には「Plugin path escapes marketplace directory」がある。ただし、どう判定するかは、ネイティブの部品の文字列からは読めなかった。
+- 直し方：最終確認の手順に、モデルを使わない次の確かめを入れる。`copilot plugin marketplace add <このリポジトリの手元のフォルダ>` → `copilot plugin marketplace browse plugin-creator` → `copilot plugin install plugin-creator@plugin-creator` → `copilot plugin list --json`。入らなければ、`source` を `"."` にするか、プラグインを下のフォルダに移す。ひな形の marketplace.json（C2）も同じ形なので、一緒に確かめる。
+- 確かさ：たぶん（上の4つのコマンドで決まる）
+
+### F-3（low）環境の落とし穴が references にだけある
+
+- ファイルと場所：references/receive.md「答えに `<pasted_content file="…" />` が入っていたら、そのファイルが示されたものとして扱う」。references/read.md「例外：ユーザーが打った発言に文書がそのまま添えられて届いたとき（発言に「The user included native document attachments in this message.」の文が加わる）は、その文書は自分で読んで候補を記録する」
+- 問題：どちらも Copilot CLI の環境に特有の落とし穴である。ところが、その段階のファイルを読んでいるときにしか見えない。長い貼り付けや `@` の文書は、ほかの段階の答え（前回の1回の長い話、生成前の確認の直しなど）でも届きうる。そのとき、`<pasted_content>` のファイルを読まずに、答えがないものとして扱うおそれがある。
+- 根拠：R1 (1) の SKILL.md の5「落とし穴（gotchas）は references ではなく本文に置く」。R1 (3-1)「環境に特有の落とし穴（gotchas）は、参照ファイルではなく SKILL.md に置く。モデルが、読むべき場面に気づかないことがあるため（[BP]）」。hearing.md 2.4 の事実の表「入力欄への貼り付けは、約20KB までは全文がモデルに届く。それより大きいと、…`<pasted_content file="…" />` のパスだけが届く」は、段階を限っていない。ただし、hearing.md 3.1 はこの扱いを段階「実物を受け取る」に置いていて、R1 と食い違う。
+- 直し方：本文の「記録のしかた」か「問いの形」に、すべての段階で効く1文を置く。例：「どの段階でも、答えに `<pasted_content file="…" />` があれば、そのファイルを読んで答えとする。発言に文書がそのまま添えられて届いたら、その文書を自分で読む。」references の側は、段階に特有の扱いだけを残す（ファイルの場所として記録する、候補を記録する）。足すと本文は約60トークン増えるが、5,000トークンには収まる。設計書との食い違いは、作業のメモの「上位の文書で直すこと」に書く。
+- 確かさ：たぶん（`ask_user` の自由入力の欄に約20KB を超えて貼ったときにも `<pasted_content>` になるかで決まる。チャットに書く答え〔答えが来ないときの続け方、Claude Code の文章の問い〕では、hearing.md 2.4 のとおり起きる）
+
