@@ -9,7 +9,7 @@ import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import { after, before, describe, test } from 'node:test';
-import { pathToFileURL } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import { SAMPLE_TASK, createFakeCore, finishedState, locateUi, prepState } from './fake-core.mjs';
 
@@ -388,21 +388,6 @@ describe('画面の部品の窓口', () => {
       }
     });
   });
-
-  test('REQ-043 置き場所を複数にでき、前のものが先に使われる（クリエイターの画面がひな形の部品も出すため）', async () => {
-    const first = tempDir();
-    const second = tempDir();
-    fs.writeFileSync(path.join(first, 'index.html'), 'first index');
-    fs.writeFileSync(path.join(first, 'app.js'), 'first app');
-    fs.writeFileSync(path.join(second, 'index.html'), 'second index');
-    fs.writeFileSync(path.join(second, 'render.js'), 'second render');
-    await withServer({ staticDir: [first, second] }, async ({ port, token }) => {
-      const get = async (p) => (await raw({ port, path: `${p}?k=${token}` })).body.toString('utf8');
-      assert.equal(await get('/'), 'first index');
-      assert.equal(await get('/app.js'), 'first app');
-      assert.equal(await get('/render.js'), 'second render');
-    });
-  });
 });
 
 // ---- ファイルの窓口 ------------------------------------------------------------
@@ -749,6 +734,20 @@ describe('画面の部品の決まり（ソースの検査）', () => {
     for (const forbidden of [/task\.json/, /taskPath/, /readFileSync|readFile\(/, /from\s+['"]node:fs/]) {
       assert.doesNotMatch(source, forbidden, `app.mjs に ${forbidden} がある`);
     }
+  });
+
+  test('REQ-001 画面の試験が示す Playwright の入れ方は、試験の入口（tests/run.py）の案内と同じ（tests/node_modules に入れる）', (t) => {
+    const here = path.dirname(fileURLToPath(import.meta.url));
+    const command = 'npm install --prefix tests --no-save --no-package-lock playwright@';
+    const screen = fs.readFileSync(path.join(here, 'screen.test.mjs'), 'utf8');
+    assert.ok(screen.includes(command), '画面の試験の案内に、入口と同じ入れ方がない');
+    assert.doesNotMatch(screen, /リポジトリの外/, 'リポジトリの外に入れる、という古い案内が残っている');
+    const entry = path.join(here, '..', '..', 'run.py');
+    if (!fs.existsSync(entry)) return t.skip('試験の入口（tests/run.py）がない');
+    const howTo = fs.readFileSync(entry, 'utf8');
+    assert.ok(howTo.includes(command), '試験の入口の案内が変わった。画面の試験の案内も合わせる');
+    const version = /PLAYWRIGHT_VERSION\s*=\s*"([\d.]+)"/.exec(howTo)?.[1];
+    assert.ok(version && screen.includes(`${command}${version}`), `Playwright の版（${version}）が入口と同じでない`);
   });
 
   test('REQ-025 画面の文字は日本語で、状態の記号（英語）を日本語にする表がある', () => {

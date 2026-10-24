@@ -44,14 +44,14 @@ Copilot CLI が、統括エージェント（`{{plugin_name}}:orchestrator`。�
 
 ツールの一覧に `{{plugin_name}}_open` がない（ツールを探すツールがあれば、それで探しても見つからない）ときは、{{plugin_name}} のエクステンション（画面を動かす、Copilot CLI が起動する別のプログラム）が読み込まれていない。原因は次の3つのどれかなので、3つとも直し方を示して、手番を終える。作業を自分で代わりにしない。
 
-1. 試験的機能が有効になっていない：`/experimental on` で有効にして、Copilot CLI を起動し直す。
-2. 読み込むときの確認を断った：Copilot CLI を起動し直して、チャットに出る確認（題は `Extension "<名前>" wants elevated permissions`）を許可する。
+1. 試験的機能が有効になっていない：初めて使うときは、Copilot CLI を `copilot --experimental` で起動する。一度付けると設定に残るので、次からは付けなくてよい。すでに起動しているときは、チャットで `/settings experimental on` と打つ。Copilot CLI が自動で再起動して、有効になる。再起動の後に出る読み込むときの確認は、2のとおり許可する（続けて2回出ることがある）。
+2. 読み込むときの確認を断った：Copilot CLI を起動し直して、チャットに出る確認（題は `Extension "plugin:{{plugin_name}}:{{plugin_name}}" wants elevated permissions`）を許可する。
    - 確認の意味（確認の本文の英語の項目ごと）：
      - `skip tool permission prompts`：{{plugin_name}} が画面に出す状態を書くツールを、確認なしで動かす。ファイルやコマンドなど外は変えない。
      - `register hooks`：画面で止めた実行のエージェントが、ツールを使えないようにする。
      - `handle permission requests`：エージェントの許可の求めを見て、画面に「チャットで確認を待っています」と示す。答えはしない（許可も拒否も、ユーザーがチャットで行う）。
    - 許可する理由：断ると読み込まれず、画面で開始も監視もできない。
-   - 選び方：「Yes」は今回だけ許可し、Copilot CLI を起動するたびと `/clear` のたびに、また確認が出る。「Yes, and always allow "<名前>" in this directory」は、このフォルダでは次から確認が出ない。
+   - 選び方：「Yes」は今回だけ許可し、Copilot CLI を起動するたびと `/clear` のたびに、また確認が出る。「Yes, and always allow "plugin:{{plugin_name}}:{{plugin_name}}" in this directory」（後ろにフォルダの場所が付く）は、このフォルダでは次から確認が出ない。
 3. エクステンションを使わない設定（`/extensions mode` の Disabled）になっている：`/extensions mode` で Load & Augment か Load Only に戻す。Disabled は、次のセッションにも残る。
 
 直したら、もう一度チャットで作業を頼むよう伝える。

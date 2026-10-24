@@ -67,8 +67,8 @@
   };
   const ISSUE_SOURCES = { mechanical: '実行の記録から自動で見つけた課題', orchestrator: '統括エージェントが振り返って足した課題' };
   const DEFAULT_FILE_STEPS = [
-    '生成プラグインを GitHub に公開する。',
-    'plugin.json の repository にそのリポジトリを書き、生成プラグインを入れ直す。',
+    'このプラグインを GitHub に公開する。',
+    'plugin.json の repository にそのリポジトリを書き、プラグインを入れ直す。',
     'gh（GitHub の公式のコマンド）を入れて、ログインする。',
   ];
   const DEFAULT_UNSTOP_HOW_TO = 'チャットで Esc を2回押すか、Copilot CLI を終えてください。';
@@ -715,7 +715,7 @@
     if (issues.length === 0 && !finished) return null;
     return [
       h('h2', null, '課題と Issue の案'),
-      h('p', { class: 'help' }, 'Issue は、GitHub に登録する課題の記録です。承認ボタンを押した案だけが、この生成プラグインの GitHub リポジトリに起票されます。'),
+      h('p', { class: 'help' }, 'Issue は、GitHub に登録する課題の記録です。承認ボタンを押した案だけが、このプラグインの GitHub リポジトリに起票されます。'),
       canFile.ok === false && issues.length ? cannotFileView(canFile) : null,
       issues.length === 0 ? h('p', { class: 'muted' }, '今回の実行では、課題は見つかりませんでした。') : issues.map((issue) => issueItem(issue, canFile)),
     ];

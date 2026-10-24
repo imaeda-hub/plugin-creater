@@ -9,6 +9,11 @@ import { createFakeGh, expectRefusal, github, LIMITS, makeHarness } from './harn
 
 const REPO = 'example/weekly-report';
 
+// 偽物の gh は、拡張子のない shebang の実行ファイルなので、Windows の spawn では動かせない。
+// 偽物の gh を使う試験は、Windows では飛ばす（gh の呼び出しは、ひな形の外の最終確認で見る）。
+const FAKE_GH_SKIP = process.platform === 'win32' ? '偽物の gh（拡張子のない実行ファイル）は Windows の spawn で動かせないため、飛ばす' : false;
+const gtest = (name, fn) => test(name, { skip: FAKE_GH_SKIP }, fn);
+
 function newGh(t) {
   const dir = mkdtempSync(join(tmpdir(), 'a1-gh-'));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
@@ -39,7 +44,7 @@ const markerFile = (h, runId, issueId) => join(h.dataRoot, runId, 'issues', `${i
 const createCalls = (gh) => gh.calls().filter((c) => c.args[0] === 'issue' && c.args[1] === 'create');
 const filingOf = (h, issueId) => h.run().issues.find((i) => i.id === issueId).filing;
 
-test('REQ-014 案を承認すると、gh で起票され、できた Issue の URL が出る。承認していない案は起票されない', async (t) => {
+gtest('REQ-014 案を承認すると、gh で起票され、できた Issue の URL が出る。承認していない案は起票されない', async (t) => {
   const gh = newGh(t);
   const h = await makeHarness(t, { gh });
   const run = await finishedRun(h, [{ title: '案 1', body: '本文 1' }, { title: '案 2', body: '本文 2' }]);
@@ -60,7 +65,7 @@ test('REQ-014 案を承認すると、gh で起票され、できた Issue の U
   assert.equal(marker.url, 'https://github.com/example/weekly-report/issues/1');
 });
 
-test('REQ-014 題と本文は、シェルを通さず、引数の配列と標準入力でそのまま渡される', async (t) => {
+gtest('REQ-014 題と本文は、シェルを通さず、引数の配列と標準入力でそのまま渡される', async (t) => {
   const gh = newGh(t);
   const h = await makeHarness(t, { gh });
   const title = '"; touch /tmp/pwned; echo "$(whoami) `id` $HOME \' \\';
@@ -72,7 +77,7 @@ test('REQ-014 題と本文は、シェルを通さず、引数の配列と標準
   assert.ok(call.stdin.startsWith(body));
 });
 
-test('REQ-014 同じ案を 2 回続けて承認しても、1 件だけ起票される', async (t) => {
+gtest('REQ-014 同じ案を 2 回続けて承認しても、1 件だけ起票される', async (t) => {
   const gh = newGh(t);
   const h = await makeHarness(t, { gh });
   await finishedRun(h);
@@ -84,7 +89,7 @@ test('REQ-014 同じ案を 2 回続けて承認しても、1 件だけ起票さ�
   assert.equal(createCalls(gh).length, 1);
 });
 
-test('REQ-014 2 つのセッションから同じ案を承認しても、1 件だけ起票される', async (t) => {
+gtest('REQ-014 2 つのセッションから同じ案を承認しても、1 件だけ起票される', async (t) => {
   const gh = newGh(t);
   const a = await makeHarness(t, { gh, sessionId: 's1' });
   await finishedRun(a);
@@ -97,7 +102,7 @@ test('REQ-014 2 つのセッションから同じ案を承認しても、1 件�
   assert.equal(b.state().previous.issues[0].filing.state, 'filed');
 });
 
-test('REQ-014 準備中に開けた前の実行の案も、承認して起票できる', async (t) => {
+gtest('REQ-014 準備中に開けた前の実行の案も、承認して起票できる', async (t) => {
   const gh = newGh(t);
   const h = await makeHarness(t, { gh });
   const run = await finishedRun(h);
@@ -109,7 +114,7 @@ test('REQ-014 準備中に開けた前の実行の案も、承認して起票で
   assert.equal(JSON.parse(readFileSync(markerFile(h, run.id, 'O1'), 'utf8')).state, 'filed');
 });
 
-test('REQ-014 gh が失敗すると、印が失敗になり、理由が出て、もう一度承認できる', async (t) => {
+gtest('REQ-014 gh が失敗すると、印が失敗になり、理由が出て、もう一度承認できる', async (t) => {
   const gh = newGh(t);
   const h = await makeHarness(t, { gh });
   await finishedRun(h);
@@ -138,7 +143,7 @@ test('REQ-014 gh が失敗すると、印が失敗になり、理由が出て、
   assert.equal(gh.calls().filter((c) => c.args[1] === 'list').length, 0, '失敗の後は、起票していないと分かっているので探さない');
 });
 
-test('REQ-014 gh が時間の上限を超えると、止めて、印が「起票したか分からない」になる', async (t) => {
+gtest('REQ-014 gh が時間の上限を超えると、止めて、印が「起票したか分からない」になる', async (t) => {
   const gh = newGh(t);
   const h = await makeHarness(t, { gh });
   const run = await finishedRun(h);
@@ -152,7 +157,7 @@ test('REQ-014 gh が時間の上限を超えると、止めて、印が「起票
   assert.deepEqual([filingOf(h, 'O1').state, JSON.parse(readFileSync(markerFile(h, run.id, 'O1'), 'utf8')).state], ['unknown', 'unknown']);
 });
 
-test('REQ-014 起票中のまま 5 分過ぎた印も、「起票したか分からない」と読む。もう一度承認できる', async (t) => {
+gtest('REQ-014 起票中のまま 5 分過ぎた印も、「起票したか分からない」と読む。もう一度承認できる', async (t) => {
   const gh = newGh(t);
   const h = await makeHarness(t, { gh });
   const run = await finishedRun(h);
@@ -170,7 +175,7 @@ test('REQ-014 起票中のまま 5 分過ぎた印も、「起票したか分か
   assert.ok(readdirSync(join(h.dataRoot, run.id, 'issues')).some((f) => f.includes('.old-')), '前の印は名前を変えて退けられる');
 });
 
-test('REQ-014 起票したか分からない案をもう一度承認すると、本文にその案の印がある Issue があれば、その URL を起票済みにする', async (t) => {
+gtest('REQ-014 起票したか分からない案をもう一度承認すると、本文にその案の印がある Issue があれば、その URL を起票済みにする', async (t) => {
   const gh = newGh(t);
   const h = await makeHarness(t, { gh });
   const run = await finishedRun(h);
@@ -199,7 +204,7 @@ test('REQ-014 起票したか分からない案をもう一度承認すると、
   assert.equal(filingOf(h, 'O1').url, 'https://github.com/example/weekly-report/issues/7');
 });
 
-test('REQ-014 探して見つからなければ起票する。前の実行に同じ題の Issue があっても、今回の案は起票される', async (t) => {
+gtest('REQ-014 探して見つからなければ起票する。前の実行に同じ題の Issue があっても、今回の案は起票される', async (t) => {
   const gh = newGh(t);
   const h = await makeHarness(t, { gh });
   await finishedRun(h);
@@ -219,7 +224,7 @@ test('REQ-014 探して見つからなければ起票する。前の実行に同
   assert.equal(createCalls(gh).length, 2);
 });
 
-test('REQ-014 探す処理が失敗するか時間の上限を超えると、起票せず、「起票したか分からない」のままになる', async (t) => {
+gtest('REQ-014 探す処理が失敗するか時間の上限を超えると、起票せず、「起票したか分からない」のままになる', async (t) => {
   const gh = newGh(t);
   const h = await makeHarness(t, { gh });
   await finishedRun(h);
@@ -246,7 +251,7 @@ test('REQ-014 探す処理が失敗するか時間の上限を超えると、起
   assert.equal(createCalls(gh).length, 1);
 });
 
-test('REQ-014 前の試みの結果が、新しい印を上書きしない', async (t) => {
+gtest('REQ-014 前の試みの結果が、新しい印を上書きしない', async (t) => {
   const gh = newGh(t);
   const h = await makeHarness(t, { gh });
   const run = await finishedRun(h);
@@ -265,7 +270,7 @@ test('REQ-014 前の試みの結果が、新しい印を上書きしない', asy
   assert.equal(filingOf(h, 'O1').url, 'https://github.com/example/weekly-report/issues/40');
 });
 
-test('REQ-014 起票できるときは、起票できる印と、リポジトリが状態に入る', async (t) => {
+gtest('REQ-014 起票できるときは、起票できる印と、リポジトリが状態に入る', async (t) => {
   const gh = newGh(t);
   const h = await makeHarness(t, { gh });
   await finishedRun(h);
@@ -274,30 +279,55 @@ test('REQ-014 起票できるときは、起票できる印と、リポジトリ
   assert.deepEqual(h.state().previous.canFile, { ok: true, reason: null, code: null, steps: [], repo: REPO });
 });
 
-test('REQ-014 repository がないときと GitHub の URL でないとき、gh が認証できないとき、gh がないときは、起票できず、理由と直し方が出る', async (t) => {
-  const cases = [
-    { name: 'repository がない', options: { repository: '' }, code: 'no_repository', step: /repository/ },
-    { name: 'GitHub の URL でない', options: { repository: 'https://gitlab.com/example/weekly-report' }, code: 'not_github', step: /GitHub の URL/ },
-    { name: 'gh が認証できない', options: { auth: { code: 1, stderr: 'not logged in' } }, code: 'not_logged_in', step: /gh auth login/ },
-    { name: 'gh がない', options: { noGh: true }, code: 'no_gh', step: /gh（GitHub の公式のコマンド）を入れて/ },
-  ];
-  for (const c of cases) {
-    const gh = c.options.noGh ? null : newGh(t);
-    if (gh && c.options.auth) gh.configure({ '--version': { stdout: 'gh' }, 'auth status': c.options.auth, 'issue create': { stdout: 'https://x/1' }, 'issue list': { stdout: '[]' } });
-    const h = await makeHarness(t, { gh, repository: c.options.repository });
-    await finishedRun(h);
-    await h.core.open({ requestText: 'x' });
-    await waitFor(() => h.state().previous?.canFile.code !== 'checking');
-    const { canFile } = h.state().previous;
+// 起票できないときの理由と手順を、状態から読む（偽物の gh がなくても確かめられる場合）
+async function canFileOf(h) {
+  await finishedRun(h);
+  await h.core.open({ requestText: 'x' });
+  await waitFor(() => h.state().previous?.canFile.code !== 'checking');
+  return h.state().previous.canFile;
+}
+
+test('REQ-014 repository がないときと GitHub の URL でないときは、起票できず、理由と直し方が出る。直し方は入れ方ごとの反映のしかたを書く', async (t) => {
+  for (const c of [
+    { name: 'repository がない', repository: '', code: 'no_repository', reason: /repository が書かれていません/ },
+    { name: 'GitHub の URL でない', repository: 'https://gitlab.com/example/weekly-report', code: 'not_github', reason: /GitHub の URL ではありません/ },
+  ]) {
+    const h = await makeHarness(t, { gh: null, repository: c.repository }); // gh は入っていない環境でも、repository の手順は出る
+    const canFile = await canFileOf(h);
     assert.equal(canFile.ok, false, c.name);
     assert.equal(canFile.code, c.code, c.name);
-    assert.ok(canFile.reason.length > 0, c.name);
-    assert.ok(canFile.steps.some((s) => c.step.test(s)), `${c.name}：${canFile.steps.join(' / ')}`);
+    assert.match(canFile.reason, c.reason, c.name);
+    const step = canFile.steps.find((s) => /repository/.test(s));
+    assert.ok(step, `${c.name}：${canFile.steps.join(' / ')}`);
+    // 手元のフォルダから入れたものはコピーされず、次のセッションで反映される。GitHub などから入れたときは、入れ直すと反映される
+    assert.match(step, /手元のフォルダから入れたときは、新しいセッションを始めると反映される/);
+    assert.match(step, /GitHub などから入れたときは、入れ直すと反映される/);
+    assert.doesNotMatch(step, /コピー/, '入れ方によらず「コピー」とは書かない');
+    assert.ok(canFile.steps.some((s) => /公開する/.test(s)), c.name);
     // 案は並ぶが、承認しても起票されない
     assert.equal(h.state().previous.issues.length, 1, c.name);
     assert.match(await expectRefusal(h.core.fileIssue('O1')), /起票できません/, c.name);
-    if (gh) assert.equal(createCalls(gh).length, 0, c.name);
   }
+});
+
+test('REQ-014 gh がないときは、起票できず、gh を入れてログインする直し方が出る', async (t) => {
+  const h = await makeHarness(t, { gh: null });
+  const canFile = await canFileOf(h);
+  assert.deepEqual([canFile.ok, canFile.code, canFile.repo], [false, 'no_gh', REPO]);
+  assert.ok(canFile.steps.some((s) => /gh（GitHub の公式のコマンド）を入れて/.test(s)));
+  assert.match(await expectRefusal(h.core.fileIssue('O1')), /起票できません/);
+});
+
+gtest('REQ-014 gh が認証できないときは、起票できず、ログインする直し方が出る。承認しても gh で起票しない', async (t) => {
+  const gh = newGh(t);
+  gh.configure({ '--version': { stdout: 'gh' }, 'auth status': { code: 1, stderr: 'not logged in' }, 'issue create': { stdout: 'https://x/1' }, 'issue list': { stdout: '[]' } });
+  const h = await makeHarness(t, { gh });
+  const canFile = await canFileOf(h);
+  assert.deepEqual([canFile.ok, canFile.code], [false, 'not_logged_in']);
+  assert.ok(canFile.reason.length > 0);
+  assert.ok(canFile.steps.some((s) => /gh auth login/.test(s)));
+  assert.match(await expectRefusal(h.core.fileIssue('O1')), /起票できません/);
+  assert.equal(createCalls(gh).length, 0);
 });
 
 test('REQ-014 リポジトリは plugin.json の repository（GitHub の URL）から OWNER/REPO を取り出す', () => {
@@ -315,7 +345,7 @@ test('REQ-014 リポジトリは plugin.json の repository（GitHub の URL）�
   assert.equal(parse(undefined), null);
 });
 
-test('REQ-014 起票の状態は result.json に書き足さない', async (t) => {
+gtest('REQ-014 起票の状態は result.json に書き足さない', async (t) => {
   const gh = newGh(t);
   const h = await makeHarness(t, { gh });
   const run = await finishedRun(h);
@@ -324,7 +354,7 @@ test('REQ-014 起票の状態は result.json に書き足さない', async (t) =
   assert.equal(readFileSync(join(h.dataRoot, run.id, 'result.json'), 'utf8'), before);
 });
 
-test('REQ-014 知らない案、実行中の案は承認できない', async (t) => {
+gtest('REQ-014 知らない案、実行中の案は承認できない', async (t) => {
   const gh = newGh(t);
   const h = await makeHarness(t, { gh });
   await finishedRun(h);

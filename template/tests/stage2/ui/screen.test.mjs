@@ -1,10 +1,14 @@
 // 2段目 部品の試験（画面）。Playwright でブラウザーを操作し、偽物の中心の処理（fake-core.mjs）から状態を流して確かめる。
 // 設計書：generated-plugin-structure.md 10章「2段目 部品の試験（画面）」。
 //
-// 動かし方：Playwright（ライブラリ）とそのブラウザーが要る。リポジトリには node_modules を置かない。
-//   別のフォルダで `npm i playwright@1.56.1` し、そのフォルダの node_modules を NODE_PATH に指定する。
-//   ブラウザーは PLAYWRIGHT_BROWSERS_PATH で場所を指定できる（環境に入っているものを使うとき）。
-//   例：NODE_PATH=/path/to/node_modules PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers node --test tests/stage2/ui/screen.test.mjs
+// 動かし方：Playwright（ライブラリ）とブラウザーが要る。ふつうは試験の入口（python3 tests/run.py）から動かす。
+//   入口が、足りない道具を示して止まり、入れ方を案内する。
+//   Playwright：生成プラグインのフォルダで `npm install --prefix tests --no-save --no-package-lock playwright@1.56.1` を実行して入れる
+//   （tests/node_modules に入る。git には入れない。ここからふつうに見つかる）。
+//   ブラウザー：手元の Chrome か Edge を使う（入口が見つけて、環境変数 PLUGIN_TEST_BROWSER_CHANNEL＝chrome か msedge で渡す）。
+//   どちらもないときは、Playwright の Chromium を使う（環境に入っているときは PLAYWRIGHT_BROWSERS_PATH で場所を指定できる）。
+//   開発の環境では、別のフォルダに入れた Playwright の node_modules を NODE_PATH で指定してもよい。
+//   直接動かすとき：node --test "tests/stage2/ui/screen.test.mjs"
 // 画面の見た目を人が見たいときは、PLUGIN_UI_SHOTS=<フォルダ> を付けると、画面の写真を書き出す。
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
@@ -15,6 +19,7 @@ import { after, before, describe, test } from 'node:test';
 import { pathToFileURL } from 'node:url';
 import zlib from 'node:zlib';
 
+import { contrastProblems, layoutProblems } from './page-checks.mjs';
 import { ALL_DISPLAYS_TASK, LONG, LONG_COMMAND, MODELS, SAMPLE_TASK, createFakeCore, finishedState, locateUi, prepState, richFinished, richPrep, richRunning, runState } from './fake-core.mjs';
 
 // ---- Playwright を見つける（見つからなければ、直し方を示して止まる） -------------------------------
@@ -27,7 +32,7 @@ async function loadPlaywright() {
   } catch {
     // 次の探し方へ
   }
-  // ES モジュールの import は NODE_PATH を見ないので、自分で探す
+  // 開発の環境の補い：ES モジュールの import は NODE_PATH を見ないので、自分で探す
   const require = createRequire(import.meta.url);
   for (const dir of (process.env.NODE_PATH ?? '').split(path.delimiter).filter(Boolean)) {
     try {
@@ -40,9 +45,10 @@ async function loadPlaywright() {
   throw new Error(
     [
       'Playwright（ライブラリ）が見つかりません。画面の試験には、Playwright が要ります。',
-      '  1. このリポジトリの外のフォルダで：npm i playwright@1.56.1',
-      '  2. その node_modules を指定して試験を動かす：NODE_PATH=<そのフォルダ>/node_modules node --test tests/stage2/ui/screen.test.mjs',
-      '  3. ブラウザーが Playwright の既定の場所にないときは、PLAYWRIGHT_BROWSERS_PATH でその場所を指定する。',
+      '  1. 生成プラグインのフォルダで：npm install --prefix tests --no-save --no-package-lock playwright@1.56.1（tests/node_modules に入る）',
+      '  2. もう一度、試験を動かす：python3 tests/run.py',
+      '  ブラウザーは、手元の Chrome か Edge を使う。どちらもないときは、Playwright の Chromium を使う（PLAYWRIGHT_BROWSERS_PATH で場所を指定できる）。',
+      '  開発の環境では、別のフォルダに入れた Playwright の node_modules を NODE_PATH で指定してもよい。',
     ].join('\n'),
   );
 }
@@ -191,103 +197,6 @@ async function shot(page, name) {
     fs.mkdirSync(process.env.PLUGIN_UI_SHOTS, { recursive: true });
     await page.screenshot({ path: path.join(process.env.PLUGIN_UI_SHOTS, `${name}.png`), fullPage: true });
   }
-}
-
-// ---- ページの中で動かす検査 --------------------------------------------------------------------
-
-/** 崩れの検査：横スクロール、はみ出し、重なり。表の入れ物（.table-wrap）の中は、中で動かせるので除く。 */
-function layoutProblems() {
-  const problems = [];
-  const describe = (el) => `${el.tagName.toLowerCase()}${el.className ? `.${String(el.className).split(' ')[0]}` : ''}「${(el.textContent ?? '').trim().slice(0, 20)}」`;
-  const visible = (el) => {
-    const style = getComputedStyle(el);
-    const rect = el.getBoundingClientRect();
-    return style.display !== 'none' && style.visibility !== 'hidden' && rect.width > 0 && rect.height > 0;
-  };
-  if (document.documentElement.scrollWidth > window.innerWidth + 1) problems.push(`横スクロールが出る（${document.documentElement.scrollWidth} > ${window.innerWidth}）`);
-  const all = [...document.querySelectorAll('body *')].filter(visible).filter((el) => !el.closest('.table-wrap'));
-  for (const el of all) {
-    const rect = el.getBoundingClientRect();
-    if (rect.right > window.innerWidth + 1 || rect.left < -1) problems.push(`画面の外にはみ出す：${describe(el)}`);
-    const parent = el.parentElement;
-    if (parent && parent !== document.body && parent !== document.documentElement) {
-      const parentRect = parent.getBoundingClientRect();
-      if (rect.left < parentRect.left - 1 || rect.right > parentRect.right + 1) problems.push(`入れ物の外にはみ出す：${describe(el)} in ${describe(parent)}`);
-    }
-    const style = getComputedStyle(el);
-    if (style.display !== 'inline' && style.overflowX !== 'visible' && el.scrollWidth > el.clientWidth + 1) problems.push(`文字が切れる：${describe(el)}`);
-  }
-  // 重なり：同じ入れ物の中の、流れに乗っている兄弟どうし
-  const flowing = (el) => {
-    const style = getComputedStyle(el);
-    return !['inline', 'contents'].includes(style.display) && ['static', 'relative'].includes(style.position);
-  };
-  const parents = new Set(all.map((el) => el.parentElement).filter(Boolean));
-  for (const parent of parents) {
-    const children = [...parent.children].filter((el) => all.includes(el) && flowing(el));
-    for (let i = 0; i < children.length; i++) {
-      for (let j = i + 1; j < children.length; j++) {
-        const a = children[i].getBoundingClientRect();
-        const b = children[j].getBoundingClientRect();
-        const width = Math.min(a.right, b.right) - Math.max(a.left, b.left);
-        const height = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top);
-        if (width > 2 && height > 2) problems.push(`重なる：${describe(children[i])} と ${describe(children[j])}`);
-      }
-    }
-  }
-  return problems;
-}
-
-/** 文字と背景の色の差（WCAG 2.2 の 4.5:1）が足りない文字を返す。 */
-function contrastProblems(minimum) {
-  const parse = (value) => {
-    const match = /rgba?\(([^)]+)\)/.exec(value);
-    if (!match) return null;
-    const [r, g, b, a = 1] = match[1].split(/[\s,/]+/).filter(Boolean).map(Number);
-    return { r, g, b, a };
-  };
-  const over = (top, bottom) => ({ r: top.r * top.a + bottom.r * (1 - top.a), g: top.g * top.a + bottom.g * (1 - top.a), b: top.b * top.a + bottom.b * (1 - top.a), a: 1 });
-  const background = (el) => {
-    const chain = [];
-    for (let e = el; e; e = e.parentElement) chain.push(e);
-    let result = { r: 255, g: 255, b: 255, a: 1 };
-    for (const e of chain.reverse()) {
-      const color = parse(getComputedStyle(e).backgroundColor);
-      if (color && color.a > 0) result = over(color, result);
-    }
-    return result;
-  };
-  const luminance = ({ r, g, b }) => {
-    const [R, G, B] = [r, g, b].map((v) => {
-      const s = v / 255;
-      return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
-    });
-    return 0.2126 * R + 0.7152 * G + 0.0722 * B;
-  };
-  const ratio = (a, b) => {
-    const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x);
-    return (hi + 0.05) / (lo + 0.05);
-  };
-  const problems = [];
-  let checked = 0;
-  for (const el of document.querySelectorAll('body *')) {
-    const style = getComputedStyle(el);
-    const rect = el.getBoundingClientRect();
-    if (style.display === 'none' || style.visibility === 'hidden' || rect.width === 0 || rect.height === 0) continue;
-    const hasText = [...el.childNodes].some((n) => n.nodeType === Node.TEXT_NODE && n.textContent.trim() !== '');
-    const isField = ['INPUT', 'SELECT', 'TEXTAREA'].includes(el.tagName) && el.type !== 'checkbox';
-    if (!hasText && !isField) continue;
-    const bg = background(el);
-    const fg = parse(style.color);
-    if (!fg) {
-      problems.push(`色を読めない：${el.tagName}`);
-      continue;
-    }
-    checked += 1;
-    const value = ratio(over(fg, bg), bg);
-    if (value < minimum) problems.push(`${value.toFixed(2)}:1 ${el.tagName.toLowerCase()}.${String(el.className).split(' ')[0]}「${(el.textContent ?? '').trim().slice(0, 20)}」`);
-  }
-  return { problems, checked };
 }
 
 // ---- 実行中の表示 ----------------------------------------------------------------------------------
@@ -905,8 +814,8 @@ describe('Issue の起票の承認（REQ-014）', () => {
       assert.match(box, /今は Issue を起票できません/);
       assert.match(box, /gh にログインしていません。/);
       assert.deepEqual(await page.locator('#cannot-file ol li').allInnerTexts(), [
-        '生成プラグインを GitHub に公開する。',
-        'plugin.json の repository にそのリポジトリを書き、生成プラグインを入れ直す。',
+        'このプラグインを GitHub に公開する。',
+        'plugin.json の repository にそのリポジトリを書き、プラグインを入れ直す。',
         'gh（GitHub の公式のコマンド）を入れて、ログインする。',
       ]);
       assert.equal(core.callsOf('fileIssue').length, 0);
@@ -1587,6 +1496,31 @@ describe('分かりやすい表示（REQ-025）', () => {
     });
   }
 
+  test('REQ-025 画面の文に、内部の用語（生成プラグイン・クリエイター）が出ない。起票の手順の標準の文は「このプラグイン」と書く', async () => {
+    const withDefaultSteps = finishedState();
+    withDefaultSteps.run.issues = [{ id: 'i1', title: '案', body: '本文', source: 'mechanical', filing: { state: 'none', url: null, reason: null } }];
+    withDefaultSteps.run.canFile = { ok: false, reason: 'gh にログインしていません。', steps: [] };
+    const previousWithDefaultSteps = richPrep();
+    previousWithDefaultSteps.previous.canFile = { ok: false, reason: 'gh にログインしていません。', steps: [] };
+    for (const [name, state] of [['準備中', richPrep()], ['実行中', richRunning()], ['終了後', richFinished()], ['起票の手順（標準の文）', withDefaultSteps], ['前の結果の起票の手順', previousWithDefaultSteps]]) {
+      await withScreen({ state, task: ALL_DISPLAYS_TASK, allowErrors: [HTTP_404] }, async ({ page }) => {
+        if (name.startsWith('準備中') || name.startsWith('前の結果')) await page.click('#s-previous summary');
+        await openAllFolds(page);
+        const text = await visibleText(page);
+        assert.doesNotMatch(text, /生成プラグイン|クリエイター/, `${name}の画面に内部の用語が出ている`);
+        assert.ok(!(await page.title()).match(/生成プラグイン|クリエイター/));
+        assert.match(text, /このプラグインの GitHub リポジトリに起票されます/);
+        if (name.includes('標準の文') || name.startsWith('前の結果')) {
+          assert.deepEqual(await page.locator('#cannot-file ol li').allInnerTexts(), [
+            'このプラグインを GitHub に公開する。',
+            'plugin.json の repository にそのリポジトリを書き、プラグインを入れ直す。',
+            'gh（GitHub の公式のコマンド）を入れて、ログインする。',
+          ]);
+        }
+      });
+    }
+  });
+
   test('REQ-025 知らない終わった理由の記号は、そのまま出る（隠さない）。知っている記号だけが日本語になる', async () => {
     await withScreen({ state: finishedState({ kind: 'aborted', detail: 'some_new_reason', unstoppable: false }) }, async ({ page }) => {
       assert.match(await textOf(page, '#end-reason'), /途中で終わった（some_new_reason）/);
@@ -1619,69 +1553,5 @@ describe('画面を開く（REQ-005、REQ-006）', () => {
       core.set(finishedState());
       await until(page, () => document.querySelector('#run-status')?.textContent.includes('終了'));
     });
-  });
-});
-
-// ---- クリエイターの画面での流用 ----------------------------------------------------------------------------------------------------
-
-describe('クリエイターの画面での流用（REQ-043）', () => {
-  test('REQ-043 画面のサーバーと描画の部品と見た目だけで、入力の欄のない見るだけの画面を出せる（自分の部品と、ひな形の部品を一緒に出す）', async () => {
-    const { startServer } = await import(pathToFileURL(path.join(uiDir, 'server.mjs')));
-    const own = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'ui-creator-')));
-    tempDirs.push(own);
-    fs.writeFileSync(
-      path.join(own, 'index.html'),
-      '<!doctype html><html lang="ja"><head><meta charset="utf-8"><title>決まったこと</title><link rel="stylesheet" href="style.css?k=%%K%%"></head><body><div id="app" class="page"></div><script src="render.js?k=%%K%%"></script><script src="creator.js?k=%%K%%"></script></body></html>',
-    );
-    fs.writeFileSync(
-      path.join(own, 'creator.js'),
-      `const { h, badge, displayPart } = window.PluginUi;
-const key = new URLSearchParams(location.search).get('k');
-fetch('/api/items?k=' + encodeURIComponent(key)).then((r) => r.json()).then((data) => {
-  document.getElementById('app').replaceChildren(
-    h('h1', null, '決まったこと'),
-    h('section', { class: 'panel' }, h('h2', null, '引き出したナレッジ'), badge('聞いた', 'completed'),
-      displayPart({ key: 'k', label: '一覧', type: 'table' }, data.table, { fileUrl: () => '#', open: new Set() }),
-      displayPart({ key: 'a', label: '資産', type: 'kv' }, data.kv, { fileUrl: () => '#', open: new Set() }),
-      displayPart({ key: 't', label: '注意', type: 'text' }, data.text, { fileUrl: () => '#', open: new Set() })),
-  );
-});
-`,
-    );
-    const server = await startServer({
-      preferredPort: 0,
-      staticDir: [own, path.join(uiDir, 'static')],
-      routes: {
-        'GET /api/items': () => ({
-          table: { columns: ['番号', '種類', '内容'], rows: [['K-01', '合否の決め方', '3行以内にまとめる'], ['K-02', 'その他', EVIL.img]] },
-          kv: { 流用する資産: '前回の週報', 公開のプラグイン: 'なし' },
-          text: EVIL.script,
-        }),
-      },
-    });
-    const context = await browser.newContext({ viewport: { width: 1280, height: 720 } });
-    const page = await context.newPage();
-    const errors = [];
-    page.on('pageerror', (error) => errors.push(error.message));
-    page.on('console', (message) => message.type() === 'error' && errors.push(message.text()));
-    try {
-      await page.goto(server.url);
-      await page.waitForSelector('table');
-      const text = await visibleText(page);
-      assert.match(text, /決まったこと[\s\S]*引き出したナレッジ[\s\S]*聞いた/);
-      assert.match(text, /K-01[\s\S]*合否の決め方[\s\S]*3行以内にまとめる/);
-      assert.match(text, /流用する資産\s*前回の週報/);
-      assert.ok(text.includes(EVIL.img) && text.includes(EVIL.script), 'HTML は文字として出る');
-      assert.equal(await page.evaluate(() => window.__pwned), undefined);
-      assert.equal(await page.locator('input, select, textarea, button').count(), 0, '入力の欄もボタンもない');
-      assert.equal(await page.evaluate(() => getComputedStyle(document.querySelector('h1')).fontFamily.length > 0 && getComputedStyle(document.body).backgroundColor), 'rgb(244, 246, 248)', '生成プラグインと同じ見た目（style.css）');
-      assert.deepEqual(errors, []);
-      assert.deepEqual(await page.evaluate(layoutProblems), []);
-      const { problems } = await page.evaluate(contrastProblems, 4.5);
-      assert.deepEqual(problems, []);
-    } finally {
-      await context.close();
-      await server.close();
-    }
   });
 });
