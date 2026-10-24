@@ -94,6 +94,10 @@
 - B2：上位の文書で直すこと（tasks/B2.md の同じ節）。設計書 4.5 と BLUEPRINT 3.1 に「担当」に入れる項目（agentDisplayName）を書く。BLUEPRINT 8章に、足した決まった値（entry_skill_name、entry_skill_description、orchestrator_extra_tools、worker_extra_tools、verifier_extra_tools、worker_agents）と worker-task の対応を書く。設計書 4.8 に「計画の記録は、その試行の作業エージェントを呼ぶ前にする」を決まりとして書く。
 - B2：土台の ui/static/render.js に JSDoc の `{{ el: … }}` があるので、土台は差し込み口の置き換えと「{{ が残っていないか」の確かめから外す（C2 に引き継ぎ済み）。
 - B2→D1：統括の本文の task の引数の名前（agent_type、mode）は、Claude Code の Agent の引数と違うので、変換で置き換わらない。
+- C2：上位の文書で直すこと（tasks/C2.md）。BLUEPRINT 8章の manifest.json に eval_inputs を足し、差し込み口の表をひな形の字（{{slot:worker-task}}、{{worker_agents}}、{{*_extra_tools}}）に合わせる。generated-plugin-structure.md 7章の土台に adapter.mjs を足す（check-base は extensions/_plugin_/ の下を全部比べる）。hearing.md 6.5：仮のファイルはメインのエージェントが parts/files/ に書き、実物は eval_inputs で build が写す。
+- C2：要確認。marketplace.json の source "./" が手元のフォルダのマーケットプレイスから入るか（最終確認）。jsonschema のない Python で build したときは task.json の形の確かめを1段目に任せる（警告）。生成プラグインの名前が plugin-creator と同じとき断らない（記録のツールの名前が重なる）。
+- C2→A3：1段目の自己試験が _plugin_ のパスを直書きしていて、生成プラグインの中では動かない（入口には響かない）。1段目に marketplace.json の確かめ（plugins[].name と plugin.json の name）を足す提案。
+- C2：git の名前とメールが設定されていないときは、最初のコミットだけ plugin-creator <plugin-creator@localhost> を使う（設定ファイルは変えない）。生成の後の直しのコミットとタグ（plugin-creator-generated）は、同じやり方の git -c で行える。
 - R2：`requestSandboxPermissive` を「サンドボックスの外で動かす」と示さない（generated-plugin-structure.md 6.3）。tasks.list には shell と client のタスクも入る。
 
 ## 後の仕事に渡すこと（作業のエージェントの報告から）
@@ -126,7 +130,8 @@
 - 利用枠は約5時間ごとに戻る。6体を並べると、30〜40分ほどで上限に当たる（2026-10-22 02:23、11:10 ごろ、16:50 ごろ、2026-10-23 03:10 前）。止まったエージェントは、戻った後に SendMessage で続けられる（同じセッションのうち）。ワークフローは止まると最初からになるので使わない。
 - 2026-10-23 03:57：C1、B3（書く）、B2、B1、C2、C3 を再開した。08:50 ごろ、また6体とも上限で止まった。
 - 2026-10-23 09:30：6体とも再開した（2回目）。B3（書く）と C1 は終わった。ほかは 14:20 まで止まった。
-- 2026-10-23 14:20：B1、B2、C2、C3 を再開し、C1 に続きを頼み、B3 の点検の4体を立てた。
+- 2026-10-23 14:20：B1、B2、C2、C3 を再開し、C1 に続きを頼み、B3 の点検の4体を立てた。B2・C1・C2 は終わり、B2 の点検の4体を立てた。19:20 まで止まった。
+- 2026-10-24 03:18：B1、C3、B3 の点検の4体を再開した。B2 の点検の4体は、これらが終わってから再開する（先に B3 を直せるようにするため）。
 
 ## 動いているサブエージェント（同じセッションなら SendMessage で続けられる）
 
@@ -142,7 +147,7 @@
 | B2 の点検 | design ab9b178fb21c516c7、format a601e2263da67d231、models a8867cdfa37807567、language af819d6c8db5a58b7。指摘は reviews/B2-<観点>.md。全部そろったら、直す担当（Opus）を立てる |
 | B3 の点検 | design（＋constitution）a2216a7d623ca20ec、format a0beeebe3a6691ad6、models a036d2c25c4d5d2e8、language ab1ea81ee5665979f。指摘は reviews/B3-<観点>.md。全部そろったら、直す担当（Opus）を立てる |
 | B1 | a7b491f44bb4b21eb（指示は briefs/B1.md） |
-| C2 | ab07d1229ed5e8971（指示は briefs/C2.md） |
+| C2 | ab07d1229ed5e8971（完了） |
 | C3 | ad65681a2d31da659（指示は briefs/C3.md） |
 
 ## 再開のしかた
