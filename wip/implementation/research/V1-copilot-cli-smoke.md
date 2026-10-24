@@ -1,6 +1,6 @@
 # V1 本物の Copilot CLI での読み込みの確かめ（偽物のモデルで）
 
-状態：途中（1〜4 の節まで書いた。5・6 はこれから）
+状態：完了（1〜6 の節まで書いた）
 
 担当の指示：`wip/implementation/briefs/V1.md`。作業のメモ：`wip/implementation/tasks/V1.md`。
 リポジトリのファイルは変えていない。スクリプトと結果の生データはスクラッチ（`/tmp/claude-0/-home-user-plugin-creater/f6e65e0d-9c94-5351-8ee1-475927b3b43e/scratchpad/v1/`、以下 `v1/`）にある。
@@ -96,6 +96,9 @@
 | 統括だけ話した場合（台本なし） | 統括が文だけで答えて終わると、実行は `aborted`／`orchestrator_ended`、まとめは「計画が記録される前に終わりました。」、課題 `M1` が自動で足された（設計どおり） |
 | 通しの台本（統括 → 作業 → 検証） | 作業・検証の定義が読み込まれ、`task` で `weekly-report:worker`／`weekly-report:verifier` が起動し、作業のモデルは `gpt-6-luna`、検証は `claude-sonnet-5.5`（`updateSubagentSettings` の上書きが効いた。統括のシステムプロンプトに `<subagent_model_preferences>` として載る）。作業の `show` の値が画面の状態の `displays.draft` に入った。**ただし、そのままでは検証が `<名前>_verdict` を使えず、実行は途中で終わった（5 節の不具合 1）。** 統括の `tools` に `<名前>_verdict`・`edit`・`execute` を足した写しでは、`all_passed` で終わった（まとめ「1回の試行で、2つの基準を満たしました。」、3 体とも `completed`、最後の返事が各枠に入った） |
 | `POST /api/stop` → 取り消されるか | 取り消された。統括が計画中のとき：実行は `finished`、`endReason: user_stopped`、統括 `stopped`、`/tasks` は「No subagents」。作業エージェントが動いている途中：統括も作業も `tasks.list` で `cancelled`、状態は統括 `stopped`・作業 `stopped`・検証 `standby`、`unstopped` は空、`/tasks` は「No subagents」（統括を取り消すと、`task` で起動した同期の作業エージェントも取り消された） |
+| 作業エージェントが許可の求めを出したとき | 通った（統括の `tools` に `execute` を足した写しで確かめた）。作業エージェントが `bash`（`echo hello > v1-out.txt`）を呼ぶと、チャットに「ファイルに書く / echo hello > v1-out.txt / Do you want to run this command? 1. Yes 2. No, and tell Copilot what to do differently」が出て、画面の状態は `waits: [{ slot: "worker", kind: "permission", detail: { permissionKind: "shell", command: "echo hello > v1-out.txt", paths: ["v1-out.txt"], sandboxPermissive: false, sandboxBypass: false } }]`、作業の枠は `waiting`。チャットで Yes を答えると `waits` が空になり、実行が `all_passed` で終わった |
+| `/clear` を実行中に打つ | `/clear` のあと「Started a fresh session.」、エクステンションが起動し直され、読み込みのときの確認がもう一度出た。`/tasks` は「No subagents」（Copilot CLI が古いセッションのエージェントを終えた）。新しいエクステンションは、古い実行を、生きている印の古さが 30 秒を超えたあとの再確認で「途中で終わった（途中で切れた）」（`aborted`／`cut_off`）にし、準備中の画面の `previous` に出した。それまでの間は `previous: null` |
+| 同じセッションで `extensions_reload`（実行中） | 利用者の許可（「Reload extensions / Copilot wants to reload extensions.」）のあと、エクステンションが起動し直され、読み込みのときの確認がもう一度出た。古い実行は、すぐ「途中で終わった（エクステンションが再起動した）」（`aborted`／`extension_restarted`）になり、`/tasks` は「No subagents」。ユーザーの答え 14 のとおり |
 | 終わったあと | Copilot CLI を終えると、画面のサーバーは閉じ、エクステンションのプロセスは残らなかった |
 
 実行中の `/tasks` の見え方：統括は `◎ 統括 <実行番号> [background]`、その下に作業が `◎ 週報を書く [sync]`（`task` の `description` の文字）で出た。
@@ -135,3 +138,55 @@
 
 - 5 節の不具合 1（子のツールは親のツールの範囲内）。
 - 読み取り役の `web` が解決されるかは、ログインした本物のアカウントで見る必要がある（6 節）。
+
+## 5. 見つかった不具合（実装を直す必要があるもの）
+
+どれも、偽物のモデルでも起きる Copilot CLI 側の動き（モデルに依らない）で確かめた。実機の再現の道具は `v1/`（`e2e.sh`、`fake-model.mjs`、`behavior.mjs`、写し `gen/`・`gen-a/`・`gen-c/`・`gen-d/`、`creator-ret/`）にある。
+
+### 不具合 1【重大】サブエージェントのツールは、親（統括エージェント）が持つツールの範囲に絞られる
+
+- **起きること：** 生成プラグインの統括エージェントの `tools` は `agent, read, search, <名前>_plan, _review, _issue, _finish, _show` で、`<名前>_verdict`・`edit`・`execute` を持たない。そのため、`task` で起動した検証エージェント（`tools: read, search, <名前>_verdict`）のツールは `view, grep, glob` だけになり、`<名前>_verdict` が使えない。偽物のモデルに呼ばせると「Tool 'weekly-report_verdict' does not exist. Available tools that can be called are view, grep, glob.」が返った。合否が記録されないので、どの実行も「繰り返しを終えないまま統括エージェントが終わった」で終わる（`all_passed` に決してならない）。作業エージェント（`tools: read, edit, execute, search, <名前>_show`）も、`edit`・`execute` が落ち、`view, rg, glob, <名前>_show` だけになる（ファイルを作る手段がない）。
+- **根拠：** 更新履歴 1.0.67「Subagent sessions keep parent tool restrictions」、1.0.68「Custom agents keep their tool filters in nested subagents」。実機で、統括の `tools` に `<名前>_verdict`・`edit`・`execute` を足した写し（`gen-a/`）では、検証が `<名前>_verdict` を使え（`view, grep, glob, weekly-report_verdict`）、作業が `bash` を使え、実行が `all_passed` で終わった。統括の `tools:` の行を丸ごと消した写し（`gen-d/`）でも、同じく通った（統括は全ツールを持つ）。
+- **混ぜたモデルの族の注意：** `edit` の別名は、子のモデルの族で別のツールになる（Claude の族：`create`・`edit`、GPT の族：`apply_patch`＝`type: "custom"`）。統括が Claude の族（既定は `claude-sonnet-5.5`）、作業が GPT の族（既定は `gpt-6-luna`）の組み合わせでは、統括の `tools` に `edit` を足しても、作業は `apply_patch` を受け取れなかった（`bash` は受け取れた）。統括も GPT の族（`gpt-6.1-sol`）にした写し（`gen-b/`）では、作業が `apply_patch` を受け取った。統括の `tools:` を消した写し（`gen-d/`）では、統括が Claude の族でも作業が `apply_patch` を受け取った。
+- **直し方の案（決めるのは設計者）：** 統括の `tools` を、作業と検証が要るツールの和にする。`<名前>_verdict` は「検証エージェント以外からの記録は断る」が決まりなので、統括が持っていても記録できない（`caller` の確かめ）。統括が `edit`・`execute` を使わないようにするには、`onPreToolUse`（統括の `agentType` で、拒む。拒むと「Denied by preToolUse hook: <理由>」がモデルに届く）を使う案と、そもそも統括の `tools:` を書かない案（`gen-d/` のように全ツールになるので、拒む一覧を持つ）がある。どちらも、統括の定義（`orchestrator.agent.md`）と、設計書 4.4・4.7・4.8（統括・作業・検証のツール）、`tests/stage1`（定義の `tools` の検査）に効く。ひな形の試験（偽物の SDK）では、この絞り込みは再現できない。
+- 同じ絞り込みは、クリエイターの読み取り役・作業エージェントには起きない（親がメインのエージェントで、全ツールを持つ）。
+
+### 不具合 2【重大】ツールの処理が投げた例外の文は、モデルに届かない
+
+- **起きること：** ツールの処理（handler）が `throw new Error('平易な日本語の理由')` で断ると、モデルが受け取るのは「Failed to execute `<ツール名>` tool with arguments: {…} due to error: Error: Tool execution failed」だけで、理由の文は消える。クリエイターの `plugin-creator_progress`（段階を「生成」に進める前に確認がない）でも、生成プラグインの `<名前>_plan`（メインのエージェントが呼んだ）でも、同じ文になった。ツールの説明は「決まりに合わない記録は、理由を返して断る。返った理由に従い、直せるときは直して呼び直す。『作業を終えてください』と返ったら、呼び直さない」と書いてあるが、実機では理由が返らない。統括・作業・検証の定義の「`<名前>_show` が『作業を終えてください』と返ったら、やめる」も、この文が届かないと働かない。
+- **根拠：** SDK 1.0.25 の `session.js` の `_executeToolAndRespond` は、例外の文を `error` として Copilot CLI に渡す（`handlePendingToolCall({ requestId, error: message })`）が、Copilot CLI 1.0.102 はモデルに「Tool execution failed」と一般の文を返す。R2 の 3.3「関数が例外を投げると、その文がエラーとしてモデルに返る」は、実機では成り立たない。
+- **確かめた直し方：** 断るときは、例外ではなく `{ textResultForLlm: '<理由>', resultType: 'failure' }` を返す。クリエイターの写し（`creator-ret/`）で、`failure` と `denied` は理由の文がそのままモデルに届いた（`rejected` は、モデルに何も届かなかった）。`onPreToolUse` が拒む場合（`permissionDecision: "deny"` と `permissionDecisionReason`）は、「Denied by preToolUse hook: <理由>」としてそのまま届く（確かめた）。
+- **直す場所：** 生成プラグインのひな形の `adapter.mjs` の `callTool`（`core.handleTool` が投げる断りを、文で返す形に包む）と、クリエイターの `creator.mjs` の `guard`。それぞれの偽物の SDK の試験（`tests/stage2/adapter/`、`tests/creator/extension/`）は、例外が理由として届く前提になっているので、「理由の文がツールの結果として返る」確かめに直す。設計書（generated-plugin-structure.md の記録のツールの断り、R2 の 3.3）も直す。
+
+### 不具合 3【軽】画面の枠の「担当」が、呼び出しの説明ではなく、エージェントの短い名前になる
+
+- 3 節の「設計・実装との食い違い」のとおり。`subagent.started` の `agentDisplayName` は `worker`・`verifier`で、`task` の `description`（「週報を書く」）ではない。`description` は統括の `task` 呼び出しの `tool.execution_start.arguments.description` にあり、`subagent.started.data.toolCallId` と同じ `toolCallId` で結べる。
+- 直す場所：`adapter.mjs` のイベントの直し（B1 の「担当」の決め方）。ユーザーに見えるのは「担当」の欄だけで、実行は止まらない。
+
+## 6. 確かめられなかったこと、気づいたこと
+
+### 確かめられなかったこと
+
+- **`defer: "never"` が効くか。** ツール検索が働く状況を作れなかった（2 節）。ツールの総数が 32（しきい値の既定は 30）でも、`TOOL_SEARCH` の機能の旗を入れても、`defer` の行を消しても、8 つのツールは全部ふつうに載った。ログインした本物のモデルで、`/tools` などを見る必要がある。
+- **選べるモデルの一覧の要素の形、Auto の見分け。** 偽物のモデル（自前のモデルの窓口）では `session.rpc.model.list()` の `list` が空で、`model.getCurrent()` は `{"modelId":"fake-model"}` だけだった。Auto のときの `modelId` が `auto` になるかは分からない。
+- **`model` のリストの 2 番目への切り替わり**（先頭のモデルが使えないとき）。自前のモデルの窓口では、先頭の名前がそのまま使われ、「使えるか」の判断が働かない。
+- **読み取り役の `web` の別名**（`web_fetch` など）。この環境ではメインのセッションにも Web のツールがない。
+- **ログインが要るもの：** `assistant.usage` の `copilotUsage`・`aiCreditsStatus`、`session_limits_exhausted.requested`、GitHub の MCP サーバー、組織の管理の設定。
+- **サブエージェントがユーザーのリポジトリの指示ファイル（AGENTS.md など）を受け取らないこと**（R1）。指示ファイルのある作業フォルダでは動かしていない。
+- **GitHub に公開したあとの `marketplace add imaeda-hub/plugin-creator`**。
+- **実ブラウザーでの画面の表示**（このスクリプトの範囲外。サーバーの応答だけ確かめた）。
+- **Windows、macOS、サンドボックス有効での動作**（Linux x64 だけ）。
+
+### 気づいたこと（実装の不具合ではないが、文書の更新や判断が要る）
+
+1. **make-plugin を読むたびに、`assets/template/` の全ファイルの一覧が届く。** Copilot CLI は、スキルを読んだとき、スキルのフォルダのファイルを全部「Related files」として並べる（make-plugin は 97 件、約 17.7KB。この環境のパスは長い）。SKILL.md の本文（約 7KB）より大きい。SKILL.md は「`assets/template/` は自分では読まない」と書いているが、一覧は消せない。コンパクションの後に make-plugin を読み直すたびに届く。ひな形のファイルが増えるほど増える。実害は一覧の分のコンテキストウィンドウだけ。
+2. **`--experimental` は、付けると `settings.json` に `"experimental": true` が残り、次からは付けなくても有効になる**（`-p --experimental` でも残った）。`/experimental on` は動くが、`copilot help config` が「`/experimental` (deprecated)」と書く（今の案内は `--experimental` か `/settings experimental on`）。README（2 か所）、スキルの `references/setup.md`、ひな形の入口のスキル・README・設計書、憲章でない仕様書（`creation-requirements.md`、`output-requirements.md`）が `/experimental on` を案内している。
+3. **`-p` で動かすと、エクステンションの読み込みのときの確認に答える人がおらず、「Approval check ✗ Denied, no one to approve」で、エクステンションが読み込まれない。** `--allow-all-tools` か `--allow-tool='extension-permission-access'`（または `extension-permission-access(plugin:<プラグイン>:<フォルダ>)`）を付けると読み込まれる。
+4. **生成プラグインの入口のスキルのコマンドは、スキルの名前がプラグインの名前と同じなので `/weekly-report`（`/weekly-report:weekly-report` ではない）。** クリエイターは `/plugin-creator:make-plugin`、`/plugin-creator:test-plugin`。README の案内が、生成プラグインの種類ごとに書き分けられるかを見るとよい（ひな形の README が `/<プラグイン>:<スキル>` と書いていないか）。
+5. **サブエージェントのシステムプロンプトに、Copilot CLI が「Do NOT use output redirection (`>`, `>>`, `tee`) to save results to files. Do NOT use `cat > /path` or heredocs to create output files.」を足す。** 作業エージェントが編集のツールを持たず `bash` でファイルを作る場合（不具合 1 の途中の形）と衝突する。不具合 1 を直して、編集のツールを持たせれば問題にならない。
+6. **ツールの引数の `minimum`・`minLength`・`minItems`・`pattern` は、モデルに届く定義では説明の末尾の `{minimum: 1}` のような文字になる。** 検査は、エクステンションの中の `handleTool` がする設計のままで足りる。`required` の引数が欠けても Copilot CLI は止めない（`weekly-report_open` を `{}` で呼べた）。
+7. **許可の求めの流れは設計どおり動いた**（作業エージェントのシェルの求め → 画面に「チャットで確認を待っています」の元になる `waits` → チャットで許可 → 続行）。
+8. **`/clear` と `extensions_reload` の扱いは、ユーザーの答え 14 と設計どおり動いた**（3 節）。
+9. 偽物のモデルの確かめの限界：自前のモデルの窓口（BYOK）の経路だけを見ている。ツールの名前の族（`rg`・`apply_patch`）の分かれ方は、モデルの名前で決まるので、本物のモデルでも同じ見込みだが、確かめていない。
+10. 作業の途中で、`COPILOT_HOME` に空の変数を渡して、ファイルシステムの根に `/home-gen-a/`（Copilot CLI の設定とログ、約 600KB）ができてしまった。消そうとしたが、安全の検査に止められたので、残っている。中身はこの確かめのものだけで、消してよい。
+11. 作業のはじめに、写しのフォルダの `git status` を見て、`tests/dev-eval/heldout/h1/` の 3 つのファイル名（`NOTES.md`、`files/a.docx`、`files/b.xlsx`）が出力に出てしまった（読まない決まりの「ファイルの一覧を見ること」に当たる）。中身は読んでいない。以後は `heldout` を写さず、写しで `git init` し直して見ていない。

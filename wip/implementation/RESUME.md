@@ -118,7 +118,8 @@
 - D1a：要確認。Agent を run_in_background: false で呼ぶと結果が同じ手番に返るか。記録の tool_use の名前が Agent か Task か（両方を受ける）。同じプロセスの MCP サーバーのツールをサブエージェントの tools で絞れるか。.mcp.json の cwd が効くか。試験の claude は 2.1.310、SDK 同梱は 2.1.307。
 - D1d：上位の文書で直すこと（tasks/D1d.md）。testing.md 4章：記録のツールを呼んだエージェントの結び付けは、フックの tool_use_id と MCP の _meta の claudecode/toolUseId で結べる（要確認が解けた）。取り消されたかは取れない（試験の仕組みが止めたかで決める）。MCP のツールに alwaysLoad、agent: に claude_code のプリセットが要る、Agent は既定で裏で動く。agent.started の model は Agent SDK では始まりの時点で分からない。adapter.mjs の describeOpened を共有する（今は写し）。screen.mjs にモデル選択の窓口を足す。creator-structure.md 2章に開発の試験の部品の行がない。Agent SDK を 0.3.310 に上げた。
 - D1d（統括の決定）：内側の EVAL で、生成プラグインの作業ごとの設定（作るときに決まるので、模擬ユーザーの eval.json の値と鍵が合わない）は、ユーザー役が画面の設定の欄（見出しと説明）を読んで、模擬ユーザーのナレッジから値を決めて入れる（testing.md 7章の「人と同じ流れ」）。testing.md 7章に書く必要がある。
-- D1d：この環境にサンドボックスの道具（bubblewrap、socat）がない（testing.md 11.1）。EVAL を回す前にユーザーに確認する。
+- D1d：この環境にサンドボックスの道具（bubblewrap、socat）がなかった（testing.md 11.1）。2026-10-24 にこのセッションに限って apt-get で入れ（bubblewrap 0.9.0、socat 1.8.0.0）、bwrap が動くことを確かめた。次のセッションからも使うには、ユーザーが環境の設定のセットアップスクリプトに `apt-get install -y bubblewrap socat` を足す（最後の報告で伝える）。
+- EVAL の費用の見込み：outer.mjs --dry-run の見込み（1回 0.1 ドル）は試作の短いヒアリングの値で、今のクリエイターの長いヒアリングと生成には当たらない。最初は1回だけ回して実際の費用と利用枠の減り方を測ってから、回数を決めるのがよい（ユーザーに確認する）。
 - D1c：開発中に一度、承認の前に本物のモデルを少し使った（本物の SDK と偽物の API で通す実験で、ユーザー役の呼び出しだけが本物に届いた。Sonnet、短い約17回）。原因を直し、偽物の API につながっていない query を断る守りを試験に足した。ユーザーに報告する。
 - D1c：上位の文書で直すこと（tasks/D1c.md）。testing.md 6.2：合格の割合が決まっていない（決めた：漏らさない・指示のことを話さないは0件、ほかは90%以上）。決まりの確かめ（confirm）が7観点にない。6.5：抜き書きの出どころ（最初の依頼の文を含めない）、組み込みの範囲、承認の前の書き込みの見方（Bash で書いたファイルは見分けられない）。6.3：対照のクリエイターの作り方と判定、急いでいる話し方で選ぶもの。6.6：見ない模擬ユーザーの記録の伏せ方。4章：qa.jsonl と AskUserQuestion の結果の文の形。
 - D1c：要確認。生成プラグインの tests/run.py が Playwright 不足で止まり、クリエイターが道具の用意を提案する（EVAL の中の扱いは最初の実行で決める）。週報の模擬ユーザーの headings.asked が一般の問いに当たる、headings.leak の「来週の予定」が成果物の fact にも出る（偽陽性が出たら絞る）。
