@@ -13,6 +13,10 @@
 //   no-generation-before-approval 承認の前に生成しなかった（REQ-020）
 //   hurry-options                 急ぐ合図の後に、残りの項目と 3 つの進め方を示す問いがある（REQ-015）
 //   first-run                     まだやったことのない作業で、想定の 1 回をたどった（REQ-016）
+//   main-model                    メインのエージェントが、指定のモデルで動いた（REQ-045。腕 with だけ）
+//   worker-model                  作業エージェントが、費用の低いモデルで動いた（REQ-046。腕 with で、生成プラグインができたときだけ）
+// 採点とは別に、設計書（testing.md 6.5）が「記録する」とした数を数える（countRecorded。合否には入れない）：
+//   問いの数、1 回の質問のツールの呼び出しの問いの欄の数、保留の項目と AI の判断の数、記録のツールが断った回数とその後に直したか。
 // 合格に求めること（6.5 の表）：思考力の高いモデルは「上のすべて」、Claude Haiku 5.5 は all-items-heard と no-generation-before-approval の 2 点。
 
 import crypto from 'node:crypto';
@@ -29,6 +33,9 @@ export const HAIKU_REQUIRED = Object.freeze(['all-items-heard', 'no-generation-b
 
 /** 内側の EVAL のスコアがこれ以上なら合格（プラグインありで、基準がすべて合格） */
 export const INNER_PASS_SCORE = 1;
+
+/** 状態を変える記録のツール。断る（失敗の結果を返す）ことがある（hearing.md 7.5） */
+export const RECORD_TOOLS = Object.freeze(['progress', 'record', 'confirm']);
 
 const SKIP_DIRS = new Set(['.git', 'node_modules', '__pycache__', '.venv']);
 const SKIP_PREFIXES = ['tests/results/'];
@@ -296,6 +303,99 @@ export function gradeFirstRun({ persona, exchanges, toolEvents }) {
   return { ok: walked, detail: walked ? '問いの後に、想定の 1 回（項目「前回の1回」）を記録した' : '問いの後に、項目「前回の1回」を記録していない（想定の 1 回をたどっていない）' };
 }
 
+// ---- 記録する数（testing.md 6.5） -------------------------------------------------------------------------
+
+const REFUSAL_SAMPLES = 5;
+
+/**
+ * 設計書が「記録する」とした数を、会話の記録から数える。採点の合否には入れない。
+ *   questions        問いの数（質問のツールの問い ＋ 文章の問い）
+ *   askToolCalls     質問のツールの呼び出しの数、1 回の呼び出しの問いの欄の数の最大、2 つ以上の欄を置いた呼び出しの数
+ *                    （hearing.md 4.1 の「1 回に問いを 1 つ」が守られたかを見る。2 つ以上が 0 回なら守られた）
+ *   pending          保留の項目の数と名前
+ *   aiDecisions      出どころが「AI の判断（ユーザーが任せた）」のナレッジの数（外したものを除く）
+ *   recordRefusals   記録のツール（progress・record・confirm）が断った回数と、その後に同じツールが成功した（直した）回数。
+ *                    断りは、ツールの結果が失敗（resultType: 'failure'。MCP では isError）で返ったもの
+ * @param {{ items: Array, toolEvents: Array, state: object|null }} args
+ */
+export function countRecorded({ items = [], toolEvents = [], state = null }) {
+  const asks = items.filter((i) => i.kind === 'creator.question');
+  const texts = items.filter((i) => i.kind === 'creator.question-text');
+  // 1 回の呼び出しの問いの数。group がない古い記録は、問い 1 つごとを 1 回の呼び出しとして数える
+  const perCall = new Map();
+  asks.forEach((q, n) => perCall.set(q.group ?? `single-${n}`, (perCall.get(q.group ?? `single-${n}`) ?? 0) + 1));
+  const sizes = [...perCall.values()];
+
+  const pairs = pairToolEvents(toolEvents);
+  const byTool = {};
+  const samples = [];
+  for (const tool of RECORD_TOOLS) {
+    const mine = pairs.filter((p) => p.call.tool === tool);
+    const refused = mine.filter((p) => p.result?.isError === true);
+    const fixed = refused.filter((r) => mine.some((p) => p.call.seq > r.call.seq && succeeded(p)));
+    byTool[tool] = { calls: mine.length, refused: refused.length, fixed: fixed.length, unfixed: refused.length - fixed.length };
+    for (const r of refused) if (samples.length < REFUSAL_SAMPLES) samples.push({ tool, seq: r.call.seq, reason: String(r.result.result ?? '').slice(0, 160) });
+  }
+  const refusedTotal = Object.values(byTool).reduce((n, t) => n + t.refused, 0);
+  const fixedTotal = Object.values(byTool).reduce((n, t) => n + t.fixed, 0);
+
+  const pendingItems = ITEMS.filter((i) => state?.items?.[i.key]?.status === 'pending').map((i) => i.name);
+  const aiDecisions = (state?.knowledge ?? []).filter((k) => k.source === 'ai_decision' && k.status !== 'dropped').length;
+  return {
+    questions: { total: asks.length + texts.length, askTool: asks.length, text: texts.length },
+    askToolCalls: { calls: sizes.length, maxQuestionsPerCall: sizes.length ? Math.max(...sizes) : 0, callsWithMultiple: sizes.filter((n) => n >= 2).length },
+    pending: { count: pendingItems.length, items: pendingItems },
+    aiDecisions: { count: aiDecisions },
+    recordRefusals: { total: refusedTotal, fixed: fixedTotal, unfixed: refusedTotal - fixedTotal, byTool, samples },
+  };
+}
+
+// ---- モデル（REQ-045・REQ-046） -----------------------------------------------------------------------------
+
+/** モデルの ID をそろえる（[1m] のような末尾の印と、日付の末尾を除く） */
+export function normalizeModelId(id) {
+  return String(id ?? '').replace(/\[[^\]]*\]$/, '').replace(/-\d{8}$/, '');
+}
+
+const WORKER_TYPE = /(^|:)worker(-[a-z0-9-]+)?$/;
+
+/**
+ * メインのモデルが指定のモデルか（REQ-045）と、作業エージェントが費用の低いモデルで動いたか（REQ-046）。
+ * @param {{ requested: string, main: string[], subagents: Array<{ type: string, models: string[] }>, lowCost: string|null }} use
+ *   lowCost は、置き換えた版の作業エージェントの定義の model（変換後の ID）。分からなければ null
+ * @returns {Array<{ id: string, ok: boolean, detail: string, req: string }>} worker-model は、作業エージェントが動いた（または動くべきだった）ときだけ
+ */
+export function gradeModels({ use, generatedCount }) {
+  const out = [];
+  const requested = normalizeModelId(use.requested);
+  const main = (use.main ?? []).map(normalizeModelId);
+  const wrongMain = main.filter((m) => m !== requested);
+  out.push({
+    id: 'main-model',
+    ok: main.length > 0 && wrongMain.length === 0,
+    detail: main.length === 0 ? 'メインのエージェントのメッセージにモデルの記録がない' : wrongMain.length ? `指定は ${requested} だが、${[...new Set(wrongMain)].join('、')} でも動いた` : `指定の ${requested} で動いた`,
+    req: 'REQ-045',
+  });
+  if (generatedCount >= 1) {
+    const workers = (use.subagents ?? []).filter((a) => WORKER_TYPE.test(a.type));
+    const expected = use.lowCost ? normalizeModelId(use.lowCost) : null;
+    if (!expected) {
+      out.push({ id: 'worker-model', ok: false, detail: '置き換えた版の作業エージェントの定義に、費用の低いモデルの指定がない', req: 'REQ-046' });
+    } else if (workers.length === 0) {
+      out.push({ id: 'worker-model', ok: false, detail: '生成プラグインのファイルを書く作業エージェントが動かなかった（メインのエージェントが書いた見込み）', req: 'REQ-046' });
+    } else {
+      const wrong = workers.flatMap((w) => (w.models.length ? w.models : ['（モデルの記録なし）'])).map(normalizeModelId).filter((m) => m !== expected);
+      out.push({
+        id: 'worker-model',
+        ok: wrong.length === 0,
+        detail: wrong.length ? `費用の低いモデルは ${expected} だが、${[...new Set(wrong)].join('、')} でも動いた` : `作業エージェント ${workers.length} 回、費用の低いモデルの ${expected} で動いた`,
+        req: 'REQ-046',
+      });
+    }
+  }
+  return out;
+}
+
 // ---- 全体 -------------------------------------------------------------------------------------------------------
 
 /**
@@ -311,10 +411,11 @@ export function gradeFirstRun({ persona, exchanges, toolEvents }) {
  * @param {object|null} args.stages 1・2段目の結果 { stage1: { ok }, stage2: { ok }, skipped?, reason? }
  * @param {object|null} args.inner 内側の EVAL の結果（withScore）。なければ採点に入れない
  * @param {Array} args.userSignals 急ぐ合図の位置 [{ answerIndex }]
+ * @param {object|null} args.modelUse 動いたモデル { requested, main, subagents: [{ type, models }], lowCost }。腕 with で渡すと REQ-045・REQ-046 を採点する
  * @param {string} args.model クリエイターのモデルの ID
  * @param {'with'|'without'|'control'} args.arm
  */
-export function gradeOuter({ persona, personaFiles, items, toolEvents, state, generatedCount, generatedFiles, stages, inner, userSignals = [], model, arm = 'with' }) {
+export function gradeOuter({ persona, personaFiles, items, toolEvents, state, generatedCount, generatedFiles, stages, inner, userSignals = [], modelUse = null, model, arm = 'with' }) {
   const grades = [];
   const add = (id, ok, detail, req) => grades.push({ id, ok: Boolean(ok), detail: detail ?? '', ...(req ? { req } : {}) });
   const exchanges = exchangesOf(items);
@@ -361,6 +462,8 @@ export function gradeOuter({ persona, personaFiles, items, toolEvents, state, ge
     }
   }
 
+  if (arm === 'with' && modelUse) for (const g of gradeModels({ use: modelUse, generatedCount })) add(g.id, g.ok, g.detail, g.req);
+
   const faults = userRoleFaults({ exchanges, trace });
   const isHaiku = /haiku/i.test(model ?? '');
   const required = isHaiku ? HAIKU_REQUIRED.filter((id) => grades.some((g) => g.id === id)) : grades.map((g) => g.id);
@@ -371,6 +474,7 @@ export function gradeOuter({ persona, personaFiles, items, toolEvents, state, ge
     score,
     trace,
     faults,
+    counts: countRecorded({ items, toolEvents, state }),
     verdict: { model, required, ok: failedRequired.length === 0, failed: failedRequired },
     // 会話例の候補（6.6）：採点の観点にすべて合格し、ユーザー役の誤りがない。最後は全文を読んで確かめる
     exampleCandidate: !isHaiku && failedRequired.length === 0 && faults.length === 0,
