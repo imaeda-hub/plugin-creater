@@ -478,8 +478,9 @@ def convert_skill_file(path: str, rel: str, ctx: Context) -> None:
 def convert_skills(ctx: Context) -> None:
     """スキルの本文（SKILL.md と、スキルのフォルダの中の Markdown）のツール名を置き換える。
 
-    assets/ と scripts/ の中は置き換えない。assets/ のひな形は、Copilot CLI 向けの生成プラグインの元で、
-    クリエイターが写して使うものだからである。
+    assets/ と scripts/ の中は置き換えない（素材とスクリプトで、スキルの本文ではないため）。
+    クリエイターのひな形（直下の template/）は、Copilot CLI 向けの生成プラグインの元で、クリエイターが写して使う。
+    スキルのフォルダの外にあるので、ここでは扱わず、そのまま写される（copy_plugin_files）。
     """
     base = os.path.join(ctx.out, "skills")
     if not os.path.isdir(base):

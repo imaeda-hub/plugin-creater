@@ -153,6 +153,20 @@ const parameters = {
                 description: describe('confirm', 'evalTasks.criteria'),
                 items: { type: 'string', pattern: '^K-[0-9]+$' },
               },
+              settings: {
+                ...object(
+                  {
+                    maxIterations: { type: 'integer', minimum: 1, description: describe('confirm', 'evalTasks.settings.maxIterations') },
+                    task: {
+                      type: 'object',
+                      additionalProperties: { type: ['string', 'number', 'boolean'] },
+                      description: describe('confirm', 'evalTasks.settings.task'),
+                    },
+                  },
+                  [],
+                ),
+                description: describe('confirm', 'evalTasks.settings'),
+              },
             },
             ['prompt'],
           ),

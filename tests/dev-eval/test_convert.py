@@ -93,6 +93,8 @@ def make_fixture(root):
     write(root, "skills/demo/references/a.md", "`demo-plugin_state` を呼ぶ。`view` で読む。\n")
     write(root, "skills/demo/assets/template/com.github.copilot/agents/t.agent.md", front(
         ["description: ひな形", "model: [gpt-6-luna]", "tools:", "  - read"], "`task` と `ask_user` と `demo-plugin_plan`\n"))
+    write(root, "template/com.github.copilot/agents/t.agent.md", front(
+        ["description: ひな形", "model: [gpt-6-luna]", "tools:", "  - read"], "`task` と `ask_user` と `demo-plugin_plan`\n"))
     write(root, "skills/demo/scripts/run.py", "# `task` はスクリプトの中\n")
     # エージェント
     write(root, "com.github.copilot/agents/orchestrator.agent.md", front([
@@ -370,6 +372,15 @@ class Bodies(Base):
         self.assertIn("model: [gpt-6-luna]", template)
         self.assertEqual(self.text("skills/demo/scripts/run.py"), "# `task` はスクリプトの中\n")
 
+    def test_4_the_template_at_the_root_is_copied_and_not_replaced(self):
+        """直下の template/ は、クリエイターが写して生成プラグインにするひな形。Copilot CLI 向けのまま、そのまま写す。"""
+        self.run_convert()
+        template = self.text("template/com.github.copilot/agents/t.agent.md")
+        self.assertIn("`task` と `ask_user` と `demo-plugin_plan`", template)
+        self.assertIn("model: [gpt-6-luna]", template)
+        with open(os.path.join(self.src, "template", "com.github.copilot", "agents", "t.agent.md"), encoding="utf-8") as f:
+            self.assertEqual(template, f.read())
+
     def test_4_a_skill_without_changes_keeps_its_frontmatter_text(self):
         write(self.src, "skills/plain/SKILL.md", "---\nname: plain\ndescription: \"引用符つき: コロン\"\n---\n普通の本文。\n")
         self.run_convert()
@@ -542,7 +553,8 @@ class WhatIsCopied(Base):
     def test_files_a_plugin_needs_are_copied(self):
         self.run_convert()
         for rel in ("README.md", "scripts/helper.py", "mcp/calc.py", "skills/demo/SKILL.md",
-                    "skills/demo/assets/template/com.github.copilot/agents/t.agent.md", "skills/demo/scripts/run.py"):
+                    "skills/demo/assets/template/com.github.copilot/agents/t.agent.md", "skills/demo/scripts/run.py",
+                    "template/com.github.copilot/agents/t.agent.md"):
             self.assertTrue(os.path.isfile(self.at(rel)), rel)
 
     def test_a_symbolic_link_is_not_followed_or_copied(self):
@@ -769,8 +781,6 @@ class RealPlugins(unittest.TestCase):
             rel = os.path.relpath(dirpath, out)
             if not (rel == "agents" or rel == "skills" or rel.startswith("skills" + os.sep)):
                 continue   # README などは置き換えない
-            if rel.startswith(os.path.join("skills", "make-plugin", "assets")):
-                continue   # ひな形は Copilot CLI 向けのまま
             for name in files:
                 if name.endswith(".md"):
                     path = os.path.join(dirpath, name)
@@ -797,15 +807,16 @@ class RealPlugins(unittest.TestCase):
         for dirpath, dirnames, _ in os.walk(out):
             self.assertNotIn("heldout", dirnames)
         self.assertTrue(os.path.isfile(os.path.join(out, "skills", "make-plugin", "SKILL.md")))
-        self.assertTrue(os.path.isdir(os.path.join(out, "skills", "make-plugin", "assets", "template")))
+        self.assertTrue(os.path.isdir(os.path.join(out, "template")))
+        self.assertFalse(os.path.exists(os.path.join(out, "skills", "make-plugin", "assets")))
 
     def test_4_the_creator_template_stays_in_the_copilot_format(self):
         """クリエイターが写して生成プラグインにするひな形は、置き換えない（生成プラグインは Copilot CLI 向けに作る）。"""
         out, _ = self.convert_real(REPO, "creator-template", validate=False)
-        base = os.path.join(out, "skills", "make-plugin", "assets", "template")
+        base = os.path.join(out, "template")
         for rel in ("com.github.copilot/agents/orchestrator.agent.md", "skills/_entry_/SKILL.md"):
             with open(os.path.join(base, *rel.split("/")), encoding="utf-8") as f, \
-                    open(os.path.join(REPO, "skills", "make-plugin", "assets", "template", *rel.split("/")), encoding="utf-8") as g:
+                    open(os.path.join(REPO, "template", *rel.split("/")), encoding="utf-8") as g:
                 self.assertEqual(f.read(), g.read(), rel)
 
     def read_json(self, out, rel):

@@ -21,7 +21,7 @@ from unittest import mock
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(os.path.dirname(os.path.dirname(HERE)))
-TEMPLATE_TESTS = os.path.join(REPO, "skills", "make-plugin", "assets", "template", "tests")
+TEMPLATE_TESTS = os.path.join(REPO, "template", "tests")
 RUN = os.path.join(TEMPLATE_TESTS, "run.py")
 PACKAGE_JSON = os.path.join(REPO, "skills", "test-plugin", "scripts", "package.json")
 

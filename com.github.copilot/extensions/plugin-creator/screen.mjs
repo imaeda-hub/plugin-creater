@@ -1,7 +1,7 @@
 // クリエイターの画面（REQ-043、REQ-044、generated-plugin-structure.md 9章）。
 //
 // ひな形の生成プラグインの画面のサーバー（ui/server.mjs）と描画の部品（ui/static/render.js、style.css）を、
-// 相対パスで読み込んで使う。土台の写しは持たない（ひな形はスキルのフォルダの中にあり、エクステンションとしては読み込まれない）。
+// 相対パスで読み込んで使う。土台の写しは持たない（ひな形はクリエイターの直下の template/ にあり、エクステンションとしては読み込まれない）。
 // 見るだけ：入力の欄、開始と止めるボタン、承認のボタンを出さない。答えや直しはチャットで行う。
 // 127.0.0.1 だけで待ち受け、合言葉つきの URL で開く。画面のサーバーはエクステンションと同じプロセスで動くので、
 // Copilot CLI を終えるとプロセスが残らない。
@@ -19,7 +19,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 export const DEFAULT_PLUGIN_ROOT = path.resolve(here, '..', '..', '..');
 
 /** ひな形の生成プラグインのエクステンションの場所（プラグインの根からの相対） */
-const TEMPLATE_EXTENSION = path.join('skills', 'make-plugin', 'assets', 'template', 'com.github.copilot', 'extensions', '_plugin_');
+const TEMPLATE_EXTENSION = path.join('template', 'com.github.copilot', 'extensions', '_plugin_');
 
 const EXAMPLE_MAX_BYTES = 2 * 1024 * 1024;
 

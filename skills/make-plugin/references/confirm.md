@@ -21,7 +21,7 @@
 - **作り直しのとき**：引き継ぐこと（「決まった」のできていたことと、流用する部品）と、変わること（例：まとめ役・作業役・確認役の AI に分かれる、作業の画面が付く）。
 - **作業の定義の案**：`task` ツールで `plugin-creator:worker` に書かせる。頼みの初めに「作業の定義の案」の仕事だと書く。渡すもの：
   - 置き場所：`<作業フォルダ>/.plugin-creator-work/draft/task.json`（絶対パス）。合否の基準（criteria）は書かせない。組み立てのスクリプトと画面が、ナレッジから入れるためである。
-  - 決まり：「Base directory for this skill」のフォルダの `assets/template/com.github.copilot/extensions/_plugin_/core/task.schema.json`（絶対パス）
+  - 決まり：「Base directory for this skill」のフォルダの `../../template/com.github.copilot/extensions/_plugin_/core/task.schema.json`（`..` を畳んだ絶対パス）
   - 作業の名前（画面の題）、繰り返しの上限の初めの値（ユーザーが言っていなければ 3）、作業役の AI の名前（`worker`、2体目からは `worker-<英小文字>`）と画面での呼び名、段階「画面」で決めた設定と表示（見出し、部品、初めの値、選択肢、必須か、出す時）
   - 作業役の AI を何体にするかは、作業の分け方を見て自分で決める。
 

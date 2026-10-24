@@ -62,7 +62,7 @@
   function renderHead(view) {
     const stage = view.hearing.exists ? view.hearing.stage : null;
     return [
-      h('h1', null, view.title ?? 'クリエイターの画面'),
+      h('h1', null, view.title ?? 'plugin-creator の画面'),
       h(
         'div',
         { class: 'top-state stage-line', id: 'stage' },
@@ -173,6 +173,15 @@
     ];
   }
 
+  // 課題ごとの、作業の画面に入れる設定の値（繰り返しの上限と、作業ごとの設定）
+  function settingsBlock(settings) {
+    const entries = [];
+    if (settings?.maxIterations !== undefined) entries.push(['繰り返しの上限', settings.maxIterations]);
+    for (const [key, value] of Object.entries(settings?.task ?? {})) entries.push([key, value]);
+    if (entries.length === 0) return h('p', { class: 'help' }, '作業の画面に入れる設定の値はありません');
+    return h('div', null, h('p', { class: 'help' }, 'この課題で作業の画面に入れる設定の値'), h('ul', { class: 'plain-list' }, entries.map(([key, value]) => h('li', null, `${key}：${String(value)}`))));
+  }
+
   function renderConfirmation(view) {
     const c = view.confirmation;
     if (!c) return null;
@@ -212,6 +221,7 @@
             t.criteria.length
               ? h('div', null, h('p', { class: 'help' }, 'この課題の合格の条件'), h('ul', { class: 'plain-list' }, t.criteria.map((x) => h('li', null, `${x.id}：${x.text}`))))
               : null,
+            settingsBlock(t.settings),
           ),
         ),
       ),
@@ -300,7 +310,7 @@
     const examples = view.examples ?? [];
     return [
       h('h2', null, '会話例'),
-      h('p', { class: 'help' }, 'AI が演じたユーザーとの会話の例です。クリエイターの版ごとに作り直されます。'),
+      h('p', { class: 'help' }, 'AI が演じたユーザーとの会話の例です。plugin-creator の版ごとに作り直されます。'),
       examples.length
         ? h(
             'ul',
@@ -327,7 +337,7 @@
   function renderAll() {
     const view = ui.state;
     if (!view) return;
-    document.title = `${view.title ?? 'クリエイターの画面'}`;
+    document.title = `${view.title ?? 'plugin-creator の画面'}`;
     for (const [id, build] of BUILDERS) {
       const nodes = [build(view) ?? []].flat(Infinity).filter(Boolean);
       sections[id].replaceChildren(...nodes);

@@ -9,7 +9,7 @@
 build がすること（creator-structure.md 2章・4.1、BLUEPRINT 8章・9章）
   1. 入力を確かめる。ヒアリングの記録の段階が「生成」で、承認の時刻があること（生成前の確認の関門。hearing.md 6.3）。
      parts/ の形。--out がまだないフォルダで、作業フォルダの中にあること（REQ-021、REQ-036）。足りないときは断る。
-  2. ひな形（このスクリプトから見て ../assets/template/）を --out に写し、_plugin_ と _entry_ の名前を変える。
+  2. ひな形（このスクリプトから見て ../../../template/。クリエイターの直下）を --out に写し、_plugin_ と _entry_ の名前を変える。
      作業エージェントが2体以上なら、worker.agent.md から worker-<名前>.agent.md を作る。
   3. 差し込み口 {{slot:名前}} を parts/slots/名前.md の文で置き換え、そのあとで決まった値 {{plugin_name}} などを入れる。
      埋まらない差し込み口が残ったら断り、どの差し込み口かを示す。
@@ -52,7 +52,7 @@ import subprocess  # noqa: E402
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple  # noqa: E402
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-DEFAULT_TEMPLATE = os.path.normpath(os.path.join(HERE, "..", "assets", "template"))
+DEFAULT_TEMPLATE = os.path.normpath(os.path.join(HERE, "..", "..", "..", "template"))   # skills/make-plugin/scripts/ から見て、クリエイターの直下の template/
 CHECKS_PATH = os.path.join(DEFAULT_TEMPLATE, "tests", "stage1", "check_structure.py")   # task.json の形の誤りを日本語で示すのに使う
 
 WORK_NAME = ".plugin-creator-work"                    # 作業用の一時フォルダの名前（ユーザーの答え7）

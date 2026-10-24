@@ -10,6 +10,9 @@
 // - 段階を「生成」に進めるには、生成前の確認（confirm）を受け付けていることと、承認の答えの抜き書きが要る。
 //   進めると承認の時刻を残し、その後は記録を変えない（問答も記録しない。差し込みも返さない）。
 
+import crypto from 'node:crypto';
+import fs from 'node:fs';
+
 import {
   ASSET_STATUSES,
   ITEMS,
@@ -32,6 +35,15 @@ import {
   sourceIndex,
   stageIndex,
 } from './names.mjs';
+
+/** 作業の定義の案（draft/task.json）の中身の印（sha256）。読めなければ null。確認で示した案が、生成に進めるときまで変わっていないかを見る */
+export function taskFileHash(file) {
+  try {
+    return crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
+  } catch {
+    return null;
+  }
+}
 
 export class Refusal extends Error {
   constructor(message) {
@@ -206,6 +218,8 @@ export function createHearing({ store, sessionId, clock }) {
         if (changed) {
           throw new Refusal(`作る前の確認で示した仕事のやり方や決まりの一覧と、今の「決まった」ものが違います（${changed}）。plugin-creator_confirm で示し直して、ユーザーによいと答えてもらってください。`);
         }
+        const taskChanged = taskChangedSinceConfirmation();
+        if (taskChanged) throw new Refusal(taskChanged);
         if (!has(input.approvalQuote)) {
           throw new Refusal('段階を「生成」に進めるには、よいと答えたユーザーの言葉の抜き書き（approvalQuote）を添えてください。');
         }
@@ -412,6 +426,20 @@ export function createHearing({ store, sessionId, clock }) {
     if (gone.length) parts.push(`決まったものでなくなった：${gone.join('、')}`);
     if (edited.length) parts.push(`直した：${edited.join('、')}`);
     return parts.length ? parts.join('。') : null;
+  }
+
+  /**
+   * 確認で示した作業の定義の案（draft/task.json）が、示したあとに変わっていたら、その文。変わっていなければ null。
+   * 変わったまま生成すると、ユーザーが見た見本と違う画面と合格の条件の設定で作られる（REQ-020、REQ-027）。
+   * 印（taskHash）のない古い記録は、比べない。
+   */
+  function taskChangedSinceConfirmation() {
+    const c = state?.confirmation;
+    if (!c?.taskHash) return null;
+    const now = taskFileHash(c.taskPath);
+    if (now === c.taskHash) return null;
+    const what = now === null ? `見つからなくなりました（${c.taskPath}）` : `示したあとに変わっています（${c.taskPath}）`;
+    return `作る前の確認で示した画面と合格の条件の設定の案が、${what}。作業の画面の見本を直したときは、plugin-creator_confirm で示し直して、ユーザーによいと答えてもらってください。`;
   }
 
   // ---- そのほか -----------------------------------------------------------------

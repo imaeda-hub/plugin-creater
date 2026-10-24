@@ -13,16 +13,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 /** クリエイターのプラグインの根（リポジトリの直下） */
 export const REPO_ROOT = path.resolve(here, '..', '..', '..');
 export const EXTENSION_DIR = path.join(REPO_ROOT, 'com.github.copilot', 'extensions', 'plugin-creator');
-export const TEMPLATE_EXTENSION_DIR = path.join(
-  REPO_ROOT,
-  'skills',
-  'make-plugin',
-  'assets',
-  'template',
-  'com.github.copilot',
-  'extensions',
-  '_plugin_',
-);
+export const TEMPLATE_EXTENSION_DIR = path.join(REPO_ROOT, 'template', 'com.github.copilot', 'extensions', '_plugin_');
 
 export const T = (name) => `plugin-creator_${name}`;
 

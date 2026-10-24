@@ -24,7 +24,7 @@
    - `.plugin-creator-work/draft/task.json` を `.plugin-creator-work/parts/task.json` に
    - 流用するファイルを `.plugin-creator-work/parts/files/` の下の、生成プラグインで使う場所に
 2. 課題の仮の入力のファイルを、生成前の確認で示した中身のまま、`.plugin-creator-work/parts/files/tests/eval/<課題の番号>/inputs/<名前>` に書く。
-3. `<作業フォルダ>/.plugin-creator-work/parts/manifest.json` を書く。形：`{ "plugin_name", "plugin_description", "entry_skill": { "name", "description" }, "workers": [{ "agent", "label", "extra_tools": [] }], "verifier": { "extra_tools": [] }, "orchestrator": { "extra_tools": [] }, "eval_inputs": [{ "from", "to" }] }`。
+3. `<作業フォルダ>/.plugin-creator-work/parts/manifest.json` を書く。形：`{ "plugin_name", "plugin_description", "entry_skill": { "name", "description" }, "workers": [{ "agent", "label", "extra_tools": [] }], "verifier": { "extra_tools": [] }, "eval_inputs": [{ "from", "to" }] }`。
    - `extra_tools` は MCP のツール（`サーバー名/ツール名`）など、役ごとに足すツールである。
    - `eval_inputs` は、課題の実物の入力のファイルの一覧である。`from` は実物の絶対パス、`to` は `tests/eval/<課題の番号>/inputs/<名前>`。組み立てのスクリプトが写すので、実物は `parts/files/` に写さない。同じ場所が両方にあると、組み立てが断る。
 
@@ -32,7 +32,7 @@
 
 `task` ツールで `plugin-creator:worker` に頼む。頼みの初めに「生成プラグインの部品」の仕事だと書く。作業エージェントは会話を見ていないので、次をすべて渡す。渡していないことは、生成プラグインに入らない。
 
-- 作業フォルダ、`.plugin-creator-work/parts/`、ひな形（`<スキルのフォルダ>/assets/template/`）の絶対パス
+- 作業フォルダ、`.plugin-creator-work/parts/`、ひな形（`<スキルのフォルダ>/../../template/`）の、`..` を畳んだ絶対パス
 - よいと答えたナレッジの一覧（番号、種類、項目、文、例、例外）
 - 振る舞いの案と、1で決めた部品の分け方
 - 試験の課題：課題の番号、頼むときの言葉、入力のファイルの置き場所（`tests/eval/<課題の番号>/inputs/<名前>`。eval.json の `inputs` には、課題のフォルダからの `inputs/<名前>` で書く）、作業の画面に入れる設定の値、基準にするナレッジの番号と採点のしかた（文字や形で決まるものはプログラム、それ以外はモデル）

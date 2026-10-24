@@ -4,7 +4,7 @@
 試験の名前に、確かめる要件の番号を入れる。
 
   - 差し込み口の働きは、小さなひな形（fixture-template/）で確かめる。本物のひな形の中身には依らない。
-  - 本物のひな形（skills/make-plugin/assets/template/）では、組み立てたものが 1段目の構造の検査（kind=generated）に
+  - 本物のひな形（template/）では、組み立てたものが 1段目の構造の検査（kind=generated）に
     通ることを見る。本物のひな形にまだない部品（B2 が作る作業・検証のエージェントの定義）は、
     試験の中で仮のファイルで補う。補った部品は試験の出力（標準エラー）に出る。
 
@@ -34,7 +34,7 @@ sys.dont_write_bytecode = True
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(os.path.dirname(os.path.dirname(HERE)))
 SCRIPT = os.path.join(REPO, "skills", "make-plugin", "scripts", "scaffold.py")
-REAL_TEMPLATE = os.path.join(REPO, "skills", "make-plugin", "assets", "template")
+REAL_TEMPLATE = os.path.join(REPO, "template")
 CHECK_STRUCTURE = os.path.join(REAL_TEMPLATE, "tests", "stage1", "check_structure.py")
 SAMPLE = os.path.join(HERE, "sample")
 FIXTURE = os.path.join(HERE, "fixture-template")

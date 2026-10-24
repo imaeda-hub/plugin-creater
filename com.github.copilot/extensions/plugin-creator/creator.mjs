@@ -11,7 +11,7 @@ import path from 'node:path';
 import { DRAFT_TASK_SUFFIX } from './constants.mjs';
 import { DEFAULT_PLUGIN_ROOT, createScreen, createUiLoader, listExamples } from './screen.mjs';
 import { DocTextError, documentText } from './doc-text.mjs';
-import { Refusal, createHearing } from './hearing.mjs';
+import { Refusal, createHearing, taskFileHash } from './hearing.mjs';
 import { createHooks } from './hooks.mjs';
 import { IssueError, fileIssue, runGh as defaultRunGh } from './issue.mjs';
 import { checkResultFile, createResultReader } from './results.mjs';
@@ -83,6 +83,7 @@ export function createCreator({
         prompt: t.prompt,
         inputs: t.inputs,
         criteria: t.criteria.map((id) => ({ id, text: byId.get(id)?.text ?? '' })),
+        settings: t.settings ?? {},
       })),
       rebuild: c.rebuild ?? null,
       sampleUrl: sample.url,
@@ -93,7 +94,7 @@ export function createCreator({
     const notices = [];
     if (hearing.loadError) notices.push(hearing.loadError.message);
     return {
-      title: 'クリエイターの画面',
+      title: 'plugin-creator の画面',
       sessionId,
       hearing: hearingView(hearing),
       confirmation: confirmationView(),
@@ -146,6 +147,33 @@ export function createCreator({
     }
   }
 
+  /**
+   * 課題の、作業の画面に入れる設定の値（eval.json の settings と同じ形：maxIterations と task。grade.mjs の確かめと合わせる）。
+   * 省かれたら空のまとまり。名前の書き間違いで、ユーザーがよいと答えた値が黙って落ちないよう、使えない名前は断る。
+   */
+  function parseSettings(value, index) {
+    if (value === undefined || value === null) return {};
+    const label = `試しに動かして採点する試験の課題 ${index + 1} の設定（settings）`;
+    if (typeof value !== 'object' || Array.isArray(value)) throw new Refusal(`${label}は、繰り返しの上限（maxIterations）と作業ごとの設定の値（task）を持つものにしてください。`);
+    const unknown = Object.keys(value).filter((key) => key !== 'maxIterations' && key !== 'task');
+    if (unknown.length) throw new Refusal(`${label}に、使えない名前があります：${unknown.join('、')}。使える名前：maxIterations、task`);
+    const out = {};
+    if (value.maxIterations !== undefined) {
+      if (!Number.isInteger(value.maxIterations) || value.maxIterations < 1) throw new Refusal(`${label}の繰り返しの上限（maxIterations）は、1以上の整数で渡してください。`);
+      out.maxIterations = value.maxIterations;
+    }
+    if (value.task !== undefined) {
+      if (value.task === null || typeof value.task !== 'object' || Array.isArray(value.task)) throw new Refusal(`${label}の作業ごとの設定の値（task）は、設定の名前と値の組で渡してください。`);
+      for (const [key, v] of Object.entries(value.task)) {
+        if (!(typeof v === 'string' || typeof v === 'boolean' || (typeof v === 'number' && Number.isFinite(v)))) {
+          throw new Refusal(`${label}の作業ごとの設定「${key}」の値は、文字・数・真偽のどれかで渡してください。`);
+        }
+      }
+      out.task = { ...value.task };
+    }
+    return out;
+  }
+
   function validateConfirmArgs(args) {
     const a = args && typeof args === 'object' && !Array.isArray(args) ? args : {};
     const text = (v) => (typeof v === 'string' ? v.trim() : '');
@@ -160,7 +188,7 @@ export function createCreator({
         if (!text(p)) throw new Refusal(`試しに動かして採点する試験の課題 ${i + 1} の入力のファイルに、場所（path）がありません。`);
         return { path: text(p), provisional: typeof f === 'object' && f?.provisional === true };
       });
-      return { prompt: text(t.prompt), inputs, criteria: (Array.isArray(t.criteria) ? t.criteria : []).map(String) };
+      return { prompt: text(t.prompt), inputs, criteria: (Array.isArray(t.criteria) ? t.criteria : []).map(String), settings: parseSettings(t.settings, i) };
     });
     let rebuild = null;
     if (a.rebuild !== undefined) {
@@ -196,8 +224,10 @@ export function createCreator({
     if (omitted.length) {
       throw new Refusal(`決まった仕事のやり方や決まりのすべてを、示す一覧（knowledgeIds）に入れてください。入っていないもの：${omitted.join('、')}`);
     }
+    // 示す案の中身の印。見本を作る前に取る（見本を作る間に案が変わっても、変わった側に倒れて、示し直しを求める）。生成に進めるときに、今の中身と比べる
+    const taskHash = taskFileHash(normalized);
     const sampleUrl = await prepareSample({ taskPath: normalized, knowledgeRows: rows });
-    hearing.commitConfirmation({ ...a, taskPath: normalized });
+    hearing.commitConfirmation({ ...a, taskPath: normalized, taskHash });
     return `作る前の確認で示すものを受け付けました。画面で見られます。作業の画面の見本：${sampleUrl}`;
   }
 
@@ -229,14 +259,14 @@ export function createCreator({
       try {
         url = await screen.ensure();
       } catch (error) {
-        throw new Refusal(`クリエイターの画面を起動できません：${errorMessage(error)}`);
+        throw new Refusal(`plugin-creator の画面を起動できません：${errorMessage(error)}`);
       }
       try {
         hearing.setUrl(url);
       } catch (error) {
         warn(`画面の URL を記録できませんでした：${errorMessage(error)}`);
       }
-      return `クリエイターの画面の用意ができました。次の URL をブラウザーで開いてください：${url}`;
+      return `plugin-creator の画面の用意ができました。次の URL をブラウザーで開いてください：${url}`;
     },
 
     async state(args) {
@@ -280,7 +310,7 @@ export function createCreator({
       if (problems.length) throw new Refusal(problems.join('\n'));
       const merged = [...store.readResults().filter((p) => !files.includes(p)), ...new Set(files)].slice(-MAX_RESULT_FILES);
       store.writeResults(merged);
-      return `試験の結果${files.length}件を、クリエイターの画面に出します。`;
+      return `試験の結果${files.length}件を、plugin-creator の画面に出します。`;
     },
 
     async doc_text(args) {

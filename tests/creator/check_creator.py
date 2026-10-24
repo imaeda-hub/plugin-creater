@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """クリエイター自身の1段目。
 
-ひな形の構造の検査（skills/make-plugin/assets/template/tests/stage1/check_structure.py）を読み込んで使い、
+ひな形の構造の検査（template/tests/stage1/check_structure.py）を読み込んで使い、
 公式仕様の検査（plugin.json、mcp.json、スキル、エージェント、置き場所、シンボリックリンク、references）に、
 クリエイターだけの確かめを足す。
 
@@ -28,7 +28,7 @@ from typing import Any, List, Optional
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(os.path.dirname(HERE))
-TEMPLATE_CHECK = os.path.join(REPO, "skills", "make-plugin", "assets", "template", "tests", "stage1", "check_structure.py")
+TEMPLATE_CHECK = os.path.join(REPO, "template", "tests", "stage1", "check_structure.py")
 
 SKILL_MAX_LINES = 500
 SKILL_MAX_TOKENS = 5000
