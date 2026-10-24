@@ -8,7 +8,7 @@ import test from 'node:test';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 
-import { createInnerAdapter, describeOpened, rewriteModel } from './inner-adapter.mjs';
+import { createInnerAdapter, describeOpened, OPEN_FAILED, RECORD_FAILED, rewriteModel } from './inner-adapter.mjs';
 import { buildSamplePlugin, pythonHasModules, tmpDir } from './inner-test-support.mjs';
 
 const SKIP = !pythonHasModules() ? 'Python に PyYAML と jsonschema がありません' : false;
@@ -334,4 +334,115 @@ test('REQ-007 サブエージェントの assistant メッセージが、始ま�
   assert.equal(configured.model, 'gpt-6-luna');
   const order = neutral().filter((e) => e.agentId === 'sub-1').map((e) => e.type);
   assert.deepEqual(order, ['agent.started', 'agent.configured']);
+});
+
+// ---- 記録のツールが断ったときの理由の文が、モデルに届く形（V1 の不具合 2 への合わせ） -------------------------------------
+
+/** MCP の本物のクライアントを、サーバーにメモリの中でつなぐ。config は mcpServers[名前]（統括の実行のものか、adapter.mainParts() のもの） */
+async function connectedClient(config) {
+  const [clientSide, serverSide] = InMemoryTransport.createLinkedPair();
+  await config.instance.connect(serverSide);
+  const client = new Client({ name: 'test', version: '1' });
+  await client.connect(clientSide);
+  return client;
+}
+
+async function pluginConstants(fixture) {
+  const { pathToFileURL } = await import('node:url');
+  const file = path.join(fixture.pluginRoot, 'com.github.copilot', 'extensions', 'weekly-report', 'core', 'constants.mjs');
+  return import(pathToFileURL(file).href);
+}
+
+test('REQ-011 記録のツールが断ったら、例外ではなく、理由の文をそのまま入れた失敗の結果（isError と content の文）を返す。やり直しの回数の案内も届く', { skip: SKIP }, async (t) => {
+  const { adapter, queries, events } = await setup(t);
+  await startRun(adapter);
+  const q = queries[0];
+  const client = await connectedClient(q.options.mcpServers['weekly-report']);
+  await hookOf(q, 'PreToolUse')({ tool_name: 'mcp__weekly-report__plan', tool_use_id: 'toolu_p', tool_input: {} });
+  const refused = await client.callTool({ name: 'plan', arguments: { iteration: 2, criteria: [{ id: 'C-01', text: 'x' }], plan: '計画' }, _meta: { 'claudecode/toolUseId': 'toolu_p' } });
+  assert.equal(refused.isError, true);
+  assert.deepEqual(refused.content, [{ type: 'text', text: '繰り返しの上限（1 回）を超えます。試行の番号は 1 までです。（やり直しは、あと 3 回までです）' }]);
+  // 断りは記録に残る（内部の誤りではない）
+  const logged = events.find((e) => e.t === 'tool_refused');
+  assert.equal(logged.tool, 'plan');
+  assert.match(logged.reason, /繰り返しの上限（1 回）を超えます/);
+  assert.equal(events.some((e) => e.t === 'tool_error'), false);
+  await client.close();
+});
+
+test('REQ-009 「作業を終えてください」の文が、そのままモデルに届く（つながりが切れたとき、止められたとき）', { skip: SKIP }, async (t) => {
+  const { fixture, adapter, queries } = await setup(t);
+  const { DISCONNECTED_MESSAGE, STOPPED_MESSAGE } = await pluginConstants(fixture);
+  await startRun(adapter);
+  // メインのエージェントに渡す MCP サーバー（統括の実行のものではない）
+  const live = await connectedClient(adapter.mainParts().mcpServers['weekly-report']);
+  // 統括ではないエージェント（メイン）の記録は、つながりが切れたものとして断る
+  const disconnected = await live.callTool({ name: 'plan', arguments: { iteration: 1, criteria: [{ id: 'C-01', text: 'x' }], plan: 'p' }, _meta: { 'claudecode/toolUseId': 'toolu_none' } });
+  assert.equal(disconnected.isError, true);
+  assert.equal(disconnected.content[0].text, DISCONNECTED_MESSAGE);
+  assert.match(DISCONNECTED_MESSAGE, /作業を終えてください/);
+  // 止めた直後（止まる処理の途中）は、止められたものとして断る
+  const stopping = adapter.core.stop();
+  const stopped = await live.callTool({ name: 'show', arguments: { key: 'draft', value: 'x' }, _meta: { 'claudecode/toolUseId': 'toolu_s' } });
+  assert.equal(stopped.isError, true);
+  assert.equal(stopped.content[0].text, STOPPED_MESSAGE);
+  assert.match(STOPPED_MESSAGE, /作業を終えてください/);
+  await stopping;
+  await live.close();
+});
+
+test('REQ-011 予期しない失敗は、内部の文（エラーの文、場所）をモデルに見せず、決まった文を返す。くわしくは標準エラーと記録に残す', { skip: SKIP }, async (t) => {
+  const { adapter, queries, events } = await setup(t);
+  await startRun(adapter);
+  const client = await connectedClient(adapter.mainParts().mcpServers['weekly-report']);
+  const originalError = console.error;
+  const stderr = [];
+  console.error = (...args) => stderr.push(args.map(String).join(' '));
+  t.after(() => { console.error = originalError; });
+  const originalHandle = adapter.core.handleTool;
+  adapter.core.handleTool = async () => {
+    throw new TypeError('内部の詳細：undefined の x を読めません');
+  };
+  const record = await client.callTool({ name: 'plan', arguments: { iteration: 1, criteria: [{ id: 'C-01', text: 'x' }], plan: 'p' } });
+  assert.equal(record.isError, true);
+  assert.equal(record.content[0].text, RECORD_FAILED);
+  assert.doesNotMatch(record.content[0].text, /内部の詳細|TypeError|undefined/);
+  adapter.core.handleTool = originalHandle;
+  const originalOpen = adapter.core.open;
+  adapter.core.open = async () => {
+    throw new Error('画面を開けませんでした：EADDRINUSE 127.0.0.1:8731');
+  };
+  const opened = await client.callTool({ name: 'open', arguments: { requestText: '週報' } });
+  assert.equal(opened.isError, true);
+  assert.equal(opened.content[0].text, OPEN_FAILED);
+  assert.doesNotMatch(opened.content[0].text, /EADDRINUSE/);
+  adapter.core.open = originalOpen;
+  const errors = events.filter((e) => e.t === 'tool_error');
+  assert.deepEqual(errors.map((e) => e.tool), ['plan', 'open']);
+  assert.match(errors[0].message, /内部の詳細/);
+  assert.match(errors[0].stack, /TypeError/);
+  assert.equal(stderr.length, 2);
+  assert.match(stderr[0], /ツール「plan」の処理で予期しない失敗/);
+  await client.close();
+});
+
+test('V1 の直しへの合わせ：Copilot CLI 用のつなぎ口（adapter.mjs）と、失敗のときの文と画面を開くツールの返り値の文が同じ', { skip: SKIP }, async (t) => {
+  const fixture = buildSamplePlugin();
+  const source = fs.readFileSync(path.join(fixture.pluginRoot, 'com.github.copilot', 'extensions', 'weekly-report', 'adapter.mjs'), 'utf8');
+  const constant = (name) => new RegExp(`const ${name} = '([^']*)';`).exec(source)?.[1];
+  if (constant('OPEN_FAILED') === undefined || constant('RECORD_FAILED') === undefined) {
+    t.skip('adapter.mjs が、V1 の不具合 2 の直し（断りを失敗の結果で返す形）をまだ含まない');
+    return;
+  }
+  assert.equal(OPEN_FAILED, constant('OPEN_FAILED'));
+  assert.equal(RECORD_FAILED, constant('RECORD_FAILED'));
+  // 理由の文を返す形（RecordRefusal は理由をそのまま失敗の結果にする）も、adapter.mjs にある
+  assert.match(source, /error instanceof RecordRefusal\) return \{ textResultForLlm: error\.message, resultType: 'failure' \}/);
+  // 画面を開くツールの返り値の文は、同じ入力で同じ文になる
+  const theirs = /function describeOpened\(\{ url, notices \}\) \{[\s\S]*?\n\}/.exec(source)?.[0];
+  assert.ok(theirs, 'adapter.mjs に describeOpened が見つからない');
+  const theirDescribe = new Function(`${theirs}; return describeOpened;`)();
+  for (const input of [{ url: 'http://127.0.0.1:1/?k=a', notices: [] }, { url: 'u', notices: ['A', '', 'B'] }, { url: 'u' }, { url: 'u', notices: 'x' }]) {
+    assert.equal(describeOpened(input), theirDescribe(input), JSON.stringify(input));
+  }
 });

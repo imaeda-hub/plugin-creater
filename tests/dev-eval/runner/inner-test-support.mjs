@@ -78,6 +78,7 @@ const tool = (name, input, extra = {}) => ({ type: 'tool_use', name, input, ...e
  * @param {number} [scenario.workerDelayMs] 作業の最初の返事を遅らせる
  * @param {boolean} [scenario.askFirst] メインが最初にチャットで質問して手番を終える（ユーザー役の試験用）
  * @param {boolean} [scenario.background] 統括が作業・検証を裏で呼ぶ（run_in_background を指定しない）
+ * @param {boolean} [scenario.badPlan] 統括が、最初の計画を間違った試行の番号（2）で記録して断られ、直して呼び直す
  * @param {boolean} [scenario.useSkill] メインが最初に入口のスキルを呼ぶか（既定 true）
  * @param {boolean} [scenario.plain] メインが、プラグインなしの実行のように、自分で成果物を書く。省くと、画面を開くツールがあるかで決める
  * @param {string} [scenario.deliverable] 成果物の相対の場所（既定 out/weekly.md）
@@ -87,7 +88,7 @@ const tool = (name, input, extra = {}) => ({ type: 'tool_use', name, input, ...e
  * @param {(role: string, body: object) => void} [scenario.onRequest]
  */
 export function scriptedModel(scenario = {}) {
-  const { server = 'weekly-report', workerWrites = true, verifierPass = true, verifierDelayMs = 0, workerDelayMs = 0, askFirst = false, background = false, useSkill = true, plain: forcedPlain, askTool = false, deliverable = 'out/weekly.md', content: workerContent = WEEKLY, plainContent = workerContent, onRequest } = scenario;
+  const { server = 'weekly-report', workerWrites = true, verifierPass = true, verifierDelayMs = 0, workerDelayMs = 0, askFirst = false, background = false, useSkill = true, badPlan = false, plain: forcedPlain, askTool = false, deliverable = 'out/weekly.md', content: workerContent = WEEKLY, plainContent = workerContent, onRequest } = scenario;
   const mcp = (name) => `mcp__${server}__${name}`;
   return async ({ body }) => {
     const role = roleOf(body);
@@ -124,7 +125,10 @@ export function scriptedModel(scenario = {}) {
       const criteria = criteriaOf(instruction);
       const agentCalls = used.filter((n) => n === 'Agent').length;
       const agentArgs = (type, description) => ({ description, subagent_type: type, prompt: `${description}。評価基準：\n${criteria.map((c) => `- ${c.id}：${c.text}`).join('\n')}\n作業フォルダ：${workDirOf(body)}`, ...(background ? {} : { run_in_background: false }) });
-      if (!used.includes(mcp('plan'))) return { model, blocks: [tool(mcp('plan'), { iteration: 1, criteria, plan: '週報を書いて確かめる' })] };
+      const planCalls = used.filter((n) => n === mcp('plan')).length;
+      if (planCalls < (badPlan ? 2 : 1)) {
+        return { model, blocks: [tool(mcp('plan'), { iteration: badPlan && planCalls === 0 ? 2 : 1, criteria, plan: '週報を書いて確かめる' })] };
+      }
       if (agentCalls === 0) return { model, blocks: [tool('Agent', agentArgs('weekly-report:worker', '試行 1 の作業'))] };
       if (agentCalls === 1) return { model, blocks: [tool('Agent', agentArgs('weekly-report:verifier', '試行 1 の確かめ'))] };
       if (!used.includes(mcp('review'))) return { model, blocks: [tool(mcp('review'), {})] };

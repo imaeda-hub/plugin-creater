@@ -240,7 +240,8 @@ export function describeFailure(error) {
   return { error: error?.code ?? 'failed', message: error?.message ?? String(error) };
 }
 
-export async function main(argv = process.argv.slice(2)) {
+/** deps は試験用：sdk（Agent SDK）と chromium を差し替える */
+export async function main(argv = process.argv.slice(2), deps = {}) {
   let args;
   try {
     args = parseArgs(argv);
@@ -251,8 +252,8 @@ export async function main(argv = process.argv.slice(2)) {
   const abort = new AbortController();
   process.once('SIGINT', () => abort.abort());
   try {
-    const sdk = await import('@anthropic-ai/claude-agent-sdk');
-    const { chromium } = await import('playwright');
+    const sdk = deps.sdk ?? (await import('@anthropic-ai/claude-agent-sdk'));
+    const chromium = deps.chromium ?? (await import('playwright')).chromium;
     const { createUserRole } = await import('./user-role.mjs');
     const pluginRoot = path.resolve(args.plugin);
     const outDir = path.resolve(args.out ?? fs.mkdtempSync(path.join(os.tmpdir(), 'plugin-creator-dev-inner-')));

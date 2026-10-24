@@ -35,12 +35,38 @@ export function lastToolResults(body) {
     .map((c) => (typeof c.content === 'string' ? c.content : (c.content ?? []).map((x) => x.text ?? '').join('\n')));
 }
 
+/** 最後の user のメッセージにある tool_result の { 文, 誤りの印（is_error） } の並び。ツールが断った理由がモデルに届いたかを見る */
+export function lastToolResultBlocks(body) {
+  const content = lastUserMessage(body)?.content;
+  if (!Array.isArray(content)) return [];
+  return content
+    .filter((c) => c.type === 'tool_result')
+    .map((c) => ({ text: typeof c.content === 'string' ? c.content : (c.content ?? []).map((x) => x.text ?? '').join('\n'), isError: c.is_error === true }));
+}
+
 /** 会話の最初の user のメッセージの文字（統括や作業への最初の指示） */
 export function firstUserText(body) {
   const first = (body?.messages ?? []).find((m) => m.role === 'user');
   const content = first?.content;
   if (typeof content === 'string') return content;
   return Array.isArray(content) ? content.filter((c) => c.type === 'text').map((c) => c.text).join('\n') : '';
+}
+
+/**
+ * 守り：偽の API につながっていない query() の呼び出しを、始める前に断る（実際のモデルを呼ばないため）。
+ * 試験で本物の Agent SDK を使うときは、必ずこれを通した sdk を、試される側にもユーザー役にも判定にも渡す。
+ * 環境変数の ANTHROPIC_BASE_URL が偽の API の URL と同じでない呼び出しは、Error を投げる。
+ * @param {{ query: Function }} sdk 本物の Agent SDK
+ * @param {{ url: string }} api startFakeAnthropic の返り値
+ */
+export function guardSdk(sdk, api) {
+  const query = (params) => {
+    if (params?.options?.env?.ANTHROPIC_BASE_URL !== api.url) {
+      throw new Error('模擬の API につながっていない query の呼び出しです（実際のモデルを呼ぶところでした）。');
+    }
+    return sdk.query(params);
+  };
+  return { ...sdk, query };
 }
 
 function writeSse(res, body, out) {

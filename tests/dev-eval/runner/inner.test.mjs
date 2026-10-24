@@ -6,9 +6,9 @@ import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
-import * as sdk from '@anthropic-ai/claude-agent-sdk';
+import * as realSdk from '@anthropic-ai/claude-agent-sdk';
 
-import { firstUserText, startFakeAnthropic } from './fake-anthropic.mjs';
+import { firstUserText, guardSdk, startFakeAnthropic } from './fake-anthropic.mjs';
 import { describeFailure, InnerEvalError, innerEval, main, parseArgs, scoresOf, summarizeRun, userRoleFunction } from './inner.mjs';
 import { buildSamplePlugin, pythonHasModules, scriptedModel, tmpDir } from './inner-test-support.mjs';
 
@@ -21,6 +21,8 @@ try {
   chromium = null;
 }
 const SKIP = !pythonHasModules() ? 'Python に PyYAML と jsonschema がありません' : !chromium ? 'playwright がありません' : false;
+/** 呼ばれたら失敗する sdk（始める前に断る試験用） */
+const neverSdk = { query: () => { throw new Error('この試験では query を呼ばないはずです'); } };
 const FAKE_ENV = { ANTHROPIC_API_KEY: 'fake-key', CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1' };
 const BROWSER_ENV = { ...process.env, PLUGIN_TEST_BROWSER_CHANNEL: 'chromium' };
 
@@ -90,22 +92,23 @@ test('testing.md 11.1 サンドボックスの道具がなければ、実際の�
   const fixture = buildSamplePlugin();
   await assert.rejects(
     innerEval({
-      sdk, chromium, pluginRoot: fixture.pluginRoot, convertedRoot: fixture.convertedRoot, tasks: [fixture.task], userRoleFor: () => async () => '', outDir: tmpDir('nosandbox'),
+      sdk: neverSdk, chromium, pluginRoot: fixture.pluginRoot, convertedRoot: fixture.convertedRoot, tasks: [fixture.task], userRoleFor: () => async () => '', outDir: tmpDir('nosandbox'),
       sandbox: true, sandboxCheck: () => ({ available: false, missing: ['bwrap', 'socat'] }),
     }),
     (error) => error instanceof InnerEvalError && error.code === 'sandbox_missing' && /bwrap、socat/.test(error.message) && /--no-sandbox/.test(error.message),
   );
   await assert.rejects(
-    innerEval({ sdk, chromium, pluginRoot: fixture.pluginRoot, convertedRoot: tmpDir('notconverted'), tasks: [fixture.task], userRoleFor: () => async () => '', outDir: tmpDir('x'), sandbox: false }),
+    innerEval({ sdk: neverSdk, chromium, pluginRoot: fixture.pluginRoot, convertedRoot: tmpDir('notconverted'), tasks: [fixture.task], userRoleFor: () => async () => '', outDir: tmpDir('x'), sandbox: false }),
     /変換レポートがありません/,
   );
-  await assert.rejects(innerEval({ sdk, chromium, pluginRoot: '/p', convertedRoot: '/c', tasks: [], userRoleFor: () => async () => '', outDir: tmpDir('x') }), /課題が1つもありません/);
+  await assert.rejects(innerEval({ sdk: neverSdk, chromium, pluginRoot: '/p', convertedRoot: '/c', tasks: [], userRoleFor: () => async () => '', outDir: tmpDir('x') }), /課題が1つもありません/);
 });
 
 test('REQ-041 あり・なしを回して、点数とその差を出し、実行ごとの記録を残す。利用枠の上限では残りを始めない', { skip: SKIP, timeout: 300_000 }, async (t) => {
   const fixture = buildSamplePlugin();
   // ありは見出しがある週報を作り、なしは見出しがない週報を作る（差が出る）
   const api = await startFakeAnthropic(scriptedModel({ workerDelayMs: 1500, verifierDelayMs: 1500, plainContent: '# 週報\n- 3件\n' }));
+  const sdk = guardSdk(realSdk, api); // 守り：偽の API につながっていない query は断る（実際のモデルを呼ばない）
   t.after(() => api.close());
   const outDir = tmpDir('inner-eval');
   const progress = [];
@@ -166,6 +169,7 @@ test('REQ-041 コマンドライン：模擬ユーザーの inner/ の課題を�
   const good = '■今週の売上\n合計 47万円\n田中 1万円未満\n■来週の予定\n- 訪問\n以上\n';
   const userRoleQuestions = [];
   const api = await startFakeAnthropic(scriptedModel({ deliverable: 'weekly_report.md', content: good, plainContent: 'できました\n', verifierDelayMs: 300, onRequest: (role, body) => { if (role === 'user-role') userRoleQuestions.push(firstUserText(body)); } }));
+  const sdk = guardSdk(realSdk, api); // 守り：偽の API につながっていない query は断る（実際のモデルを呼ばない）
   t.after(() => api.close());
   const outDir = tmpDir('cli');
   const saved = { env: { ...process.env }, log: console.log };
@@ -174,7 +178,7 @@ test('REQ-041 コマンドライン：模擬ユーザーの inner/ の課題を�
   console.log = (line) => printed.push(String(line));
   let code;
   try {
-    code = await main(['--plugin', fixture.pluginRoot, '--persona', persona, '--out', outDir, '--no-sandbox', '--timeout-minutes', '4', '--pass-env', 'ANTHROPIC_API_KEY,CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC']);
+    code = await main(['--plugin', fixture.pluginRoot, '--persona', persona, '--out', outDir, '--no-sandbox', '--timeout-minutes', '4', '--pass-env', 'ANTHROPIC_API_KEY,CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC'], { sdk });
   } finally {
     console.log = saved.log;
     process.env = saved.env;

@@ -28,6 +28,14 @@ const AGENT_TOOL_NAMES = new Set(['Agent', 'Task']);
 const ORCHESTRATOR_MAX_TURNS = 300;
 const GH_STUB = '#!/bin/sh\necho "gh は開発の試験では使えません" >&2\nexit 1\n';
 
+// 予期しない失敗のときにモデルへ返す文。生成プラグインの adapter.mjs（Copilot CLI 用のつなぎ口）と同じ文にそろえる。
+// 内部の情報（エラーの文、場所、スタック）はモデルに見せない。くわしくは標準エラーと記録（events.jsonl の tool_error）に残す。
+// 同じ文かは inner-adapter.test.mjs が adapter.mjs の文字と突き合わせる。
+export const OPEN_FAILED = 'Web管理画面を開けませんでした。ユーザーに、開けなかったことを伝えてください。';
+export const RECORD_FAILED = '記録のツールの処理で、予期しない失敗が起きました。もう一度呼んでも同じなら、作業を終えてください。';
+/** ツールの失敗の結果（MCP の形：isError と content の文）。モデルは content の文をそのまま読む */
+export const failureResult = (text) => ({ content: [{ type: 'text', text }], isError: true });
+
 const now = () => Date.now();
 const newId = (prefix) => `${prefix}-${randomBytes(4).toString('hex')}`;
 const text = (value) => (typeof value === 'string' ? value : '');
@@ -109,6 +117,8 @@ export async function createInnerAdapter(options) {
   // ---- 中心の処理と画面を読み込む --------------------------------------------------------------------
   const extDir = path.join(pluginRoot, 'com.github.copilot', 'extensions', extension.name);
   const { createCore } = await importModule(path.join(extDir, 'core', 'index.mjs'));
+  // core が投げる断り。同じファイルの同じクラスなので instanceof で見分けられる
+  const { RecordRefusal } = await importModule(path.join(extDir, 'core', 'records.mjs'));
   const startUi = options.startUi ?? (await (async () => {
     const { startApp } = await importModule(path.join(extDir, 'ui', 'app.mjs'));
     return (core) => startApp({ core, cwd: workDir });
@@ -171,10 +181,23 @@ export async function createInnerAdapter(options) {
   }
 
   // ---- 記録のツール --------------------------------------------------------------------------------
+  // 断るときは、例外を投げず、理由の文を入れた失敗の結果（isError）を返す。モデルが理由を読んで直せる、「作業を終えてください」が届く
+  // （MCP の公式の形。ハンドラーが投げた例外は SDK が生の文にして返すので、文を決めたいときは自分で isError を返す。
+  //   Copilot CLI 用の adapter.mjs の callTool と同じ扱い。Copilot CLI は例外の文を消すので、あちらは failure の結果を返す。V1 の不具合 2）。
   async function callTool(shortName, args, ctx, root) {
-    if (shortName === 'open') return describeOpened(await core.open({ requestText: args?.requestText }));
-    const agentId = toolOwner.get(ctx.toolUseId) ?? ctx.agentId ?? root?.id;
-    return core.handleTool(shortName, args, { agentId });
+    try {
+      if (shortName === 'open') return describeOpened(await core.open({ requestText: args?.requestText }));
+      const agentId = toolOwner.get(ctx.toolUseId) ?? ctx.agentId ?? root?.id;
+      return await core.handleTool(shortName, args, { agentId });
+    } catch (error) {
+      if (error instanceof RecordRefusal) {
+        record({ t: 'tool_refused', run: root?.id ?? 'main', tool: shortName, reason: error.message });
+        return failureResult(error.message);
+      }
+      console.error(`[内側のつなぎ口] ツール「${shortName}」の処理で予期しない失敗が起きました：`, error);
+      record({ t: 'tool_error', run: root?.id ?? 'main', tool: shortName, message: String(error?.message ?? error), stack: String(error?.stack ?? '') });
+      return failureResult(shortName === 'open' ? OPEN_FAILED : RECORD_FAILED);
+    }
   }
 
   function buildToolServer(root) {

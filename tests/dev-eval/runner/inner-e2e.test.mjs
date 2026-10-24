@@ -7,11 +7,12 @@ import fs from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
 
-import * as sdk from '@anthropic-ai/claude-agent-sdk';
+import * as realSdk from '@anthropic-ai/claude-agent-sdk';
 
 import { createScreen } from '../../../skills/test-plugin/scripts/screen.mjs';
-import { startFakeAnthropic } from './fake-anthropic.mjs';
-import { createInnerAdapter } from './inner-adapter.mjs';
+import { guardSdk, lastToolResultBlocks, startFakeAnthropic } from './fake-anthropic.mjs';
+import { createInnerAdapter, OPEN_FAILED, RECORD_FAILED } from './inner-adapter.mjs';
+import { makeQueryOptions } from './isolation.mjs';
 import { runInnerArm } from './inner-run.mjs';
 import { buildSamplePlugin, pythonHasModules, scriptedModel, tmpDir } from './inner-test-support.mjs';
 
@@ -32,6 +33,7 @@ test('REQ-005 REQ-007 REQ-008 REQ-012 ありの実行：画面を開く → 設�
   const fixture = buildSamplePlugin();
   const requests = [];
   const api = await startFakeAnthropic(scriptedModel({ workerDelayMs: 1500, verifierDelayMs: 1500, onRequest: (role, body) => requests.push({ role, model: body.model }) }));
+  const sdk = guardSdk(realSdk, api); // 守り：偽の API につながっていない query は断る（実際のモデルを呼ばない）
   const screen = createScreen({ chromium, env: { ...process.env, PLUGIN_TEST_BROWSER_CHANNEL: 'chromium' } });
   t.after(async () => {
     await screen.close();
@@ -75,6 +77,7 @@ function recordingUserRole() {
 test('REQ-041 なしの実行：メインのエージェントがチャットで質問して手番を終えたら、ユーザー役が返事をして続く。成果物を同じ基準で採点する', { skip: SKIP, timeout: 120_000 }, async (t) => {
   const fixture = buildSamplePlugin();
   const api = await startFakeAnthropic(scriptedModel({ plain: true, askFirst: true }));
+  const sdk = guardSdk(realSdk, api); // 守り：偽の API につながっていない query は断る（実際のモデルを呼ばない）
   t.after(() => api.close());
   const userRole = recordingUserRole();
   const result = await runInnerArm({
@@ -100,6 +103,7 @@ test('REQ-041 なしの実行：質問のツール（AskUserQuestion）の問い
   const fixture = buildSamplePlugin();
   const seen = [];
   const api = await startFakeAnthropic(scriptedModel({ plain: true, askTool: true, onRequest: (role, body) => seen.push(JSON.stringify(body.messages)) }));
+  const sdk = guardSdk(realSdk, api); // 守り：偽の API につながっていない query は断る（実際のモデルを呼ばない）
   t.after(() => api.close());
   const userRole = recordingUserRole();
   const result = await runInnerArm({
@@ -119,6 +123,7 @@ test('REQ-041 なしの実行：質問のツール（AskUserQuestion）の問い
 test('REQ-005 ありの実行：画面の URL が出る前にメインのエージェントが質問して手番を終えたら、ユーザー役が返事をして URL まで進む', { skip: SKIP, timeout: 240_000 }, async (t) => {
   const fixture = buildSamplePlugin();
   const api = await startFakeAnthropic(scriptedModel({ askFirst: true }));
+  const sdk = guardSdk(realSdk, api); // 守り：偽の API につながっていない query は断る（実際のモデルを呼ばない）
   const screen = createScreen({ chromium, env: { ...process.env, PLUGIN_TEST_BROWSER_CHANNEL: 'chromium' } });
   t.after(async () => {
     await screen.close();
@@ -152,6 +157,7 @@ test('REQ-009 止める：統括の実行だけが取り消され、10秒のう�
   const fixture = buildSamplePlugin();
   const requests = [];
   const api = await startFakeAnthropic(scriptedModel({ verifierDelayMs: 60_000, onRequest: (role) => requests.push(role) }));
+  const sdk = guardSdk(realSdk, api); // 守り：偽の API につながっていない query は断る（実際のモデルを呼ばない）
   const runDir = tmpDir('stop-run');
   const adapter = await createInnerAdapter({
     sdk, pluginRoot: fixture.pluginRoot, convertedRoot: fixture.convertedRoot, workDir: tmpDir('stop-work'), runDir,
@@ -197,6 +203,7 @@ function withoutTaskSettings(task) {
 test('REQ-007 REQ-031 ありの実行：課題に作業ごとの設定がなくても、ユーザー役が画面の欄を読んで値を決めて入れ、そのまま開始できる', { skip: SKIP, timeout: 240_000 }, async (t) => {
   const fixture = buildSamplePlugin();
   const api = await startFakeAnthropic(scriptedModel({ verifierDelayMs: 300 }));
+  const sdk = guardSdk(realSdk, api); // 守り：偽の API につながっていない query は断る（実際のモデルを呼ばない）
   const screen = createScreen({ chromium, env: { ...process.env, PLUGIN_TEST_BROWSER_CHANNEL: 'chromium' } });
   t.after(async () => {
     await screen.close();
@@ -224,6 +231,7 @@ test('REQ-007 REQ-031 ありの実行：課題に作業ごとの設定がなく�
 test('REQ-007 ありの実行：必須の欄をユーザー役が決められなければ、画面は開始できず、入れなかった欄を理由に示して incomplete にする', { skip: SKIP, timeout: 240_000 }, async (t) => {
   const fixture = buildSamplePlugin();
   const api = await startFakeAnthropic(scriptedModel());
+  const sdk = guardSdk(realSdk, api); // 守り：偽の API につながっていない query は断る（実際のモデルを呼ばない）
   const screen = createScreen({ chromium, env: { ...process.env, PLUGIN_TEST_BROWSER_CHANNEL: 'chromium' } });
   t.after(async () => {
     await screen.close();
@@ -237,4 +245,87 @@ test('REQ-007 ありの実行：必須の欄をユーザー役が決められな
   assert.match(result.reason, /画面で開始できませんでした.*対象の週/);
   assert.equal(result.finalState, null);
   assert.deepEqual(result.settings.map((d) => [d.key, d.source, d.note]), [['week', 'default', 'abstain']]);
+});
+
+// ---- 記録のツールが断った理由の文が、本物の Agent SDK を通して、モデルへの次の呼び出しに届く（V1 の不具合 2 への合わせ） ----------
+
+test('REQ-011 統括が記録のツールに断られたら、理由の文（やり直しの案内つき）が isError の結果としてモデルに届き、直して呼び直せば実行は最後まで進む', { skip: SKIP, timeout: 240_000 }, async (t) => {
+  const fixture = buildSamplePlugin();
+  const seen = [];
+  const api = await startFakeAnthropic(scriptedModel({ badPlan: true, workerDelayMs: 300, verifierDelayMs: 300, onRequest: (role, body) => { if (role === 'orchestrator') seen.push(lastToolResultBlocks(body)); } }));
+  const sdk = guardSdk(realSdk, api); // 守り：偽の API につながっていない query は断る（実際のモデルを呼ばない）
+  const screen = createScreen({ chromium, env: { ...process.env, PLUGIN_TEST_BROWSER_CHANNEL: 'chromium' } });
+  t.after(async () => {
+    await screen.close();
+    await api.close();
+  });
+  const result = await runInnerArm({
+    arm: 'with', task: fixture.task, runDir: tmpDir('run-refused'), sdk, userRole: async () => 'はい', judge, screen, pluginRoot: fixture.pluginRoot, convertedRoot: fixture.convertedRoot,
+    envExtra: { ...FAKE_ENV, ANTHROPIC_BASE_URL: api.url }, timeoutMs: 180_000, pollMs: 300,
+  });
+  const refusals = seen.flat().filter((b) => b.isError);
+  assert.equal(refusals.length, 1, JSON.stringify(seen));
+  // 理由の文がそのまま届いている（「Tool execution failed」のような一般の文ではない）
+  assert.equal(refusals[0].text, '試行の番号が違います。次の試行の番号は 1 です。（やり直しは、あと 3 回までです）');
+  // 直して呼び直したあとは、断られず、実行が最後まで進んだ
+  assert.equal(result.status, 'completed', `${result.reason} / ${result.screenError}`);
+  assert.equal(result.screen.endReason.kind, 'all_passed');
+});
+
+/** メインのエージェントが、記録のツール（plan）を呼び、その結果をモデルへの次の呼び出しで返す。次の呼び出しで見えた tool_result を返す */
+async function mainCallsPlan(t, { break: breakCore }) {
+  const fixture = buildSamplePlugin();
+  const results = [];
+  const api = await startFakeAnthropic(async ({ body }) => {
+    const blocks = lastToolResultBlocks(body);
+    results.push(blocks);
+    if (blocks.length === 0) return { blocks: [{ type: 'tool_use', name: 'mcp__weekly-report__plan', input: { iteration: 1, criteria: [{ id: 'C-01', text: 'x' }], plan: 'p' } }] };
+    return { blocks: [{ type: 'text', text: '終わります' }] };
+  });
+  const sdk = guardSdk(realSdk, api); // 守り：偽の API につながっていない query は断る（実際のモデルを呼ばない）
+  const workDir = tmpDir('refusal-work');
+  const adapter = await createInnerAdapter({
+    sdk, pluginRoot: fixture.pluginRoot, convertedRoot: fixture.convertedRoot, workDir, runDir: tmpDir('refusal-run'), envExtra: { ...FAKE_ENV, ANTHROPIC_BASE_URL: api.url },
+  });
+  t.after(async () => {
+    await adapter.shutdown();
+    await api.close();
+  });
+  breakCore?.(adapter.core);
+  const parts = adapter.mainParts();
+  const options = makeQueryOptions({
+    cwd: workDir, home: tmpDir('refusal-home'), model: 'claude-sonnet-5-5', mcpServers: parts.mcpServers, mcpTools: parts.mcpTools, envExtra: { ...FAKE_ENV, ANTHROPIC_BASE_URL: api.url }, maxTurns: 4,
+  });
+  for await (const m of sdk.query({ prompt: '計画を記録してください', options })) void m;
+  return { results, fixture };
+}
+
+test('REQ-009 つながりが切れた記録のツールの呼び出しには、「作業を終えてください」の文が isError の結果としてモデルに届く', { skip: SKIP, timeout: 120_000 }, async (t) => {
+  const { results, fixture } = await mainCallsPlan(t, {});
+  const { pathToFileURL } = await import('node:url');
+  const { DISCONNECTED_MESSAGE } = await import(pathToFileURL(path.join(fixture.pluginRoot, 'com.github.copilot', 'extensions', 'weekly-report', 'core', 'constants.mjs')).href);
+  const returned = results.flat();
+  assert.equal(returned.length, 1, JSON.stringify(results));
+  assert.equal(returned[0].isError, true);
+  assert.equal(returned[0].text, DISCONNECTED_MESSAGE);
+  assert.match(returned[0].text, /作業を終えてください/);
+});
+
+test('REQ-011 記録のツールの処理が予期しない例外を投げても、内部の文は届かず、決まった文が isError の結果としてモデルに届く', { skip: SKIP, timeout: 120_000 }, async (t) => {
+  const originalError = console.error;
+  console.error = () => {};
+  t.after(() => { console.error = originalError; });
+  const { results } = await mainCallsPlan(t, {
+    break: (core) => {
+      core.handleTool = async () => {
+        throw new TypeError('内部の詳細：undefined の x を読めません');
+      };
+    },
+  });
+  const returned = results.flat();
+  assert.equal(returned.length, 1, JSON.stringify(results));
+  assert.equal(returned[0].isError, true);
+  assert.equal(returned[0].text, RECORD_FAILED);
+  assert.doesNotMatch(returned[0].text, /内部の詳細|TypeError/);
+  assert.notEqual(returned[0].text, OPEN_FAILED);
 });

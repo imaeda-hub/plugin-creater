@@ -2,10 +2,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import * as sdk from '@anthropic-ai/claude-agent-sdk';
+import * as realSdk from '@anthropic-ai/claude-agent-sdk';
 
 import { gradeRun } from '../../../skills/test-plugin/scripts/grade.mjs';
-import { firstUserText, startFakeAnthropic } from './fake-anthropic.mjs';
+import { firstUserText, guardSdk, startFakeAnthropic } from './fake-anthropic.mjs';
 import { createAgentSdkJudge, JUDGE_MODEL } from './inner-judge.mjs';
 
 const ENV = { ANTHROPIC_API_KEY: 'fake-key', CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1' };
@@ -15,7 +15,7 @@ const artifacts = [{ path: 'out/weekly.md', size: 40, kind: 'text', text: '# 週
 
 async function withFake(handler, run) {
   const api = await startFakeAnthropic(handler);
-  const judge = createAgentSdkJudge({ sdk, envExtra: { ...ENV, ANTHROPIC_BASE_URL: api.url }, timeoutMs: 60_000 });
+  const judge = createAgentSdkJudge({ sdk: guardSdk(realSdk, api), envExtra: { ...ENV, ANTHROPIC_BASE_URL: api.url }, timeoutMs: 60_000 }); // 守り：偽の API につながっていない query は断る
   try {
     return await run(judge, api);
   } finally {
