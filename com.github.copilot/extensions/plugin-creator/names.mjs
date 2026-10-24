@@ -124,6 +124,19 @@ export const assetStatusIndex = indexOf(ASSET_STATUSES);
 export const ossKindIndex = indexOf(OSS_KINDS);
 export const ossChoiceIndex = indexOf(OSS_CHOICES);
 
+// ---- ユーザーに見せるときの言葉 -----------------------------------------------------------------
+// 画面とツールの返り値の文は、references/words.md の表の「ユーザーに話す言葉」で書く（ユーザーの答え22）。
+// ただし、段階・項目・状態・種類・出どころの名前は、ツールの引数の値なので、そのまま使う（BLUEPRINT 7章）。
+// 引数の値のうち、表の左の言葉を含むものだけは、画面と返り値に出すときに、次の言葉にする。
+
+const SOURCE_DISPLAY = { answer: 'お話を聞いた答え', added_at_confirmation: '作る前の確認で足した' };
+
+/** ナレッジの出どころを、ユーザーに見せる言葉にする */
+export const sourceDisplay = (key) => SOURCE_DISPLAY[key] ?? sourceIndex.nameOf(key);
+
+/** ナレッジの状態を、ユーザーに見せる言葉にする（候補 → 確かめたいこと） */
+export const knowledgeStatusDisplay = (key) => (key === 'candidate' ? '確かめたいこと' : knowledgeStatusIndex.nameOf(key));
+
 /** 仕様 REQ-015 の10項目（ナレッジの項目になれるもの） */
 export const MAIN_ITEMS = Object.freeze(ITEMS.filter((i) => i.group === 'main10'));
 

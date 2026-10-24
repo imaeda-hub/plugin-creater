@@ -8,10 +8,10 @@ import {
   itemIndex,
   itemStatusIndex,
   kindIndex,
-  knowledgeStatusIndex,
+  knowledgeStatusDisplay,
   ossChoiceIndex,
   ossKindIndex,
-  sourceIndex,
+  sourceDisplay,
   stageIndex,
 } from './names.mjs';
 import { LAST_QA_COUNT } from './constants.mjs';
@@ -67,22 +67,22 @@ export function stateText(hearing, context, include) {
   if (hearing.loadError) {
     lines.push(hearing.loadError.message);
   }
-  lines.push(`段階：${state ? stageIndex.nameOf(state.stage) : '（ヒアリングの記録はまだありません）'}`);
+  lines.push(`段階：${state ? stageIndex.nameOf(state.stage) : '（お話を聞くことの記録はまだありません）'}`);
 
   if (state) {
     lines.push('聞くことの状態：');
     for (const item of hearing.applicableItems()) {
       const status = itemStatusIndex.nameOf(hearing.itemStatus(item.key));
-      const extra = item.computed ? `（確かめていない候補 ${hearing.candidates().length}件）` : '';
+      const extra = item.computed ? `（確かめたいこと ${hearing.candidates().length}件）` : '';
       lines.push(`  ${item.name}：${status}${extra}`);
     }
     lines.push(hearing.remainingLine());
 
     const candidates = hearing.candidates();
     if (candidates.length) {
-      lines.push('確かめていない候補：');
+      lines.push('確かめたいこと（仕事のやり方や決まりのうち、状態が「候補」のもの）：');
       // 出どころも示す。段階「決まりの確かめ」は、ファイルから読んだ候補だけを確かめる。コンパクションの後に見分けるため
-      for (const k of candidates.slice(0, LIST_LIMIT)) lines.push(`  ${k.id}（聞くこと：${itemIndex.nameOf(k.item)}、出どころ：${sourceIndex.nameOf(k.source)}）：${clip(k.text, STATE_LINE_CLIP)}`);
+      for (const k of candidates.slice(0, LIST_LIMIT)) lines.push(`  ${k.id}（聞くこと：${itemIndex.nameOf(k.item)}、出どころ：${sourceDisplay(k.source)}）：${clip(k.text, STATE_LINE_CLIP)}`);
       if (candidates.length > LIST_LIMIT) lines.push(`  ほか${candidates.length - LIST_LIMIT}件`);
     }
 
@@ -102,20 +102,20 @@ export function stateText(hearing, context, include) {
     }
 
     const count = (key) => state.knowledge.filter((k) => k.status === key).length;
-    lines.push(`ナレッジ：${KNOWLEDGE_STATUSES.map((s) => `${s.name}${count(s.key)}件`).join('、')}`);
+    lines.push(`仕事のやり方や決まり：${KNOWLEDGE_STATUSES.map((s) => `${knowledgeStatusDisplay(s.key)}${count(s.key)}件`).join('、')}`);
     lines.push(`資産：${state.assets.length}件、標準機能と公開のプラグイン：${state.ossChoices.length}件`);
     lines.push(
       state.approvedAt
-        ? `生成前の確認：受け付け済み。生成の承認：${state.approvedAt}`
+        ? `作る前の確認：受け付け済み。生成の承認：${state.approvedAt}`
         : state.confirmation
-          ? `生成前の確認：受け付け済み（${state.confirmation.at}）。ユーザーの承認はまだです。`
-          : '生成前の確認：まだです。',
+          ? `作る前の確認：受け付け済み（${state.confirmation.at}）。ユーザーの承認はまだです。`
+          : '作る前の確認：まだです。',
     );
   }
 
   lines.push(`画面：${context.url ?? '（起動できていません）'}`);
   lines.push(`セッションの番号：${context.sessionId}`);
-  lines.push(`ヒアリングの記録（state.json）：${context.statePath}`);
+  lines.push(`お話を聞くことの記録（state.json）：${context.statePath}`);
   lines.push('SKILL.md の本文がコンテキストになければ、skill ツールで make-plugin を読み直してください。');
 
   if (include === '最後の問答' || include === '振り返りの材料') {
@@ -126,7 +126,7 @@ export function stateText(hearing, context, include) {
       if (qa.length === 0) lines.push('  まだ記録がありません。');
     } else {
       const targets = hearing.retrospectiveTargets();
-      lines.push('質問の改善案の対象のナレッジ（ヒアリングで引き出せなかったもの）：');
+      lines.push('質問の改善案の対象の仕事のやり方や決まり（お話を聞くことで引き出せなかったもの）：');
       if (targets.length === 0) lines.push('  ありません。');
       for (const t of targets) lines.push(`  ${t.id}（聞くこと：${t.itemName}）：${t.reason}`);
       lines.push(`問答の記録のすべて（${qa.length}件。1行が1件の JSON）：`);
@@ -148,11 +148,11 @@ export const knowledgeRow = (k) => ({
   kind: kindIndex.nameOf(k.kind),
   item: itemIndex.nameOf(k.item),
   text: k.text,
-  source: sourceIndex.nameOf(k.source),
+  source: sourceDisplay(k.source),
   quote: k.quote,
   example: k.example ?? null,
   exception: k.exception ?? null,
-  status: knowledgeStatusIndex.nameOf(k.status),
+  status: knowledgeStatusDisplay(k.status),
 });
 
 /**

@@ -45,7 +45,7 @@ const text = (value) => (typeof value === 'string' ? value.trim() : '');
 const has = (value) => text(value) !== '';
 const isObject = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
 
-const FROZEN_MESSAGE = 'ヒアリングは終わっています（段階は「生成」）。やり直すときは、/clear してから頼み直してください。';
+const FROZEN_MESSAGE = 'お話を聞くことは終わっています（段階は「生成」）。やり直すときは、/clear してから頼み直してください。';
 
 /** 新しい記録 */
 function freshState({ sessionId, now }) {
@@ -173,7 +173,7 @@ export function createHearing({ store, sessionId, clock }) {
         }
         if (item.computed) {
           throw new Refusal(
-            `「${item.name}」の状態は、確かめていない候補があるかどうかで自動で決まります。候補を plugin-creator_record で「決まった」か「外した」にしてください。`,
+            `「${item.name}」の状態は、確かめたいこと（仕事のやり方や決まりのうち、状態が「候補」のもの）があるかどうかで自動で決まります。それを plugin-creator_record で「決まった」か「外した」にしてください。`,
           );
         }
         const status = itemStatusIndex.byName.get(e.status);
@@ -200,11 +200,11 @@ export function createHearing({ store, sessionId, clock }) {
     if (stageKey) {
       if (stageKey === 'generate') {
         if (!state?.confirmation) {
-          throw new Refusal('段階を「生成」に進める前に、生成前の確認で示すものを plugin-creator_confirm で知らせて、ユーザーによいと答えてもらってください。');
+          throw new Refusal('段階を「生成」に進める前に、作る前の確認で示すものを plugin-creator_confirm で知らせて、ユーザーによいと答えてもらってください。');
         }
         const changed = changesSinceConfirmation();
         if (changed) {
-          throw new Refusal(`生成前の確認で示したナレッジの一覧と、今の「決まった」ナレッジが違います（${changed}）。plugin-creator_confirm で示し直して、ユーザーによいと答えてもらってください。`);
+          throw new Refusal(`作る前の確認で示した仕事のやり方や決まりの一覧と、今の「決まった」ものが違います（${changed}）。plugin-creator_confirm で示し直して、ユーザーによいと答えてもらってください。`);
         }
         if (!has(input.approvalQuote)) {
           throw new Refusal('段階を「生成」に進めるには、よいと答えたユーザーの言葉の抜き書き（approvalQuote）を添えてください。');
@@ -257,19 +257,19 @@ export function createHearing({ store, sessionId, clock }) {
   }
 
   function applyKnowledge(next, e, added, updated) {
-    if (!isObject(e)) throw new Refusal('ナレッジ（knowledge）は、欄を持つものの一覧で渡してください。');
+    if (!isObject(e)) throw new Refusal('仕事のやり方や決まり（knowledge）は、欄を持つものの一覧で渡してください。');
     if (!has(e.quote)) {
-      throw new Refusal('ナレッジには、ユーザーの言葉の抜き書き（quote）を添えてください。ファイルから読んだものは、ファイル名と箇所を書いてください。');
+      throw new Refusal('仕事のやり方や決まりには、ユーザーの言葉の抜き書き（quote）を添えてください。ファイルから読んだものは、ファイル名と箇所を書いてください。');
     }
     if (e.id !== undefined && e.id !== null && e.id !== '') {
       const existing = next.knowledge.find((k) => k.id === e.id);
       if (!existing) {
         const ids = next.knowledge.map((k) => k.id);
-        throw new Refusal(`ナレッジ ${String(e.id)} は見つかりません。${ids.length ? `今ある番号：${ids.join('、')}` : 'まだナレッジはありません。番号を付けずに渡すと、新しく追加されます。'}`);
+        throw new Refusal(`仕事のやり方や決まり ${String(e.id)} は見つかりません。${ids.length ? `今ある番号：${ids.join('、')}` : 'まだありません。番号を付けずに渡すと、新しく追加されます。'}`);
       }
-      const fields = checkKnowledgeFields(e, `ナレッジ ${existing.id} の`);
+      const fields = checkKnowledgeFields(e, `仕事のやり方や決まり ${existing.id} の`);
       if (fields.status === 'candidate' && existing.status !== 'candidate') {
-        throw new Refusal(`ナレッジ ${existing.id} を「候補」には戻せません。使える状態：${listNames(KNOWLEDGE_STATUSES.filter((s) => s.key !== 'candidate'))}`);
+        throw new Refusal(`仕事のやり方や決まり ${existing.id} を「候補」には戻せません。使える状態：${listNames(KNOWLEDGE_STATUSES.filter((s) => s.key !== 'candidate'))}`);
       }
       Object.assign(existing, fields, { quote: text(e.quote), updatedAt: iso() });
       existing.itemName = itemIndex.nameOf(existing.item); // 項目を直したときも、日本語の名前をそろえる
@@ -278,9 +278,9 @@ export function createHearing({ store, sessionId, clock }) {
     }
     const missing = ['kind', 'item', 'text', 'source', 'status'].filter((f) => e[f] === undefined || (typeof e[f] === 'string' && !has(e[f])));
     if (missing.length) {
-      throw new Refusal(`新しいナレッジに足りない欄：${missing.map((f) => KNOWLEDGE_FIELDS_JA[f]).join('、')}`);
+      throw new Refusal(`新しい仕事のやり方や決まりに足りない欄：${missing.map((f) => KNOWLEDGE_FIELDS_JA[f]).join('、')}`);
     }
-    const fields = checkKnowledgeFields(e, '新しいナレッジの');
+    const fields = checkKnowledgeFields(e, '新しい仕事のやり方や決まりの');
     next.knowledgeCounter += 1;
     const id = knowledgeNumber(next.knowledgeCounter);
     next.knowledge.push({
@@ -307,9 +307,9 @@ export function createHearing({ store, sessionId, clock }) {
     const input = isObject(args) ? args : {};
     const { knowledge, assets, oss } = input;
     if (knowledge === undefined && assets === undefined && oss === undefined) {
-      throw new Refusal('ナレッジ（knowledge）、資産（assets）、標準機能と公開のプラグイン（oss）のどれかを渡してください。');
+      throw new Refusal('仕事のやり方や決まり（knowledge）、資産（assets）、標準機能と公開のプラグイン（oss）のどれかを渡してください。');
     }
-    for (const [name, value] of [['ナレッジ（knowledge）', knowledge], ['資産（assets）', assets], ['標準機能と公開のプラグイン（oss）', oss]]) {
+    for (const [name, value] of [['仕事のやり方や決まり（knowledge）', knowledge], ['資産（assets）', assets], ['標準機能と公開のプラグイン（oss）', oss]]) {
       if (value !== undefined && (!Array.isArray(value) || value.length === 0)) {
         throw new Refusal(`${name}は、1件以上の一覧で渡してください。`);
       }
@@ -348,12 +348,12 @@ export function createHearing({ store, sessionId, clock }) {
 
     commit(next);
     const parts = [];
-    if (added.length) parts.push(`ナレッジ ${added.join('、')} を追加`);
-    if (updated.length) parts.push(`ナレッジ ${updated.join('、')} を更新`);
+    if (added.length) parts.push(`仕事のやり方や決まり ${added.join('、')} を追加`);
+    if (updated.length) parts.push(`仕事のやり方や決まり ${updated.join('、')} を更新`);
     if (assetCount) parts.push(`資産${assetCount}件`);
     if (ossCount) parts.push(`標準機能と公開のプラグイン${ossCount}件`);
     const open = candidatesOf(next).length;
-    return `記録しました（${parts.join('、')}）。${open ? `確かめていない候補：${open}件` : '確かめていない候補はありません。'}`;
+    return `記録しました（${parts.join('、')}）。${open ? `確かめたいこと：${open}件` : '確かめたいことはありません。'}`;
   }
 
   // ---- confirm ----------------------------------------------------------------
@@ -363,7 +363,7 @@ export function createHearing({ store, sessionId, clock }) {
     assertWritable();
     const names = remainingNames(state);
     if (names.length) {
-      throw new Refusal(`まだ聞いていないことがあるので、生成前の確認はできません：${names.join('、')}。聞いてから、もう一度知らせてください。`);
+      throw new Refusal(`まだ聞いていないことがあるので、作る前の確認はできません：${names.join('、')}。聞いてから、もう一度知らせてください。`);
     }
   }
 
@@ -380,9 +380,9 @@ export function createHearing({ store, sessionId, clock }) {
       else if (row.status !== 'decided') notDecided.push(id);
       else rows.push(row);
     }
-    if (unknown.length) throw new Refusal(`ナレッジの番号が見つかりません：${unknown.join('、')}`);
-    if (dropped.length) throw new Refusal(`外したナレッジは示せません：${dropped.join('、')}`);
-    if (notDecided.length) throw new Refusal(`決まっていないナレッジは示せません：${notDecided.join('、')}`);
+    if (unknown.length) throw new Refusal(`仕事のやり方や決まりの番号が見つかりません：${unknown.join('、')}`);
+    if (dropped.length) throw new Refusal(`外した仕事のやり方や決まりは示せません：${dropped.join('、')}`);
+    if (notDecided.length) throw new Refusal(`決まっていない仕事のやり方や決まりは示せません：${notDecided.join('、')}`);
     return rows;
   }
 
@@ -431,7 +431,7 @@ export function createHearing({ store, sessionId, clock }) {
       if (k.source === 'volunteered' && k.itemTouchedAtRecord) {
         out.push({ id: k.id, itemName: itemIndex.nameOf(k.item), reason: 'そのことを聞いた後に、ユーザーが自分から話した' });
       } else if (k.source === 'added_at_confirmation') {
-        out.push({ id: k.id, itemName: itemIndex.nameOf(k.item), reason: '生成前の確認で足した' });
+        out.push({ id: k.id, itemName: itemIndex.nameOf(k.item), reason: '作る前の確認で足した' });
       }
     }
     return out;

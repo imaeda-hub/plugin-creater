@@ -11,8 +11,8 @@
 印の意味：[x] できた（試験も通った）、[~] ファイルはできた（試験はまだ）、[ ] まだ
 
 - [x] 資料を読む（common.md、D1.md、BLUEPRINT、RESUME、testing.md 全章、ナレッジ3つ、R4、試作 convert.py、C1 のメモ、ひな形のエージェント）
-- [ ] Claude Code の公式ドキュメントで確かめる（Agent の引数、tools の MCP 名、model、plugin.json）
-- [ ] tests/dev-eval/convert.py
+- [x] Claude Code の公式ドキュメントで確かめる（Agent の引数、tools の MCP 名、model、plugin.json）
+- [~] tests/dev-eval/convert.py（できた。クリエイターとサンプルの生成プラグインを置き換え、claude plugin validate に通ることを手で確かめた。試験はまだ）
 - [ ] 試験（test_convert.py）
 - [ ] 試験が通る
 - [ ] 最後の返事
