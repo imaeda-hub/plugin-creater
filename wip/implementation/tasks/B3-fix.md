@@ -289,3 +289,53 @@ C1 の今の返り値の文は、report.mjs の stateText、hearing.mjs の rema
 6. hearing.md 5.5：生成の段階の承認に答えが来なかったときは、止まらずに入れない・出さないとして進める（X2-20、C-22。既出）。
 7. creator-structure.md・generated-plugin-structure.md の `/experimental on`：答え29の案内にそろえる（最後の報告で示す）。testing.md 8.2：EVAL の時間の伝え方（回数と1回の上限）。
 8. hearing.md 11章の「クリエイターの版」：Issue の案の言葉を「plugin-creator の版」にそろえる（統括の決定）。
+
+## X4 の直し（自然言語の部分の直しの点検。reviews/X4.md のクリエイターの側と、C2 の依頼）
+
+指示：統括の頼み（2026-10-24）、briefs/X-fix.md の進め方。tests/dev-eval/heldout/ は読まない。
+
+### 状態
+
+- [x] 読む（X4.md、scaffold.py の `check_confirmed_evals`・`eval_differences`、template/tests/stage1/check_structure.py の `settings_problems`、tasks/C2.md の依頼、ひな形の README と入口のスキルの案内）
+- [x] 直す（make-plugin の SKILL.md、last-time.md、confirm.md、generate.md、test-plugin の SKILL.md、worker.agent.md、descriptions.mjs、README.md、setup.md）
+- [x] 数える、tests/creator/run.py
+- [x] コミットと push（直しは統括の途中経過のコミットにすでに入っていたので、このメモだけ）
+
+### 指摘の扱い
+
+| 指摘 | 扱い | 確かめたことと、直したこと |
+| --- | --- | --- |
+| X4-01 | 直した | 先頭の決まり1に「（答えが来ないときは「始められないとき・答えが来ないとき」のとおり）」を足した。答えが来なかったと見分ける文の範囲を、どの段階にも当てる形にし、「ヒアリングの問い（生成前の承認まで）では、次のとおりにする」を続けた。生成の段階の承認の1行はそのまま。autopilot の「make good decisions」の答えも、生成の段階では答えが来なかったとして入れない・出さないになる |
+| X4-02 | 直した | generate.md 4の3（試験で落ちたところの直し）の頼みに、流用したファイルの生成プラグインの中の場所の一覧を渡し、変えないよう伝える、を足した。worker.agent.md の C の決まりを「頼みに流用したファイルとして書かれたファイルは変えない」にし、B（写した場所）と C（生成プラグインの中の場所）のどちらの頼みにも当たる言い方にした |
+| X4-03 | 直した | scaffold.py が eval.json の `prompt`（前後の空白を除いて一致）・`inputs`・`settings`・基準の組を、確かめた課題と比べて断ることを確かめた。worker.agent.md の試験の課題に、これらを頼みのとおりにそのまま写す（言い換えない。設定の値がなければ `settings` を書かない）と理由つきで足し、例の `settings` を `<頼みの値>` の形にした |
+| C2 の依頼 | 直した | X4-03 と1つの書き方にした。generate.md 1の3：`eval_inputs` の `from` は、`plugin-creator_confirm` の入力のファイルの `path` と同じ絶対パス。generate.md 2：頼むときの言葉・入力のファイル・設定の値・基準の組は、confirm に渡した課題（`confirmation.evalTasks`）と同じものを渡し、eval.json にそのまま写すよう伝える（理由：組み立てが確かめて断る。仮のファイルの置き場所は confirm の `path` の `tests/eval/<課題の番号>/inputs/<名前>`）。evalTasks の形は変えていないので、tests/dev-eval/control-creator/ は触っていない |
+| X4-04 | 直した（文書の分） | check_structure.py の `settings_problems` が、key が作業の定義にない・種類が合わない・選択肢にない・必須で初めの値のない設定に値がない、を落とすことを確かめた。confirm.md 2に、作業ごとの設定の値は作業の定義の案ができた後に、案の `settings` の `key` ごとに、種類に合う値で決める（選ぶ欄なら選択肢のどれか）、必須で初めの値のない設定には必ず値を入れる、を理由つきで足した。`plugin-creator_confirm` で key を確かめて断るのは C1 に頼む（依頼1） |
+| X4-05 | 直した | SKILL.md の出どころの決め方を「その問いと別の項目の決まりを話したときは「ユーザーが自分から話した」にする（前に聞いた項目でも、まだ聞いていない項目でも）」にした。last-time.md の出どころに「（前回の1回をたどる問いへの答えなので）」を添えた |
+| X4-06 | 直した | test-plugin の手順6：見込みがないときは、問いの文から「見込みの分の」を除く。README に「見込みを出せないときは、そのことと、使った分は終わった後に示すことが伝えられます。」を足した（目安が埋まったら消す。依頼2）。ひな形の README は A4 の担当 |
+| X4-07 | 直した | test-plugin の決まり8に、`result.json` の `status` が `running` なら動かし直さずに終わりの知らせを待つこと、動いているコマンドがないのに `running` のままなら途中で止まったとして示すことを足した |
+| X4-08 | 直した | README の「答えが来ないとき」に、作った後の道具と改善の要望の問いに答えが来なかったときは止まらずに入れない・出さないとして進む（試験をしなかったことは説明で示される）、を足した |
+| X4-09 | 直した（クリエイターの側） | ひな形の README と入口のスキルの書き方にそろえた。README：再起動すると今の会話は終わること、まだ信頼していないフォルダでだけフォルダの信頼の確認が出ること、「always allow」の選択肢の後ろにフォルダの場所が付くこと。setup.md も同じ |
+| X4-14 | 直した | descriptions.mjs の `evalTasks.settings` を「生成前の確認でユーザーに示す値を渡す。」にした |
+| X4-16 | 直した | test-plugin の「答えが来ないとき」に、手順9の改善の要望を出すかの問いに答えが来なかったときは、止まらずにその案を出さずに improve.md のとおり進める、を足した |
+
+### 本文のトークンの収め方
+
+- X4-01・X4-05 で本文が 4,928 から 4,972 トークンになった（残り28）。段階の一覧の1つ目の箇条の後半「references の中身はコンパクションで消えるので、コンパクションの後は、今の段階のファイルを読み直す。」を消して、4,938 トークン（残り62）にした。同じことは、先頭の決まり5（コンパクションの後は make-plugin を読み直し、「始まりの手番」から進める）と、始まりの手番の3（その段階のファイルを読み直す）が言っているので、中身は減っていない（2か所に書かない。憲章 第9条）。
+
+### 試験と数（2026-10-24）
+
+- make-plugin の SKILL.md の本文：121行・4,938トークン（5,000未満）。test-plugin：52行・2,869トークン。
+- references：16個とも 20,000 バイト未満（いちばん大きい generate.md が 14,177 バイト・87行。confirm.md 9,568 バイト）。worker.agent.md の本文 6,278 文字（30,000 文字以内）。
+- `python3 tests/creator/run.py`（Playwright は NODE_PATH の scratchpad/pw、ブラウザーは /opt/pw-browsers）：1段目は会話例がないこと（REQ-037。D1 の部品）の1件だけが不合格で前と同じ。2段目は 1,198 件のうち 1,196 件が合格、2 件は対象外（前に落ちていた dev-eval の3件は、D1c と C2 の直しで通るようになった）。
+- 自然言語の直しなので、変異の試験はしていない。
+
+### ほかの担当への依頼
+
+1. C1：`plugin-creator_confirm` で、`evalTasks[].settings.task` の名前が作業の定義の案（draft/task.json）の `settings[].key` にあるかを確かめ、なければ断る（X4-04。種類と必須の確かめまで入れるかは C1 が決める）。
+2. C3・統括：estimate.mjs の目安（GUIDELINE）を埋めたら、README の「見込みを出せないときは、…伝えられます。」の1文を消す（X4-06）。ひな形の README の同じ直しは A4。
+
+### 上位の文書で直すこと
+
+1. hearing.md 6.3・6.5：作業ごとの設定の値は、作業の定義の案の設定の key から取り、必須で初めの値のない設定には値を入れる（X4-04）。
+2. creator-structure.md 3.5・4.1：作業エージェントは、eval.json の頼むときの言葉・入力・設定の値・基準の組を、確かめた課題のとおりに写す。組み立てのスクリプトが確かめて断る（X4-03、C2 の依頼。既出の C-14 と同じ）。
+3. hearing.md 5.5・10.2：先頭の決まり1の「答えを受け取るまで先へ進まない」と、生成の段階の承認の扱いの関係（X4-01）。
