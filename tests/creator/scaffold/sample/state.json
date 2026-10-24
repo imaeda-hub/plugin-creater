@@ -1,0 +1,125 @@
+{
+  "schemaVersion": 1,
+  "sessionId": "sample-session",
+  "createdAt": "2026-10-22T01:00:00.000Z",
+  "updatedAt": "2026-10-22T02:00:00.000Z",
+  "stage": "generate",
+  "rebuild": false,
+  "items": {
+    "purpose": { "status": "asked", "quote": "毎週の週報を作りたい", "holder": null, "updatedAt": "2026-10-22T01:05:00.000Z" },
+    "criteria": { "status": "asked", "quote": "見出しが2つあれば合格", "holder": null, "updatedAt": "2026-10-22T01:30:00.000Z" }
+  },
+  "knowledge": [
+    {
+      "id": "K-01",
+      "kind": "criterion",
+      "item": "criteria",
+      "itemName": "合否の決め方",
+      "text": "週報は、見出し「今週やったこと」と「来週やること」の2つがあれば合格とする。",
+      "source": "answer",
+      "quote": "見出しが2つあれば合格",
+      "example": null,
+      "exception": null,
+      "status": "decided",
+      "recordedAt": "2026-10-22T01:30:00.000Z",
+      "updatedAt": "2026-10-22T01:30:00.000Z",
+      "itemTouchedAtRecord": false
+    },
+    {
+      "id": "K-02",
+      "kind": "other",
+      "item": "rules",
+      "itemName": "決まった書き方やルール",
+      "text": "宛先は部長。です・ます調の敬語で書く。",
+      "source": "answer",
+      "quote": "部長宛てで、敬語です",
+      "example": null,
+      "exception": null,
+      "status": "decided",
+      "recordedAt": "2026-10-22T01:35:00.000Z",
+      "updatedAt": "2026-10-22T01:35:00.000Z",
+      "itemTouchedAtRecord": false
+    },
+    {
+      "id": "K-03",
+      "kind": "criterion",
+      "item": "rules",
+      "itemName": "決まった書き方やルール",
+      "text": "数字は半角で書く（例：3件）。",
+      "source": "answer",
+      "quote": "数字は半角",
+      "example": "3件",
+      "exception": null,
+      "status": "decided",
+      "recordedAt": "2026-10-22T01:40:00.000Z",
+      "updatedAt": "2026-10-22T01:50:00.000Z",
+      "itemTouchedAtRecord": false
+    },
+    {
+      "id": "K-04",
+      "kind": "other",
+      "item": "must_not_break",
+      "itemName": "守らないと困ること",
+      "text": "金曜の夕方までに出す。",
+      "source": "answer",
+      "quote": "金曜の夕方まで",
+      "example": null,
+      "exception": null,
+      "status": "dropped",
+      "recordedAt": "2026-10-22T01:42:00.000Z",
+      "updatedAt": "2026-10-22T01:55:00.000Z",
+      "itemTouchedAtRecord": false
+    },
+    {
+      "id": "K-05",
+      "kind": "criterion",
+      "item": "criteria",
+      "itemName": "合否の決め方",
+      "text": "1ページに収める。",
+      "source": "file",
+      "quote": "前回の週報.docx の1ページ目",
+      "example": null,
+      "exception": null,
+      "status": "candidate",
+      "recordedAt": "2026-10-22T01:45:00.000Z",
+      "updatedAt": "2026-10-22T01:45:00.000Z",
+      "itemTouchedAtRecord": false
+    },
+    {
+      "id": "K-06",
+      "kind": "other",
+      "item": "must_not_break",
+      "itemName": "守らないと困ること",
+      "text": "社外の人の名前は書かない。",
+      "source": "volunteered",
+      "quote": "社外の人の名前は絶対に書かないで",
+      "example": null,
+      "exception": null,
+      "status": "decided",
+      "recordedAt": "2026-10-22T01:48:00.000Z",
+      "updatedAt": "2026-10-22T01:48:00.000Z",
+      "itemTouchedAtRecord": true
+    }
+  ],
+  "knowledgeCounter": 6,
+  "assets": [],
+  "ossChoices": [],
+  "confirmation": {
+    "at": "2026-10-22T01:58:00.000Z",
+    "knowledgeIds": ["K-01", "K-02", "K-03", "K-06"],
+    "behavior": "先週の記録から週報を書く",
+    "taskPath": ".plugin-creator-work/draft/task.json",
+    "evalTasks": [
+      {
+        "prompt": "先週の記録をもとに、今週の週報を書いてください。",
+        "inputs": [{ "path": "tests/eval/T-01/inputs/memo.txt", "provisional": true }],
+        "criteria": ["K-01", "K-03"],
+        "settings": { "maxIterations": 3, "task": { "week": "2026-W42" } }
+      }
+    ],
+    "rebuild": null
+  },
+  "approvedAt": "2026-10-22T02:00:00.000Z",
+  "approvalQuote": "はい、その内容で作ってください",
+  "url": "http://127.0.0.1:41000/?token=sample"
+}

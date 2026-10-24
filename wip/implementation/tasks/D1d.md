@@ -1,0 +1,248 @@
+# D1d 作業のメモ：内側の EVAL（tests/dev-eval/runner/ の内側の部分）
+
+担当の指示：wip/implementation/briefs/D1.md の「D1d」の節（共通：common.md）
+
+置き場所（これ以外は作らない・変えない）：
+- tests/dev-eval/runner/ の内側の部分（ファイル名は `inner-*.mjs`）と、D1c と分け合う共通の部品（下の表）
+- tests/dev-eval/package.json（Node.js の部品の版の固定。D1c・D1a・D1b も使う）
+- 試験は tests/dev-eval/runner/ の中（実際のモデルは使わない）
+
+## 状態
+
+印の意味：[x] できた（試験も通った）、[~] ファイルはできた（試験はまだ）、[ ] まだ
+
+- [x] 読み込み（testing.md 1〜9章・11.1、ナレッジ3つ、R4、BLUEPRINT、B1 の adapter.mjs、A1 の core、C3 の screen.mjs・grade.mjs・tasks.mjs・judge.mjs、D1a の convert.py、D1b の FORMAT.md、D1c の user-role.mjs・outer-inner.mjs）
+- [x] 偽の API で、本物の Agent SDK 0.3.310 の Claude Code を動かして、つなぎ方を確かめた（分かったことは下の節）
+- [x] 共通の部品：package.json、model-map.mjs、isolation.mjs、mcp-tools.mjs、fake-anthropic.mjs と、それぞれの試験
+- [x] inner-adapter.mjs（内側のつなぎ口）と試験 inner-adapter.test.mjs（25 件）
+- [x] inner-run.mjs（実行1回。あり・なし）と試験 inner-run.test.mjs（24 件）
+- [x] inner-judge.mjs（モデルで判定する関数の Agent SDK 版）と試験 inner-judge.test.mjs（5 件）
+- [x] inner.mjs（入口。コマンドラインと innerEval）と試験 inner.test.mjs（11 件）
+- [x] inner-e2e.test.mjs（12 件）：本物の Agent SDK と Claude Code の本体、本物の生成プラグイン〔C2 の見本を組み立てて D1a の変換スクリプトで置き換えたもの〕の画面と Playwright を、偽の Anthropic API につないで、ありの実行・なしの実行・チャットの返事・質問のツール・止める・設定の欄をユーザー役が決めること（決められたとき、決められなかったとき）を通した。あとの4件は V1 の直しへの合わせ（断りの文がモデルに届くこと）と、統括の tools をなくしたことへの合わせ（統括が使えるツール）
+- [x] 通しの確認：tests/dev-eval/runner/ の試験すべて（D1c の分を含む）225 件が通った（D1c の分が増えた）。D1d の分は 112 件（共通の部品 25 件を含む）。変換の試験（test_convert.py）78 件、模擬ユーザーの検査（personas）42 件も通った。D1d の分を続けて動かしても通った
+- [x] 変異試験（わざと壊す検査）：下の「変異試験」
+- [x] 最後の返事（1回目）
+- [x] 続きの仕事（統括の決定）：画面の開始前の設定の欄を、ユーザー役が読んで決める（inner-settings.mjs）。下の「画面の設定の欄を決める」
+- [x] 追加の仕事（ユーザー役へ、質問の前にチャットに書いた文を渡す）：外側の EVAL の直し（D1c、0663685）と同じ渡し方に、内側の EVAL をそろえた。下の「ユーザー役へ、質問の前の文を渡す」
+- [x] 追加の仕事（統括の tools をなくしたことへの合わせ）：内側の EVAL の統括にも、使ってよいツールだけを効かせる（inner-adapter.mjs）。test_convert.py の落ちていた2件を直した。下の「統括の tools をなくしたことへの合わせ」
+- [x] 追加の確かめ（V1 の直しへの合わせ）：記録のツールの断りの文が、内側の EVAL でモデルに届くこと。偽の API だけを使うための守り（guardSdk）。クリエイターの置き換え（creator-tools.mjs）の failure の結果への合わせ。下の「V1 の直しへの合わせ」
+
+動かし方（リポジトリの根から。事前に `cd tests/dev-eval && npm install`）：
+
+```text
+node --test "tests/dev-eval/runner/*.test.mjs"                        # 全部（約35秒）
+node --test "tests/dev-eval/runner/inner*.test.mjs"                   # D1d の分
+```
+
+Python に PyYAML と jsonschema、Playwright のブラウザー（この環境は PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers）が要る。なければ、その試験は飛ばす。
+
+内側の EVAL の使い方（実際のモデルを使う。統括がユーザーの承認をとってから）：
+
+```text
+node tests/dev-eval/runner/inner.mjs --plugin <生成プラグインのフォルダ> --persona tests/dev-eval/personas/<id> [--persona …] \
+     [--runs 1] [--arms with,without] [--out <結果のフォルダ>] [--setting 鍵=値] [--worker-model gpt-6-luna …] [--no-sandbox]
+```
+
+結果は `<結果のフォルダ>/inner-result.json`（あり・なしの点数とその差、実行ごとの基準ごとの合否、動きの確かめ、費用）。実行ごとの記録は `inner-runs/<課題>/<with|without>-<回>/`（result.json、events.jsonl、screen.png、work/〔作業フォルダ。成果物〕）。外側の EVAL（D1c の outer-inner.mjs）は `innerEval()` を直接呼ぶ。
+
+## 作ったファイル（tests/dev-eval/ の下）
+
+| ファイル | 中身 |
+| --- | --- |
+| `package.json` | 版の固定（下の表） |
+| `runner/model-map.mjs`、`isolation.mjs`、`mcp-tools.mjs`、`fake-anthropic.mjs` | 共通の部品（下の表）。試験は `*.test.mjs`（model-map 5、isolation 10、mcp-tools 6、fake-anthropic 4） |
+| `runner/inner-adapter.mjs` | 内側のつなぎ口。断り・失敗は isError の結果で返す（`failureResult`、`OPEN_FAILED`、`RECORD_FAILED`）。実行用のコピーの統括の定義に、使ってよいツールだけを tools に書く（`ORCHESTRATOR_BUILTIN_TOOLS`、`addTools`）。`createInnerAdapter({ sdk, pluginRoot, convertedRoot, workDir, runDir, ... })`。中心の処理（core/）と画面（ui/）を生成プラグインの場所から読み込み、窓口 port と中立のイベントで動かす。`mainParts()`（メインの query に足す MCP サーバー）、`port`、`core`、`agents()`、`runs()`、`checkToolNames()`、`limitHit()`、`shutdown()` |
+| `runner/inner-run.mjs` | 実行1回 `runInnerArm({ arm, task, runDir, sdk, userRole, judge, screen, ... })`。流れは先頭のコメント。`asksForReply`（返事を求めているかの見分け）、`buildChecks`（動きの確かめ） |
+| `runner/inner-judge.mjs` | `createAgentSdkJudge({ sdk, model })`。grade.mjs の buildJudgePrompt と parseJudgeReply を使う |
+| `runner/inner.mjs` | `innerEval(...)`（課題 × 回数 × あり・なし。点数とその差。利用枠の上限で止まったら残りを skipped）、`main(argv, deps)`〔deps.sdk・deps.chromium は試験用〕、`parseArgs`、`scoresOf`、`summarizeRun` |
+| `runner/inner-settings.mjs` | 画面の開始前の設定の欄を、ユーザー役が決める。`decideSettings`（値を決める順と記録）、`describeSetting`（ユーザー役に聞く文）、`normalizeSettingAnswer`（答えを欄の値にする）、`previewInputs`（渡したファイルの先頭）。試験は `inner-settings.test.mjs`（10 件） |
+| `runner/inner-test-support.mjs` | 試験の道具。`buildSamplePlugin()`（C2 の見本から組み立てて、D1a の convert.py で置き換える）、`scriptedModel(scenario)`（偽の API の台本。メイン・統括・作業・検証・ユーザー役・判定を見分けて、決まった順にツールを呼ぶ。`badPlan` は、わざと間違った試行の番号で記録を呼ぶ） |
+
+## 共通の部品（D1c と分け合うもの。置き場所と形）
+
+D1c は、次の部品を使っている（isolation・mcp-tools・model-map・fake-anthropic を D1c のメモが挙げている）。形を変えるときは D1c に知らせること。
+
+| ファイル | 中身（形） |
+| --- | --- |
+| `tests/dev-eval/package.json` | Node.js の部品の版の固定。`@anthropic-ai/claude-agent-sdk` 0.3.310（Claude Code 2.1.310 と同梱で同じ版。手元の `claude --version` も 2.1.310）、その peer の `@anthropic-ai/sdk` 1.3.0・`@modelcontextprotocol/sdk` 1.32.2・`zod` 4.6.7、`playwright` 1.56.1。`type: module`。`cd tests/dev-eval && npm install`（約 350MB。node_modules は git に入らない）。lock のファイルは置かない（C3 と同じ） |
+| `model-map.mjs` | モデルの名前の対応。表は D1a の convert.py だけが持ち、変換レポート（`<置き換えた版>/.eval/conversion-report.json` の `model_map`）から読む。`readConversionReport(root)`、`modelMapOf(report)`、`toClaudeModelId(map, name)`（未知の名前は Error）、`toCopilotName(map, id)`、`copilotModelList(map)`（`[{ id, name }]`。画面の選択肢） |
+| `isolation.mjs` | Agent SDK の隔離（testing.md 5章）。`ENV_ALLOW`、`agentEnv({ home, extra })`、`sandboxStatus()`（Linux は bwrap・socat が PATH にあるか。`{ available, missing }`）、`makeSandboxOptions({ enabled })`、`isInsideDir(cwd, p)`、`makeCanUseTool({ cwd, onQuestion, refused })`（AskUserQuestion は `onQuestion(questions)` の `{ 質問の文: 答え }` で答える。作業フォルダの外への Write/Edit は断る）、`allowedToolsFor({ mcpTools })`、`usageLimitPrefixes(sdk)`（利用枠の上限の書き出し。sdk が持っていなければ本物から読む）、`makeQueryOptions({ cwd, home, model, plugins, mcpServers, mcpTools, hooks, agent, systemPromptAppend, sandbox, onQuestion, refused, envExtra, maxTurns, resume, abortController })`（上をまとめた `query()` の options。`settingSources: []`、システムプロンプトは `claude_code` のプリセット〔`agent` の本文を効かせるのに要る〕、本体は SDK 同梱のもの） |
+| `mcp-tools.mjs` | 同じプロセスの MCP サーバー。`createToolServer({ name, tools, onCall })` が `{ type: 'sdk', name, instance }` を返す（`mcpServers[name]` に渡す）。`tools` は `[{ name, description, inputSchema(JSON Schema そのまま), handler(args, ctx) }]`。`ctx` は `{ toolUseId, agentId, signal }`。`query()` 1回ごとに別のインスタンスを作ること。ツールは `anthropic/alwaysLoad` で、いつもプロンプトに載る。`mcpToolName(server, tool)` |
+| `fake-anthropic.mjs` | 偽の Anthropic API。`startFakeAnthropic(handler)`。本物の Agent SDK と Claude Code の本体を、実際のモデルなしで動かす試験に使う。`systemText`、`firstUserText`、`lastToolResults`、`lastToolResultBlocks`（ツールの結果の文と `is_error`）、`lastUserMessage`。`guardSdk(sdk, api)`：偽の API に向いていない `query()` を投げて止める守り（本物のモデルを呼ばないため。本物の SDK を使う試験は必ず通す） |
+
+## 確かめて分かったこと（本物の Agent SDK 0.3.310 の Claude Code を、偽の Anthropic API につないで確かめた）
+
+- `ANTHROPIC_BASE_URL` に偽のサーバー、`ANTHROPIC_API_KEY` に適当な文字、`CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1` を env で渡せば、本物の Claude Code の本体が動く。ストリーミング（SSE）で返せばよい。
+- MCP のツールは、既定でツール検索の裏に回される（モデルの道具の一覧に載らない）。ツールに `_meta: { "anthropic/alwaysLoad": true }` を付けると載る（Copilot CLI の `defer: 'never'` に当たる）。
+- MCP のツールの呼び出しの `_meta` に `claudecode/toolUseId` が入る。フックの `tool_use_id` と同じ値。フック PreToolUse の入力には、サブエージェントの中なら `agent_id`、統括自身（メインのスレッド）なら `agent_id` がなく `agent_type` だけが付く。これで「記録のツールを呼んだエージェント」を結び付けられる（testing.md 4章の要確認が解けた）。`_meta` に `claudecode/agentId` は付かなかった（使わない）。
+- `agent: '<プラグイン>:<エージェント>'` は、`systemPrompt: { type: 'preset', preset: 'claude_code' }` のときだけ、エージェントの本文が効く。既定の最小のシステムプロンプトでは本文が入らない。`tools` の制限とモデルは、どちらでも効く。
+- `Agent` の呼び出しは、既定で裏で動く（`is_backgrounded: true`、すぐ「launched」が返り、終わりは後の通知で届く）。入力で `run_in_background: false` を指定すると前面で動き、サブエージェントの最後の返事が返る（`is_backgrounded: false`）。D1a の変換は、統括の本文の `mode: "sync"` を `run_in_background: false` にしてある。環境変数で強制はしない（統括の指示に従うかも試すため）。
+- フックの入力：サブエージェントの始まり（SubagentStart）は `agent_id`・`agent_type`（`<プラグイン>:worker`）。終わり（SubagentStop）は `last_assistant_message`。Agent の呼び出し（PreToolUse の `tool_name` が `Agent`）の入力に `description`・`subagent_type`・`run_in_background` が入る。サブエージェントの assistant メッセージには `agent_id` と `message.model` が付く（実際のモデルが分かる）。
+- 止める：`query.close()` で、ループが静かに終わり、Claude Code の本体のプロセスも消える（`ps` で確かめた）。サブエージェントの終わりのフックは届かない（Copilot CLI で統括を取り消したときと同じ）。
+- フックが `permissionDecision: 'deny'` を返すと、ツールは「PreToolUse:… hook error: <理由>」の誤りの結果になり、事後のフック（PostToolUse）は呼ばれない。
+- `allowedTools` にツールを書くと、SDK が「canUseTool は呼ばれない」という警告を毎回出す（ねらいどおりなので放っておく。ナレッジ agent-sdk-eval.md のとおり）。
+
+## 決めたこと
+
+設計書にない細かいところを、目的に合う最も単純な形に決めた。
+
+1. **つなぎ口の作り**：B1 の adapter.mjs のように Copilot の部品の形に合わせず、Agent SDK のフックとメッセージから、窓口 port と中立のイベントを直接作る。Copilot CLI でしか起きないもの（`wait.started`・`wait.ended`〔確認の待ち〕、`agent.idle`、`/clear`）は作らない（testing.md 4章、9章。普段のツールはあらかじめ許可するので確認の待ちは起きない）。
+2. **統括の起動**：統括を、置き換えた版のコピー（`runDir/plugin-<統括の番号>/`）で、`agent: '<プラグイン>:orchestrator'` として別の query() で始める。作業・検証のモデルの上書き（`setSubagentModels`）は、コピーの `agents/<名前>.md` の `model:` を、変換の表で Claude Code の ID にして書き換えて効かせる（元の置き換えた版は変えない）。統括のモデルは、統括の定義の `model:` と query の `model` の両方に入れる。
+3. **統括の番号**：`orch-<連番>` を作って返す。統括の中のフックには `agent_id` が付かないので、`agent_id` がないものは統括のものとする。
+4. **実際のモデルの名前**：画面は選んだ Copilot の名前（例：gpt-6-luna）と実際のモデルを比べる。実際の Claude の ID が、選んだ名前を変換した ID と同じなら選んだ名前のまま、違えば ID に当たる Copilot の名前（claude- で始まる名前を先に）を `agent.configured` で届ける。違いが画面に出る。
+5. **取り消されたか**：Agent SDK の側にはその情報がないので、試験の仕組みが止めたかどうかだけで決める（testing.md 4章の「取れないとき」）。止めると、統括の終わり（`cancelled: true`）だけを届け、下のエージェントは `listTasks` で `cancelled` にする。
+6. **サブエージェントの親**：Agent の呼び出し（PreToolUse）を覚えておき、サブエージェントの始まりのフックで、`subagent_type` が合う最も古い呼び出しと結び付ける。親は呼んだエージェント、説明は `description`、実行のしかたは `run_in_background === false` なら `sync`、それ以外は `background`。
+7. **ツール名**：中心の処理に届けるツール名は、Copilot CLI のときと同じ `<エクステンション>_<ツール>` に戻す（課題の洗い出しが、名前の終わりで記録のツールを見分けるため）。ほかのツールはそのまま。
+8. **画面を開くツールの返り値と、失敗の文**：adapter.mjs の `describeOpened`、`OPEN_FAILED`、`RECORD_FAILED` と同じ内容を、inner-adapter.mjs に写した（adapter.mjs は export していないので。上位の文書で直すこと）。食い違わないように、試験が生成プラグインの adapter.mjs を読んで比べる（下の「V1 の直しへの合わせ」）。
+9. **偽の gh**：中心の処理に渡す `gh` を、いつも失敗する短いスクリプトにする（`runDir/bin/gh`）。起票できるかの確かめが、本物の GitHub に触れないようにする。EVAL は起票を承認しない。
+10. **画面の操作**：C3 の `screen.mjs`（`createScreen`、`findScreenUrl`）をそのまま使う。モデルの選択は、画面の欄 `#setting-model-<役割>` に入れる必要があるが、screen.mjs は設定の欄の `key` を `setting-<key>` に入れるので、`settings.task` に `model-<役割>` を足して渡す（`modelFields`）。screen.mjs は変えない。
+11. **チャットの返事**：メインのエージェントが手番を終えたとき、最後の文が返事を求めていたら（文の終わりが「？」か、「教えてください」などの依頼）、ユーザー役が答え、同じセッションに続ける（最大 8 回）。ありでは、画面の URL が出た後は返事をしない（人が画面を操作するため）。質問のツール（AskUserQuestion）の問いにも、ユーザー役が選択肢つきで答える（答えは質問の文をキーにした辞書）。
+12. **状態の決め方**（C3 と同じ言葉）：`completed`（終わりまで動いた）、`incomplete`（URL が出ない・画面が終わらない・誤りで終わった・時間切れ。できていた分を採点する）、`error`（仕組みの側の失敗：プラグインが読み込まれない、MCP サーバーにつながらない、エージェントの定義が使うツールを中心の処理が出していない、メインの実行の例外。採点しない）、`stopped`（利用枠の上限、中断。採点しない。残りの実行は始めない）。
+13. **点数**：実行ごとに「合格の基準の数 ÷ 基準の数」（grade.mjs の gradeRun）。あり・なしの点数は、採点した実行の平均。差は、ありからなしを引く。動きの確かめ（`checks`）は点数に入れない。
+14. **作業フォルダ**：`runDir/work/` に作り、記録の置き場所（`runDir` の直下）とは分ける。`runDir` の既定は OS の一時フォルダの下（CLI は `--out`）。
+15. **サンドボックス**：CLI の既定は有効。bubblewrap と socat がなければ、実際のモデルを使う前に断る。`--no-sandbox` で外せる（結果に警告を残す）。この環境にはどちらもない（D1c も確かめた）ので、試験はサンドボックスなしで動かしている。
+16. **環境変数**：試されるエージェントに渡すのは `ENV_ALLOW` だけ。認証が要る環境では `--pass-env NAME,…` で明示する。
+17. **出力のフォルダ名**：`inner-runs/`（D1c の outer-inner.mjs が同じ outDir を使うので、`runs/` のような一般的な名前を避けた）。
+18. **ユーザー役**：D1c の `createUserRole` を、コマンドラインの入口から使う。`innerEval` 自体は、`userRoleFor(task, arm, n)` が返す関数 `({ question, choices }) => 答えの文字` を受け取るだけ（試験は偽物を渡す）。
+19. **画面の作業ごとの設定の欄**（統括の決定どおり。下の節）：ユーザー役が決める。`--setting 鍵=値` は、決めた値を上書きするために残した。
+
+## 画面の設定の欄を決める（統括の決定。D1d の続きの仕事）
+
+生成プラグインの作業ごとの設定の欄は、クリエイターが作るときに決まるので、模擬ユーザーの `inner/eval.json` の `settings.task` の鍵と合わないのが普通である。testing.md 7章の「人と同じ流れ（設定 → 開始 → 監視 → 結果）」に合わせ、ユーザー役が欄を読んで値を決める。
+
+- **いつ**：チャットに画面の URL が出て、画面を開く前（`inner-run.mjs` の `resolveScreenSettings`）。画面を開くツールが呼ばれた後なので、中心の処理の状態の `setup.taskSettings`（見出し・説明・種類・選択肢・必須か・初めの値）が読める。画面に出ている欄と同じ元の値を、画面の描画の前に読む（画面の見た目を読み取らない。画面の欄は `taskSettings` を描くだけなので、同じ内容）。
+- **値を使う順**：`--setting 鍵=値`（補い）＞ 課題の `settings.task` に同じ鍵があればそれ ＞ ユーザー役が決めた値。ユーザー役に聞くのは、前の2つにない欄だけ。役割ごとのモデルと繰り返しの上限は、今までどおり試験の仕組み（課題の `settings.maxIterations`、`models` の引数）が決める。
+- **聞く文**（`describeSetting`）：欄の見出し・説明・種類・必須か・初めの値・選べるもの、ユーザーが頼んだこと（課題の `prompt`）、渡したファイル（`inputs` の場所と、先頭の最大 3 件・各 800 文字までの中身）。「入れる値だけを答えてください。決められないときは『決まっていません』と答えてください」で終わる。欄ごとに1回聞く。選択の欄は選択肢、チェックの欄は「はい／いいえ」を選択肢として付ける。
+- **答えを値にする**（`normalizeSettingAnswer`）：文字と場所は最初の行（「」や引用符、文末の「。」を除く）。数は答えの中の最初の数（全角、コンマも読む）。選択は選択肢に当てる（答えの中に選択肢の言葉があればそれ）。チェックは「いいえ・入れない・オフ」を先に、「はい・入れる・オン」を次に見る。短い答え（40 文字以内）が「決まっていません」「分かりません」「そのまま」「初期値」などなら、決められなかったものとする。
+- **決められなかった欄**：値を入れず、画面の初めの値のままにする。必須の欄で値がなければ、画面が開始を断り、実行は `incomplete`（理由に、入れなかった欄の見出しが入る）。ユーザー役の呼び出しが失敗したときは、画面を開始せず、`error`（理由：ユーザー役の呼び出しに失敗しました）にする。
+- **記録**：`result.settings`（結果の `inner-result.json` の実行ごとの `settings`、`events.jsonl` の `settings`）に、欄ごとに `{ key, label, type, required, source, value, question, answer, note }`。`source` は `cli`・`eval-json`・`user-role`（ユーザー役が決めた）・`default`（決められず、初めの値のまま。`note` に abstain・not_a_number・no_such_option・unclear）。ユーザー役に聞いたものだけ `question` と `answer` が付く。
+- **ユーザー役の関数の形**：`userRole({ question, choices, history, via, meta })`。設定の欄の質問は `via: 'setting'`、`meta: { setting: <鍵> }`。`inner.mjs` の入口は、これを D1c の `role.answer(question, choices, via, meta)` に渡す。D1c の `outer-inner.mjs` の関数は `via` と `meta` を渡していないので、そのままでも動くが、`via`・`meta` を渡すと、ユーザー役の記録に設定の質問と分かる印が付く（D1c への頼み、任意）。
+- **ユーザー役の答え方への注意**：D1c のユーザー役の決まりは「選択肢の言葉だけで済ませない」。選択の欄でも、答えの中に選択肢の言葉があれば拾う作りにした。本物のモデルで、値だけを答えるか（長い文で答えて値を取り損なわないか）は、最初の EVAL の記録（`settings` の `answer` と `value`）で確かめる。
+
+## V1 の直しへの合わせ（記録のツールの断りの文がモデルに届くか）
+
+背景：本物の Copilot CLI 1.0.102 は、ツールの処理が例外を投げると、モデルに「Tool execution failed」だけを返し、理由の文を捨てる（V1 の報告 5節 不具合 2）。B1 が、ひな形の adapter.mjs の `callTool` を、例外ではなく `{ textResultForLlm: <理由>, resultType: 'failure' }` を返す形に直した（448e24e）。中心の処理（`core.handleTool`）は今までどおり `RecordRefusal` を投げる。内側の EVAL のつなぎ口（inner-adapter.mjs）は Copilot CLI を通らず、Agent SDK の MCP サーバーとして記録のツールを出すので、同じことがモデルに届くかを確かめた。
+
+**確かめたこと**（本物の Agent SDK 0.3.310 と Claude Code の本体を、偽の API につないだ。inner-e2e.test.mjs の3件）
+- 断り（`RecordRefusal`）：MCP の結果は `{ content: [{ type: 'text', text: <理由> }], isError: true }`。モデルへの `tool_result` は `is_error: true` で、理由の文がそのまま届く（試行の番号の誤りなら、使える番号と「（やり直しは、あと 3 回までです）」まで）。統括は、断られても実行を続けられ、最後は `all_passed` で終わる。
+- 「作業を終えてください」：メインのエージェントが、実行のないときに記録のツールを呼ぶと、`DISCONNECTED_MESSAGE`（「画面とのつながりが切れたので、作業を終えてください。」）が `is_error` の結果で届く。止められた実行の `STOPPED_MESSAGE` も同じ形（inner-adapter.test.mjs が、MCP のクライアントでつないで確かめる）。
+- 予期しない例外：モデルには固定の短い文（`RECORD_FAILED`、画面を開くツールは `OPEN_FAILED`）だけが届く。くわしい内容（文、スタック）は標準エラーと、実行の記録 `events.jsonl` の `tool_error` にだけ残す。断りは `tool_refused` で残す。
+
+**公式の形の根拠**：Agent SDK の custom-tools の説明は、ハンドラーが例外を投げると SDK が生の例外の文を結果にする、モデルが読む文を決めたいときはハンドラーが `isError: true` と `content` の文を返す、としている。MCP の仕様も、ツールの失敗は結果の `isError` で返すとしている。mcp-tools.mjs の `createToolServer` は、ハンドラーが `{ content, isError }` を返せばそのまま通し、Error を投げれば message をそのまま `isError` にする（生の文）。inner-adapter.mjs は後者に頼らず、自分で `failureResult(<文>)` を返す。
+
+**adapter.mjs との合わせ**
+- `OPEN_FAILED`、`RECORD_FAILED` の文を、adapter.mjs と同じにした（inner-adapter.mjs が export）。試験 `V1 の直しへの合わせ`（inner-adapter.test.mjs）が、C2 の見本から作った生成プラグインの adapter.mjs を読み、2つの文、`RecordRefusal` の理由をそのまま失敗にする行、`describeOpened` の返り値（同じ入力で同じ文）を比べる。adapter.mjs がまだ直っていなければ、その旨を示して飛ばす。448e24e の adapter.mjs で通っている。
+- 食い違い方：adapter.mjs は Copilot の形（`{ textResultForLlm, resultType: 'failure' }`）、inner-adapter.mjs は MCP の形（`{ content, isError: true }`）。形は違うが、モデルに届く文と、失敗として扱われることは同じ。
+- B1 の統括の `tools:` を消す直し（6a281b3・6201eb4）への合わせは、下の「統括の tools をなくしたことへの合わせ」。
+
+**偽の API だけを使う守り**（前の D1c の件：本物のモデルが一度だけ呼ばれた）
+- `guardSdk(sdk, api)`（fake-anthropic.mjs）：`options.env.ANTHROPIC_BASE_URL` が偽の API の URL でない `query()` は、呼ぶ前に例外で止める。本物の SDK を使う試験（inner-e2e、inner、inner-judge）は、すべてこれを通した SDK を使う。守り自体の試験は fake-anthropic.test.mjs（4 件：偽の API の URL と違う接続先は止める、試験の仕組みの options が偽の API の URL を渡さなければ止める、本物の Agent SDK でも守りを通すと偽のサーバーの応答だけが返る、補助の関数）。
+- `inner.mjs` の `main(argv, deps = {})`：試験が `deps.sdk`（守りを通した SDK）と `deps.chromium` を渡して、入口まで通して動かせる。
+
+**クリエイターの置き換え（creator-tools.mjs。D1c の部品。統括の依頼）**
+- C1 が、クリエイターのエクステンションの `guard` を、断りも失敗も `{ textResultForLlm, resultType: 'failure' }` で返す形に直した（78644fb）。creator-tools.mjs は断りを例外で受けていたので、2件の試験が落ち、また直さないと、`mcp-tools.mjs` の `toContent` が失敗の結果を JSON の文字にして、成功として返してしまう（モデルに `{"textResultForLlm":…}` が見え、記録の `isError` も false になり、外側の採点の「成功した呼び出し」の判定が狂う）。
+- 直し：`toMcpResult(raw)`（creator-tools.mjs が export）を足した。`textResultForLlm` を持つ返り値で、`resultType` が success 以外（failure・rejected・denied）なら `{ content: [{ type: 'text', text: <理由> }], isError: true }`、success か未指定なら文字に直す。それ以外の返り値は触らない。ツールの記録（`tool.result` の `isError`、`result`）は、この変換した結果から取る。例外は今までどおり（`isError` で記録し、投げ直す）。`toolkit.callTool` の返り値は、成功は文字、断りや失敗は `{ content, isError: true }`。
+- 試験（creator-tools.test.mjs、10 件）：断りの試験を直し、`doc_text` の失敗の試験と `toMcpResult` の試験を足した。MCP サーバーを通す試験は、理由の文だけが届き、JSON が混ざらないことを足した。
+
+**上位や他の担当への提案**
+- adapter.mjs が `describeOpened`、`OPEN_FAILED`、`RECORD_FAILED` を export する（または core/tools.mjs に移す）と、内側の EVAL のつなぎ口は写さずに済む。今は二重管理で、食い違いを試験で見張っている（上の「上位の文書で直すこと」3）。
+- D1c の outer-e2e.test.mjs は、同じ守りを自前の `if` で書いている。`guardSdk` に差し替えると 1 か所になる（任意）。
+- 外側の EVAL のモデルに断りの文が届くかは、本物の SDK では確かめていない（creator-tools.test.mjs は MCP のクライアントとサーバーを通す。Claude Code の本体を通す試験は、内側の e2e の3件が同じ MCP の経路を確かめている）。
+
+**変異試験**：この分の13か所を1つずつ壊して、どれも試験が見つけた。内側のつなぎ口と守り（8か所：失敗の結果の `isError`、断りの判定、断りの理由の文、予期しない例外の文を内部の文にすること、画面を開くツールの失敗の文の使い分け、`tool_error` の記録、`tool_refused` の記録、守りの判定）と、クリエイターの置き換え（5か所：`toMcpResult` の成功・失敗の分け、記録の `isError`、変換を通さないこと、JSON を理由にすること、resultType 未指定の扱い）。
+
+## ユーザー役へ、質問の前にチャットに書いた文を渡す（D1c の外側の EVAL の直し、0663685 への合わせ）
+
+背景：外側の EVAL で、クリエイターが質問の前にチャットに書いた文が、ユーザー役に渡っていなかった。testing.md 6.1「ユーザー役には、それまでのやり取りも渡す」。D1c が直し、`createUserRole().answer(question, choices, via, meta, notes)` の第5引数 `notes`（文字の並びか文字）を受けるようにした。内側の EVAL も、同じ形で、質問と選択肢しか渡していなかった（`inner.mjs` の `userRoleFunction` と `inner-run.mjs`）。
+
+**直したこと**（D1c の部品を使い回した。`user-role.mjs` の `createUserRole` と `joinNotes`。ユーザー役側は変えていない）
+- `inner-run.mjs`：メインのエージェントが書いた文（`assistant` メッセージの `text` ブロック。サブエージェントの文と空の文は入れない）を `unreadNotes` に集め、次にユーザー役に聞くときに取り出して `notes` として渡す。渡したものは、次からは出ない。
+  - 質問のツール（`AskUserQuestion`）の問い：その前に書いた文を渡す。1 回の呼び出しに問いの欄が複数あるときは、最初の欄にだけ付ける（外側の EVAL と同じ）。質問のコールバックが、直前の文を処理する側より先に呼ばれることがあるので、渡す前に 1 回処理を譲る（`setImmediate`。外側の EVAL と同じ）。
+  - チャットでの返事の求め（手番の最後の文）：問いそのものを前の文に入れず、それより前に書いた文だけを渡す。
+  - 画面の設定の欄（`via: 'setting'`）：最初にユーザー役に聞く欄にだけ付ける。人は、画面を開いたと伝えるチャットの文（URL と「画面で設定して、開始ボタンを押してください」）を設定の前に読むため。課題や補いで決まっていて聞かない欄は、数えない。`decideSettings` の引数 `takeNotes` で受ける。
+- `inner.mjs` の `userRoleFunction`：`({ question, choices, via, meta, notes })` の `notes` を、`role.answer` の第5引数に渡す（なければ空）。
+- 見せた文の記録：`result.history[]`、`result.settings[]`（`events.jsonl` の `settings`）に、見せた文を `notes`（空行でつないだ文字）で残す。見せていないときは項目なし。D1c のユーザー役の記録（`record.userRole.answers[].notes`）と同じ内容が、内側の実行の記録にも残る。
+
+**試験**（偽の API だけ。本物の SDK を使う試験は `guardSdk` を通した）
+- inner-run.test.mjs に5件（問いと一緒に渡り、次の問いには付かない。質問の呼び出しが文の処理より先に来ても取りこぼさない。複数の欄は最初だけ。返事の求めは問いそのものを入れない。サブエージェントと空の文は入れない）。
+- inner-settings.test.mjs に2件（最初に聞く欄にだけ付く、決められなかった欄の記録にも残る、`notesField`）。inner.test.mjs に1件（`userRoleFunction` が渡す）。
+- inner-e2e.test.mjs：設定の欄の試験に、画面を開いたと伝える文が渡ることを足した。本物の Agent SDK で、質問のツールを呼ぶ応答の中の文が、その問いと一緒に渡る試験を1件足した（偽の API の台本に `askNote` を足した）。
+- 変異試験は、本物のファイルではなく、別の作業ツリー（git worktree）の写しで 12 か所を壊して、すべて試験が見つけた（処理を譲らない、文を集めない、空の文を入れる、複数の欄すべてに付ける、返事の求めに問いそのものを入れる、質問への受け渡し、返事の求めへの受け渡し、設定への受け渡し、設定で最初の欄以外にも付ける、`userRoleFunction` が落とす、履歴の記録、設定の記録）。
+
+**外側の EVAL との違い**：外側は、文を集める場所が `creator.text` の記録の場所で、質問と文章の問い（手番の最後の文）の2つ。内側は、そのほかに画面の設定の欄の質問がある。その欄に付ける文は、D1c と相談せず決めた（上の「画面の設定の欄」）。外れるなら、`resolveScreenSettings` から `takeNotes` を外すだけで戻せる。
+
+**要確認**：ユーザー役の指示（user-role.mjs）は、前の文を「読んだもの」として踏まえる指示になった（D1c が追記）。本物のモデルで、内側の EVAL の質問（設定の欄の聞き方など）に、前の文が邪魔にならないかは、最初の EVAL の記録（`settings[].notes` と `answer`）で見る。
+
+## 統括の tools をなくしたことへの合わせ（B1 の 6a281b3・6201eb4）
+
+背景：生成プラグインの統括の定義（`orchestrator.agent.md`）から `tools:` が消えた。Copilot CLI では、統括は全ツールを持ち、使ってよいツールの一覧（view、grep・glob・rg、task・read_agent・list_agents・write_agent、統括の記録のツール plan・review・issue・finish・show）にないものを、adapter.mjs の `onPreToolUse` が拒む。内側の EVAL ではこのフックは動かない。変換（convert.py）は `tools` のないエージェントに `tools` を足さないので、そのままだと内側の統括は Edit・Write・Bash・Skill なども持ち、試験の台本は「Skill を持つ→メイン」で統括をメインと取り違えて、内側の試験が 8 件落ちた。
+
+**選んだやり方**：(a) の仲間。統括の定義に Claude Code の名前の許す一覧を `tools` として書く。ただし書く場所は `convert.py` ではなく、内側のつなぎ口（inner-adapter.mjs）が作る実行用のコピーの統括の定義にした。(b)（内側のつなぎ口の PreToolUse で拒む）は選ばなかった。
+
+**確かめたこと**（本物の Agent SDK 0.3.310 と Claude Code の本体を、偽の API につないで。最初の呼び出しで届いたツールの名前を、役割ごとに記録した）
+- 統括に `tools` を書くと、統括のツールは書いた範囲だけになる（Agent、Read、Grep、Glob、plan、show、review、issue、finish。ほかに Claude Code 内部の `DeferredToolPlaceholder` が付く）。Write・Edit・Bash・Skill・AskUserQuestion・Web・open・verdict は渡らない。
+- 子のツールは、親の tools に絞られない。作業は Read、Edit、Write、Bash、Grep、Glob、show を、検証は Read、Grep、Glob、verdict を、統括が Write を持たなくても受け取る（前の版で作業エージェントが Write で成果物を作れたことと同じ。Copilot CLI は逆に、親の tools に絞る〔更新履歴 1.0.67・1.0.68〕ので、統括に tools を書けなくなった。内側の EVAL は Claude Code の仕様のまま）。
+- メイン（`agent` なしの実行）は、全ツールと全部の記録のツールを持つ（Skill、open、verdict を含む）。
+
+**(a) を選び、書く場所を実行用のコピーにした根拠**
+1. KISS：(a) は定義に tools を書くだけで、Claude Code が絞る。(b) は拒むフックと拒む文、フックの入力の読み分け（統括自身かどうか）が要り、統括のツールが全部見えるので試験の台本の役割の見分けも作り直しになる。(a) は台本を変えずに済んだ。
+2. 範囲が同じになる：Copilot CLI の統括が使えるのは、一覧にあるツールだけ。Claude Code でも、`tools` にあるものだけ。使えないツールは、拒まれるか、見えないかの違いだけで、書き込み・コマンド・スキルを統括が使えない点は同じ。
+3. 記録のツールの一覧を写さずに済む：adapter.mjs と同じく、`core/tools.mjs` の `TOOL_DEFS` で `caller` に `orchestrator` を持つものから作る（`convert.py` は Python で、`TOOL_DEFS` を読めない。ここに名前を書くと二重管理になる）。組み込みの4つ（Agent、Read、Grep、Glob）だけ、写す。
+4. 変換は機械的なまま：`convert.py` は「Copilot の定義を Claude Code の書き方にする」だけで、統括の中身を知らない。`tools` のない統括は `tools` なしのまま（Claude Code では全ツールを継ぐ）。統括を絞るのは、adapter.mjs の役目を Agent SDK で受け持つ内側のつなぎ口（inner-adapter.mjs）。
+5. 定義にすでに `tools` があるときは、足さずにそのまま使う（古い版の生成プラグインでも動く）。
+
+**作りと試験**
+- `ORCHESTRATOR_BUILTIN_TOOLS`（`Agent`、`Read`、`Grep`、`Glob`）と `addTools(markdown, tools)`（フロントマターに `tools:` を足す。すでにあれば `null`）。`prepareRunPlugin` が、モデルの書き換えのあと、統括の定義に tools がなければ書く。書いた一覧は、実行の記録（`events.jsonl` の `orchestrator_tools`）と `runs()` の `orchestratorTools` に残す。元の置き換えた版は変えない。
+- Copilot CLI の組み込みとの対応：view→Read、grep・rg→Grep、glob→Glob、task→Agent。`read_agent`・`list_agents`・`write_agent` に当たるツールは、統括が task を前面（`run_in_background: false`）で1体ずつ呼ぶ決まりなので、足さない。
+- 試験：inner-adapter.test.mjs に4件（コピーの統括の定義に書く・元と作業と検証と本文は変えない、すでに tools があれば足さない、`addTools`、adapter.mjs との突き合わせ）。突き合わせは、生成プラグインの adapter.mjs の `ORCHESTRATOR_BUILTIN_TOOLS` を読み、Claude Code の名前に当てた集合が `ORCHESTRATOR_BUILTIN_TOOLS` と同じことと、記録のツールの絞り方（`TOOL_DEFS` の `caller`）が同じ書き方なことを確かめる。adapter.mjs の一覧に、表にないツールが足されたら落ちて、足す場所を示す。inner-e2e.test.mjs に1件（上の確かめたことを、役割ごとのツールの名前で通す）。
+- test_convert.py の落ちていた2件を直した：統括の定義に `tools` がないことを前提にした（統括の `tools` を見ていた確かめを、作業と検証だけにした）。「統括に tools がなく、変換が足さない」試験を1件足した。
+
+**変異試験**：この分の7か所を1つずつ壊して、どれも試験が見つけた（組み込みの一覧から Glob を外す／Write を足す、書かない、caller を間違える、すでにある tools を上書きする、記録を残さない、別のエージェントの定義に書く）。注意：統括の途中経過のコミットが、壊した写しを取り込んだことがある（9b58b92 の inner-adapter.mjs に `if (false)` が1行残っていた。この作業のコミットで直した）。壊す検査は、元のファイルではなく別のフォルダの写しでやる。
+
+**本物のモデルでしか分からないこと**
+- 統括が、使えないツールを試して拒まれる動き（回り道をしないか。ひな形の本文に1項目足した効き）は、内側の EVAL では見えない。使えないツールが見えないため。Copilot CLI の実機で見る（B1 の要確認）。
+- 統括が呼べるエージェントの種類は、絞っていない（Copilot CLI の `task` も、adapter.mjs は種類を絞らない）。作業と検証のほかを呼ばないことは、ひな形の本文の決まりに任せている。Claude Code の `Agent` が組み込みのエージェントを呼べるかは確かめていない。
+
+**上位の文書で直すこと**：testing.md 4章に、「生成プラグインの統括は tools を書かない（Copilot CLI では全ツールを持ち、adapter.mjs が一覧にないツールを拒む）。変換は tools を足さない。内側の EVAL の統括を絞るのは内側のつなぎ口で、実行用のコピーの統括の定義に、同じ範囲の tools を書く」を足す。
+
+## 要確認（本物のモデル・手元の環境でしか確かめられないこと）
+
+1. **本物のモデルでの動き**：入口のスキルが `mcp__<名前>__open` を呼ぶか、URL をチャットに書くか、統括が `run_in_background: false` で作業・検証を呼ぶか、モデルが `Skill` を呼ぶときの名前。この試験は偽のモデルなので見ていない。最初の EVAL（統括がユーザーの承認をとってから）で確かめる。
+2. **サンドボックスを有効にしたときの動き**：この環境に bubblewrap・socat がなく、確かめていない。ナレッジ agent-sdk-eval.md のとおり、画面とブラウザーは試験の仕組みの側で動くので影響を受けない見込み。MCP のサーバーも同じプロセスなので影響を受けない見込み。SDK 同梱の本体でサンドボックスが動くか（R4 注 D-1）は未確認。
+3. **返事を求めているかの見分け**（`asksForReply`）は、日本語の文末の見分け（「？」と、依頼の言い方の一覧）。本物のモデルの言い回しに合うかは、最初の EVAL の会話の記録で確かめる。外れたときは、一覧を直す。
+4. **画面の取り直しの間隔**：screen.mjs は 2 秒ごとに状態を読む。短いフェーズ（作業が数秒で終わるなど）は取りこぼしうる。動きの確かめの `phases-shown`・`worker-shown-running` が、本物の EVAL で短い実行のときに不合格になるかは、最初の EVAL で見る（偽のモデルの試験では、返事を遅らせて拾えるようにした）。
+5. **fork のサブエージェント**：Claude Code 2.1.302 から fork が既定でオン（R4 注 D-8）。統括が `subagent_type` を省くか `fork` にすると、fork が動き、`agent_type` が `fork` で届く。そのときの画面の枠・採点への影響は、本物の EVAL で見る（強制では切らない）。
+6. **利用枠の上限**：結果の文が `USAGE_LIMIT_ERROR_PREFIXES`（SDK の一覧）で始まるかで見分ける。本物の上限の文は偽の API では出せないので、偽の Agent SDK の応答で試験した。
+7. **`AskUserQuestion` の複数選択の答えの形**：ユーザー役の文章をそのまま答えにしている（公式の説明では、ラベルの配列か `, ` でつないだ文字列、自由な答えも可）。本物のモデルが複数選択を使ったときの動きは未確認。
+8. **ユーザー役が設定の欄を決める答え方**：上の節の最後のとおり。本物のモデルの答えが、値だけか、文章かを、最初の EVAL の `settings`（`answer`・`value`）で見る。外れが多ければ、`normalizeSettingAnswer` を直すか、質問の終わりの文言を直す。
+9. **ブラウザーの手元の Chrome・Edge**：screen.mjs が Chrome、Edge、Chromium の順に試す。この環境は `PLUGIN_TEST_BROWSER_CHANNEL=chromium` で試験した。
+
+## 上位の文書で直すこと
+
+1. **testing.md 4章（Agent SDK 用のつなぎ口の段落）**：
+   - 「記録のツールを呼んだエージェントは……結び付け方は要確認である」→ 解けた。フック PreToolUse の `tool_use_id`（と `agent_id`）を覚え、MCP の呼び出しの `_meta['claudecode/toolUseId']` で引く。
+   - 「エージェントの終わりが取り消されたものかも、ここから作る。取れるかは要確認」→ 取れない。試験の仕組みが止めたかどうかだけで決める。
+   - 「エージェントの定義の `tools` に書いたエクステンションのツール名……を MCP のツール名に置き換える」の補足として、MCP のツールは既定でツール検索の裏に回るので、`_meta['anthropic/alwaysLoad']` を付けて出す（Copilot CLI の `defer: 'never'` に当たる）。
+   - 「統括のエージェントの定義（指示とモデル）で、Agent SDK の別の実行を始める」の補足として、`agent: '<プラグイン>:orchestrator'` と、システムプロンプトを `claude_code` のプリセットにすることが要る（既定の最小のシステムプロンプトでは本文が効かない）。
+   - `Agent` は既定で裏で動く。統括の本文が `run_in_background: false` を指定することが、設計書 4.8 の「sync で1体ずつ」に当たる。4章の表（カスタムエージェントの行）か、task の引数の扱いの段落に書く。
+2. **BLUEPRINT 3.1 / generated-plugin-structure.md 3.2 の中立のイベント**：`agent.started` の `model` は、Agent SDK では始まりの時点で分からない（実際のモデルは最初の assistant メッセージで分かる）ので、始まりに `model` を付けず、`agent.configured` で届ける。Copilot CLI の `subagent.started` には `model` が付く。core は `model` がなくても動く（確かめた）が、設計書に「始まりの `model` は省かれることがある」と書く。
+3. **生成プラグインの adapter.mjs**：`describeOpened`（画面を開くツールの返り値の文）と、失敗のときの文 `OPEN_FAILED`・`RECORD_FAILED` を export するか、core/tools.mjs に移すと、内側の EVAL のつなぎ口が写さずに済む（今は inner-adapter.mjs に同じ内容を写した。二重管理になる。食い違いは inner-adapter.test.mjs が見張る）。
+4. **C3 の screen.mjs（A2 の画面の欄の id の決まりも）**：画面で選ぶモデルの欄（`#setting-model-<役割>`）を操作する窓口が screen.mjs にない。今は `settings.task` に `model-<役割>` を足して渡している（欄の id の規則に頼る）。`operate({ settings: { models } })` を足すと、規則に頼らずに済む。
+5. **D1b の FORMAT.md 3章 / testing.md 7章**：統括の決定で、作業ごとの設定の欄はユーザー役が決めることにした（上の「画面の設定の欄を決める」）。FORMAT.md 3章に「`inner/eval.json` の `settings.task` は、生成プラグインの設定の欄の鍵と合うときだけ使う。ふつうは書かない。欄の値はユーザー役が、頼みの文と入力のファイルとナレッジから決める」と足す。testing.md 7章にも、設定の値をユーザー役が決めることを足す。
+6. **creator-structure.md 2章の部品の表**：R4 が挙げたとおり、開発の試験の部品（変換スクリプト、EVAL の実行の仕組み〔内側：tests/dev-eval/runner/inner*.mjs と共通の部品〕、模擬ユーザー、ユーザー役の試験）の行がない。追跡のため足す。
+7. **testing.md 11.1**：Agent SDK の版を 0.3.307 から 0.3.310（Claude Code 2.1.310）に上げた。npm の最新で、手元の `claude` も 2.1.310。peer の `@anthropic-ai/sdk`・`@modelcontextprotocol/sdk`・`zod` も固定が要る。
+8. **ナレッジ agent-sdk-eval.md**：上の「確かめて分かったこと」のうち、MCP のツールの `alwaysLoad`、`agent` とシステムプロンプトのプリセット、`Agent` の既定が裏であること、`run_in_background: false`、`claudecode/toolUseId` を足す価値がある（ナレッジの追加は PR の前に統括がユーザーに提案する。CLAUDE.md 7章）。
+
+## 憲章の確かめ
+
+作業の終わりに、クリエイター憲章（版 0.25.0）を通して読んだ。反する点はない。
+- 第5条3項（最新の公式の情報にもとづく）：Agent SDK は npm の最新 0.3.310 に上げ、動かして確かめた（古い版の情報は R4 の 0.3.307 で、版と時点を書いた）。
+- 第6条3項（要件の追跡）：試験の名前に、確かめる要件の番号（REQ-005 など）を入れた。開発の試験の仕組みに固有のもの（共通の部品など）は testing.md の章を入れた。
+- 第9条（分かりやすさ）：画面に出る文、結果の理由は平易な日本語にした。
+- 第10条（KISS）：生成プラグインにも C3 の screen.mjs・grade.mjs にも手を入れず、薄いつなぎ口だけを足した。使っていない export は消した。
+
+## 変異試験（わざと壊す検査）
+
+D1d の本体と共通の部品の 28 か所を1つずつ壊した写し（tests/dev-eval/runner-mut/ に写して動かし、終わりに消した）を、関係する試験にかけた。壊す箇所：ツールの拒み、ツール名の戻し、モデルの書き換え、取り消しのイベント、query の閉じ、親の結び付け、実行のしかた、呼んだエージェントの結び付け、利用枠の上限、実際のモデルの名前、先に届いたモデル、返事を求めているかの見分け、URL が出た後の返事、プラグインが読み込まれたかの確かめ、なしにプラグインを渡さないこと、返事の上限、インストラクションの追加、点数の差の向き、利用枠の上限で止まった後の扱い、採点しない実行を平均に入れないこと、判定の誤りの印、判定に道具を渡さないこと、alwaysLoad、ハンドラーの例外、設定を読ませないこと、作業フォルダの外への書き込み、環境変数の絞り込み、表にないモデル。
+- 最初は 23 か所を試験が見つけ、5 か所を見逃した（親の結び付け：統括が親でない場合、先に届いたモデルの反映、URL が出た後の返事、インストラクションの追加、判定の誤りの印）。見逃した分に試験を足して、28 か所すべて見つけられるようになった。
+- 続きの仕事（設定の欄をユーザー役が決める）の分は、別に 15 か所（値を使う順、決められない答えの扱い、チェックの読み方、聞く文に入れるもの、記録、ユーザー役の失敗、via の受け渡しなど）を壊した。2 か所を見逃したので、試験を足した（チェックの「いいえ」を先に見ること、ユーザー役の関数の via の受け渡し）。また 1 か所は、選択肢の完全一致の分岐が、そのあとの「答えの中の選択肢の言葉」の分岐と同じ結果になる無駄だったので、分岐を消した。

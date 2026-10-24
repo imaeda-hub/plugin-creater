@@ -1,0 +1,196 @@
+{
+  "id": "H1-T01",
+  "prompt": "2026年10月分の請求書を、得意先ごとに作ってください。出荷明細は inputs/d.xlsx、得意先の一覧は inputs/e.xlsx です。できあがった請求書は out フォルダに置いてください。",
+  "inputs": [
+    "inputs/d.xlsx",
+    "inputs/e.xlsx"
+  ],
+  "criteria": [
+    {
+      "id": "C-01",
+      "knowledge": "output-form",
+      "text": "請求書が、Word のファイルで作られている",
+      "grading": "program",
+      "check": {
+        "type": "file_exists",
+        "file": "out/*.docx"
+      }
+    },
+    {
+      "id": "C-02",
+      "knowledge": "output-form",
+      "text": "請求書が得意先ごとに1通ずつ別のファイルになっていて、ファイル名が「請求書_2610_あおば亭」のように「請求書_年月_得意先名」の形になっている",
+      "grading": "model",
+      "check": {
+        "files": [
+          "out/*"
+        ]
+      }
+    },
+    {
+      "id": "C-03",
+      "knowledge": "billing-date",
+      "text": "請求日が、締め日の月末日（2026年10月31日）になっている",
+      "grading": "program",
+      "check": {
+        "type": "regex",
+        "file": "out/*",
+        "pattern": "10[月/.\\-]\\s?31"
+      }
+    },
+    {
+      "id": "C-04",
+      "knowledge": "invoice-no",
+      "text": "あおば亭の請求書番号が「年月-得意先コード」の形で、2610-C012 になっている",
+      "grading": "program",
+      "check": {
+        "type": "contains",
+        "file": "out/*",
+        "text": "2610-C012"
+      }
+    },
+    {
+      "id": "C-05",
+      "knowledge": "invoice-no",
+      "text": "ひだまりベーカリーの請求書番号が「年月-得意先コード」の形で、2610-C031 になっている",
+      "grading": "program",
+      "check": {
+        "type": "contains",
+        "file": "out/*",
+        "text": "2610-C031"
+      }
+    },
+    {
+      "id": "C-06",
+      "knowledge": "tax-by-rate",
+      "text": "あおば亭の消費税が、税率ごとの小計にかけて1円未満を切り捨てた額（8%が5,324円、10%が4,335円）になっている",
+      "grading": "program",
+      "check": {
+        "type": "regex",
+        "file": "out/*",
+        "pattern": "(?=[\\s\\S]*あおば亭)(?=[\\s\\S]*(?<![0-9,])5,?324(?![0-9]))(?=[\\s\\S]*(?<![0-9,])4,?335(?![0-9]))"
+      }
+    },
+    {
+      "id": "C-07",
+      "knowledge": "tax-by-rate",
+      "text": "ひだまりベーカリーの消費税が、税率ごとの小計にかけて1円未満を切り捨てた額（8%が5,419円、10%が1,154円）になっている",
+      "grading": "program",
+      "check": {
+        "type": "regex",
+        "file": "out/*",
+        "pattern": "(?=[\\s\\S]*ひだまりベーカリー)(?=[\\s\\S]*(?<![0-9,])5,?419(?![0-9]))(?=[\\s\\S]*(?<![0-9,])1,?154(?![0-9]))"
+      }
+    },
+    {
+      "id": "C-08",
+      "knowledge": "due-date",
+      "text": "あおば亭の支払期限が、請求日の翌月末日（2026年11月30日）になっている",
+      "grading": "program",
+      "check": {
+        "type": "regex",
+        "file": "out/*",
+        "pattern": "(?=[\\s\\S]*あおば亭)(?=[\\s\\S]*11[月/.\\-]\\s?30)"
+      }
+    },
+    {
+      "id": "C-09",
+      "knowledge": "due-date",
+      "text": "ひだまりベーカリーの支払期限が、例外の翌々月10日（2026年12月10日）になっている",
+      "grading": "program",
+      "check": {
+        "type": "regex",
+        "file": "out/*",
+        "pattern": "(?=[\\s\\S]*ひだまりベーカリー)(?=[\\s\\S]*12[月/.\\-]\\s?10)"
+      }
+    },
+    {
+      "id": "C-10",
+      "knowledge": "negative-sign",
+      "text": "ひだまりベーカリーの返品が、別の行で「（返品）」を付け、金額の前に「△」を付けて書かれている（△3,960）",
+      "grading": "program",
+      "check": {
+        "type": "regex",
+        "file": "out/*",
+        "pattern": "(?=[\\s\\S]*ひだまりベーカリー)(?=[\\s\\S]*返品)(?=[\\s\\S]*△\\s?3,?960)"
+      }
+    },
+    {
+      "id": "C-11",
+      "knowledge": "catalog-note",
+      "text": "前月だけの一言「新商品カタログを同封しています」が、請求書に入っていない",
+      "grading": "program",
+      "check": {
+        "type": "not_contains",
+        "file": "out/*",
+        "text": "新商品カタログ"
+      }
+    },
+    {
+      "id": "C-12",
+      "knowledge": "bank-account",
+      "text": "振込先が、10月分からの新しい振込先（テスト信用金庫）になっている",
+      "grading": "program",
+      "check": {
+        "type": "contains",
+        "file": "out/*",
+        "text": "テスト信用金庫"
+      }
+    },
+    {
+      "id": "C-13",
+      "knowledge": "bank-account",
+      "text": "古い振込先（サンプル銀行）が、請求書に入っていない",
+      "grading": "program",
+      "check": {
+        "type": "not_contains",
+        "file": "out/*",
+        "text": "サンプル銀行"
+      }
+    },
+    {
+      "id": "C-14",
+      "knowledge": "customer-list",
+      "text": "あおば亭の宛名の敬称が、得意先一覧のとおり「御中」になっている",
+      "grading": "program",
+      "check": {
+        "type": "regex",
+        "file": "out/*",
+        "pattern": "あおば亭\\s*御中"
+      }
+    },
+    {
+      "id": "C-15",
+      "knowledge": "customer-list",
+      "text": "ひだまりベーカリーの宛名の敬称が、得意先一覧のとおり「様」になっている",
+      "grading": "program",
+      "check": {
+        "type": "regex",
+        "file": "out/*",
+        "pattern": "ひだまりベーカリー\\s*様"
+      }
+    },
+    {
+      "id": "C-16",
+      "knowledge": "subtotal-check",
+      "text": "あおば亭の請求書の税抜の小計が、出荷明細のあおば亭の金額の合計（109,902円）と合っている",
+      "grading": "program",
+      "check": {
+        "type": "regex",
+        "file": "out/*",
+        "pattern": "(?=[\\s\\S]*あおば亭)(?=[\\s\\S]*(?<![0-9,])109,?902(?![0-9]))"
+      }
+    },
+    {
+      "id": "C-17",
+      "knowledge": "subtotal-check",
+      "text": "ひだまりベーカリーの請求書の税抜の小計が、出荷明細のひだまりベーカリーの金額の合計（79,283円）と合っている",
+      "grading": "program",
+      "check": {
+        "type": "regex",
+        "file": "out/*",
+        "pattern": "(?=[\\s\\S]*ひだまりベーカリー)(?=[\\s\\S]*(?<![0-9,])79,?283(?![0-9]))"
+      }
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "id": "T-01",
+  "prompt": "inputs/transcript.txt から、議事録を作ってください。",
+  "inputs": ["inputs/transcript.txt"],
+  "settings": { "maxIterations": 2 },
+  "criteria": [
+    { "id": "C-01", "knowledge": "output", "text": "成果物は minutes.md という名前のファイルである", "grading": "program", "check": { "type": "file_exists", "file": "minutes.md" } },
+    { "id": "C-02", "knowledge": "decision-mark", "text": "決まったことの行の頭に【決定】が付いている", "grading": "program", "check": { "type": "regex", "file": "minutes.md", "pattern": "(?:^|\\n)[ \\t]*(?:[-*・]\\s*)?【決定】" } },
+    { "id": "C-03", "knowledge": "todo-owner", "text": "宿題に担当者と期限が書かれている（田中は11/1まで）", "grading": "program", "check": { "type": "regex", "file": "minutes.md", "pattern": "田中[^\\n]*(?:11/1|11月1日)" } },
+    { "id": "C-04", "knowledge": "todo-owner", "text": "期限が決まっていない宿題（佐藤）に「期限未定」と書かれている", "grading": "program", "check": { "type": "regex", "file": "minutes.md", "pattern": "佐藤[^\\n]*期限未定|期限未定[^\\n]*佐藤" } },
+    { "id": "C-05", "knowledge": "style", "text": "文は「です・ます」にせず、「である」調で短く書かれている", "grading": "model", "check": { "files": ["minutes.md"] } }
+  ]
+}

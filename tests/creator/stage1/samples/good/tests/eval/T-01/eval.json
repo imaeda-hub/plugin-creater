@@ -1,0 +1,14 @@
+{
+  "id": "T-01",
+  "prompt": "題材は天気で、見本を作って",
+  "inputs": ["inputs/memo.txt"],
+  "settings": { "maxIterations": 3, "task": { "topic": "天気" } },
+  "criteria": [
+    {
+      "id": "C-01",
+      "text": "成果物に題がある",
+      "grading": "program",
+      "check": { "type": "contains", "file": "out/*.md", "text": "# " }
+    }
+  ]
+}

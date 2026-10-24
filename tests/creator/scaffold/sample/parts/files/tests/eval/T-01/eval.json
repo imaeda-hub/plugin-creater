@@ -1,0 +1,10 @@
+{
+  "id": "T-01",
+  "prompt": "先週の記録をもとに、今週の週報を書いてください。",
+  "inputs": ["inputs/memo.txt"],
+  "settings": { "maxIterations": 3, "task": { "week": "2026-W42" } },
+  "criteria": [
+    { "knowledge": "K-01", "grading": "program", "check": { "type": "contains", "file": "out/*.md", "text": "今週やったこと" } },
+    { "knowledge": "K-03", "grading": "model" }
+  ]
+}

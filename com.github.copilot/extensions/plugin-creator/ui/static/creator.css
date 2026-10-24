@@ -1,0 +1,112 @@
+/* クリエイターの画面だけの見た目。基本の見た目は、ひな形の style.css（生成プラグインの Web管理画面と同じ部品）を使う。
+   文字と背景の色の差は 4.5:1 以上。大きさは rem で決める。 */
+
+.stage-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.item-columns {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr));
+  gap: 0.75rem;
+}
+
+.item-column {
+  min-width: 0;
+  padding: 0.5rem 0.8rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+.item-list {
+  list-style: none;
+  padding: 0;
+  margin: 0.25rem 0;
+}
+
+.item-list li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.5rem;
+  padding: 0.15rem 0;
+}
+
+.item-holder {
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+
+.sub {
+  margin: 0.75rem 0 0.25rem;
+}
+
+.cell-text {
+  min-width: 14rem;
+}
+
+.block {
+  margin: 0.5rem 0 0.75rem;
+}
+
+.result-file {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 0.5rem 0.8rem;
+  margin: 0.5rem 0;
+}
+
+.result-file h3 {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.5rem;
+}
+
+.failure {
+  margin: 0.25rem 0;
+  padding-left: 0.75rem;
+  border-left: 0.3rem solid var(--danger);
+}
+
+.failure-test {
+  font-weight: 600;
+}
+
+.raw {
+  white-space: pre-wrap;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.875rem;
+  margin: 0.25rem 0;
+}
+
+.sample-link {
+  font-weight: 700;
+}
+
+/* 表は、狭い画面で列がつぶれて1文字ずつ折れないよう、最小の幅を決める（入れ物の中で横に動かせる）。 */
+.table-wrap table {
+  min-width: max(100%, 36rem);
+}
+
+/* ナレッジの表：番号は折り返さない。種類・項目・出どころの列には、読める幅を残す */
+.knowledge-table table {
+  min-width: max(100%, 60rem);
+}
+
+.knowledge-table th:first-child,
+.knowledge-table td:first-child {
+  white-space: nowrap;
+}
+
+.knowledge-table th:nth-child(2),
+.knowledge-table td:nth-child(2),
+.knowledge-table th:nth-child(3),
+.knowledge-table td:nth-child(3),
+.knowledge-table th:nth-child(5),
+.knowledge-table td:nth-child(5) {
+  min-width: 7.5rem;
+}

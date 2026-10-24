@@ -1,0 +1,16 @@
+{
+  "name": "見本の作業",
+  "maxIterationsDefault": 3,
+  "criteria": [
+    { "id": "C-01", "text": "成果物に題がある", "knowledge": "K-01" }
+  ],
+  "workers": [
+    { "agent": "worker", "label": "見本を書く係" }
+  ],
+  "settings": [
+    { "key": "topic", "label": "題材", "type": "text", "default": "", "required": true, "help": "何について書くか", "options": [] }
+  ],
+  "displays": [
+    { "key": "draft", "label": "下書き", "type": "text", "when": "running" }
+  ]
+}

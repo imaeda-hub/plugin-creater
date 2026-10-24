@@ -1,0 +1,13 @@
+{
+  "name": "週報の作成",
+  "maxIterationsDefault": 3,
+  "workers": [
+    { "agent": "worker", "label": "週報を書く係" }
+  ],
+  "settings": [
+    { "key": "week", "label": "対象の週", "type": "text", "default": "", "required": true, "help": "週報を作る週を書きます（例：2026-W42）。" }
+  ],
+  "displays": [
+    { "key": "draft", "label": "下書き", "type": "text", "when": "running" }
+  ]
+}

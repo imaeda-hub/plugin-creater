@@ -1,0 +1,13 @@
+{
+  "name": "plugin-creator-eval-tools",
+  "version": "1.0.0",
+  "private": true,
+  "description": "EVAL（試験の3段目）を動かす道具の版。check_tools.py --install が、<COPILOT_HOME>/plugin-data/plugin-creator/tools/ にこのファイルを写して npm install する。",
+  "dependencies": {
+    "@github/copilot-sdk": "1.0.25",
+    "playwright": "1.56.1"
+  },
+  "engines": {
+    "node": "^20.19.0 || >=22.12.0"
+  }
+}
