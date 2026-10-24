@@ -13,7 +13,6 @@
 // 実際のモデルを使うのは Agent SDK の実行とユーザー役と判定だけで、sdk・userRole・judge は引数で受ける（試験は偽物を渡せる）。
 
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 
 import { gradeRun } from '../../../skills/test-plugin/scripts/grade.mjs';
@@ -392,4 +391,3 @@ function readRules(convertedRoot) {
   }
 }
 
-export const tmpRunDir = (prefix = 'inner') => fs.mkdtempSync(path.join(os.tmpdir(), `plugin-creator-dev-eval-${prefix}-`));

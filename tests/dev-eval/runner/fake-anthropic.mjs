@@ -35,13 +35,6 @@ export function lastToolResults(body) {
     .map((c) => (typeof c.content === 'string' ? c.content : (c.content ?? []).map((x) => x.text ?? '').join('\n')));
 }
 
-/** 最後の user のメッセージの文字（text ブロックをつなぐ） */
-export function lastUserText(body) {
-  const content = lastUserMessage(body)?.content;
-  if (typeof content === 'string') return content;
-  return Array.isArray(content) ? content.filter((c) => c.type === 'text').map((c) => c.text).join('\n') : '';
-}
-
 /** 会話の最初の user のメッセージの文字（統括や作業への最初の指示） */
 export function firstUserText(body) {
   const first = (body?.messages ?? []).find((m) => m.role === 'user');
