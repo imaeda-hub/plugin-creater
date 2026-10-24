@@ -177,7 +177,7 @@
 3. （2026-10-24 に立てた。共通の指示は briefs/X-fix.md）M1 の後に X3 の段2の束（B3〔Opus〕、C2、A1、A2、A3、A4、B1）と、試験的機能の案内の直し（答え29。B3：README・setup.md、A4：ひな形の README・requirements.md・design.md 2.3、B2：ひな形の入口の SKILL.md）を立てる。A4 にはひな形の design.md の統括の表（答え24）も入れる。答え28（作り直しの流れの最終確認）は最終確認の一覧に入れる。
 3b. 会話例の冒頭の「クリエイターの版：」を、画面の文（X2-18 で「plugin-creator の版」にそろえた）に合わせて「plugin-creator の版：」にする（統括の判断。エンドユーザーに見える文なので。D1c：examples-build.mjs と試験、check_creator.py の REQ-037 の確かめ。B3：improve.md）。仕様 REQ-037 の「クリエイターの版」は開発者の用語なので、そのままでよい。
 3c. （2026-10-24 に頼んだ）X4 の後に B3 へ：X4 の指摘と、generate.md に「eval.json の prompt・inputs・settings は confirm に渡した evalTasks と同じにする。実物の入力は confirm の path と manifest.json の eval_inputs の from に同じ絶対パスを書く。仮のファイルの path は tests/eval/<課題>/inputs/<名前>」を足す件（C2 の依頼。違うと build が断る）。
-4. 直しが全部入ったら、V1 に本物の Copilot CLI で確かめ直してもらう（統括の許す一覧で通るか、GPT の族の統括が受け取るツールの全部、apply_patch のフックの toolName、update_todo を拒んで困らないか、断りの文、担当の欄）。
+4. （2026-10-24 に頼んだ。報告は V1 報告の9節）直しが全部入ったら、V1 に本物の Copilot CLI で確かめ直してもらう（統括の許す一覧で通るか、GPT の族の統括が受け取るツールの全部、apply_patch のフックの toolName、update_todo を拒んで困らないか、断りの文、担当の欄）。
 5. T1 の通しをもう一度。
 6. EVAL：まず1回だけ回して費用を測る（ユーザーに承認をとる）。会話例。README の「置きます」→「あります」。
 7. 最後の報告。
