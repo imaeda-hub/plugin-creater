@@ -174,3 +174,23 @@ X2-09 の(1)：REQ-045・REQ-046 のモデルの確かめ（`gradeModels`。腕 
 - testing.md 6.5：記録する数の出し方（record.json の `grading.counts`、`outer-report.json` の要約）と、REQ-045・REQ-046 の観点（`main-model`・`worker-model`）を書く。X2-09 の(2)（Haiku の合格に 1・2段目を足す）を直した後に、`HAIKU_REQUIRED` を直す
 
 会話例の冒頭の版の書き方（統括の決定）：会話例はエンドユーザーが README と画面から読むので、画面と同じ呼び方にそろえ、「クリエイターの版：x.y.z」を「plugin-creator の版：x.y.z」にした（examples-build.mjs の書き出しと `hasVersionInHead`、tests/creator/check_creator.py の REQ-037 の確かめ〔冒頭 30 行〕と test_check_creator.py）。新しい書き方だけを受ける（古い書き方は受けない試験を足した）。仕様 REQ-037 の「クリエイターの版」は開発者の用語なので変えない。skills/make-plugin/references/improve.md の同じ文は B3 が直す。
+
+## 組み立ての関門に合わせた直し（tests/dev-eval/runner の試験3件が落ちていた件。briefs/X-fix.md の共通の指示）
+
+状態：[x] 直した。`node --test "tests/dev-eval/runner/*.test.mjs"` で 203 件すべて通る。実際のモデルは使っていない。
+
+原因（自分で確かめた）
+- 落ちていたのは、control-creator.test.mjs の2件（対照のクリエイターの組み立て、対照の腕）と、outer-run.test.mjs の1件（生成までたどる試験）。
+- **(1) C2 が scaffold.py に足した関門**（X2-03：`confirmation.evalTasks` を読み、eval.json と突き合わせる）に、2つの見本が合っていなかった。これが3件すべての原因。
+  - 対照のクリエイター（control_build.py）が作るヒアリングの記録の `evalTasks` は、`{ id, prompt }` だけだった。build の断りは「確かめた課題：なし／eval.json：K-01」「入力は確かめていない」「settings が違う」「確かめていない入力のファイル」。
+  - 生成までたどる試験が confirm に渡した課題は、頼みの文が見本の parts の eval.json（`先週の記録をもとに、今週の週報を書いてください。`）と違い、入力の path（`inputs/memo.txt`）も、設定の値（`settings`）もなかった。
+- **(2) 記録のツールが「生成」の後の書き込みを断る**（C1 の X2-12 など）ことは、原因ではなかった。生成までたどる試験で出た「お話を聞くことは終わっています（段階は「生成」）」は、(1) で組み立てが断られたため、台本が書いたクリエイター役が1手番で生成プラグインを作れず、次の手番で**同じ台本をもう一度最初から動かし**、記録のツール（`record`）が「生成」の後の書き込みを断ったもの。断りは正しい。台本が手番を数えず、組み立ての失敗に気づかなかったのが見えにくくしていた。
+- クリエイター本体の決まりの側におかしいところは見つからなかった（関門は、設計書の「ユーザーがよいと答えた課題と、作る課題が同じ」を守っている）。
+
+直したもの
+- `control-creator/skills/make-plugin/scripts/control_build.py`：ヒアリングの記録の `confirmation.evalTasks` を、C1 の実際の形（`prompt`、`inputs: [{ path: "tests/eval/T-01/inputs/memo.txt", provisional: true }]`、`criteria`〔「合否の決め方」のナレッジの番号〕、`settings: { maxIterations: 3, task: {} }`）にした。eval.json を書く値（頼む言葉、設定）と同じ定数から作るので、食い違わない。`id` は C1 の形にないので消した
+- `outer-run.test.mjs`：生成までたどる試験の confirm の課題を、見本の parts の eval.json から取った頼みの文・設定、仮の入力の置き場所 `tests/eval/T-01/inputs/memo.txt` にした。組み立てを動かした Bash の結果が失敗なら、その場で失敗の理由を出す（以前は黙って次の手番に進み、別の断りに見えた）
+- 試験が空振りでないことの確かめ（リポジトリの外の写し）：対照の記録から `settings`・`inputs`・`criteria`・`prompt` を1つずつ落とすと、対照の試験が落ちる。生成までたどる試験から `settings` を落とすと落ちる
+
+ほかの担当へ
+- B3（generate.md）：C2 の指摘のとおり。ただし対照のクリエイターも同じ関門を通るので、`evalTasks` の形を変えるときは control_build.py も合わせる（試験が落ちて知らせる）
