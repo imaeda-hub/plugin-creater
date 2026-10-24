@@ -497,6 +497,15 @@ class Task(Sandbox):
         self.edit_json(self.TASK, lambda d: d["settings"][0].update({"type": "slider"}))
         self.assertFailsWith("task", "settings/0/type", "slider")
 
+    def test_REQ_011_setting_key_may_not_be_maxIterations(self):
+        # 画面の「繰り返しの上限」の欄が同じ id（setting-maxIterations）になり、EVAL の画面の操作が失敗するため
+        self.edit_json(self.TASK, lambda d: d["settings"][0].update({"key": "maxIterations"}))
+        self.assertFailsWith("task", "settings/0/key", "maxIterations は使えない", "繰り返しの上限")
+        self.edit_json(self.TASK, lambda d: d["settings"][0].update({"key": "maxIteration"}))
+        self.assertPasses("task")
+        self.edit_json(self.TASK, lambda d: d["settings"][0].update({"key": "maxiterations"}))
+        self.assertPasses("task")
+
     def test_REQ_011_unknown_display_type_and_when_fail(self):
         self.edit_json(self.TASK, lambda d: d["displays"][0].update({"type": "chart", "when": "later"}))
         self.assertFailsWith("task", "displays/0/type", "displays/0/when")
@@ -595,6 +604,144 @@ class Eval(Sandbox):
     def test_REQ_011_grading_must_be_program_or_model(self):
         self.edit_json(self.EVAL, lambda d: d["criteria"][0].update({"grading": "human"}))
         self.assertFailsWith("eval", "grading")
+
+    def test_REQ_011_check_type_and_its_items_are_read_like_the_grader_reads_them(self):
+        def check(value):
+            self.edit_json(self.EVAL, lambda d: d["criteria"][0].update({"check": value}))
+        check({"type": "includes", "file": "out/*.md", "text": "x"})
+        self.assertFailsWith("eval", "check.type「includes」は使えない", "file_exists・contains・not_contains・regex")
+        check({"type": "contains", "file": "out/*.md"})
+        self.assertFailsWith("eval", "text がない（contains には要る）")
+        check({"type": "contains", "file": "../out/*.md", "text": "x", "pattern": "y"})
+        self.assertFailsWith("eval", ".. は使えない", "使わない項目「pattern」")
+        check({"type": "file_exists", "file": "/etc/passwd"})
+        self.assertFailsWith("eval", "絶対の場所は使えない")
+        check({"type": "regex", "file": "out/*.md", "pattern": "x", "flags": "g"})
+        self.assertFailsWith("eval", "flags は、i・m・s・u")
+
+    @unittest.skipUnless(shutil.which("node"), "node がない")
+    def test_REQ_011_regex_pattern_must_be_readable_as_a_javascript_regular_expression(self):
+        self.edit_json(self.EVAL, lambda d: d["criteria"][0].update({"check": {"type": "regex", "file": "out/*.md", "pattern": "(", "flags": "u"}}))
+        self.assertFailsWith("eval", "criteria[0].check.pattern が正規表現として読めない")
+        # JavaScript では読めて Python では読めない書き方は、通す
+        self.edit_json(self.EVAL, lambda d: d["criteria"][0].update({"check": {"type": "regex", "file": "out/*.md", "pattern": "(?<year>\\d{4})\\p{L}", "flags": "u"}}))
+        self.assertPasses("eval")
+
+    def test_REQ_011_without_node_the_regex_is_not_read_and_only_a_note_is_left(self):
+        self.edit_json(self.EVAL, lambda d: d["criteria"][0].update({"check": {"type": "regex", "file": "out/*.md", "pattern": "("}}))
+        original = cs.js_regex_errors
+
+        def no_node(regexes):
+            raise RuntimeError("node を動かせなかった")
+        cs.js_regex_errors = no_node
+        try:
+            check = {c.id: c for c in self.report().checks}["eval"]
+        finally:
+            cs.js_regex_errors = original
+        self.assertEqual([], check.errors)
+        self.assertTrue(any("確かめていない" in w for w in check.warnings))
+
+    def test_REQ_011_task_folder_without_eval_json_fails(self):
+        os.makedirs(self.path("tests/eval/T-02"))
+        self.assertFailsWith("eval", "tests/eval/T-02/eval.json がない")
+
+    def test_REQ_011_two_tasks_may_not_share_an_id(self):
+        self.write("tests/eval/T-02/eval.json", self.read(self.EVAL))
+        self.os_makedirs_inputs("T-02")
+        self.assertFailsWith("eval", "id「T-01」が、tests/eval/T-01/eval.json と重なっている")
+
+    def os_makedirs_inputs(self, name):
+        shutil.copytree(self.path("tests/eval/T-01/inputs"), self.path("tests/eval/%s/inputs" % name))
+
+    def test_REQ_011_input_symlink_fails(self):
+        target = os.path.join(self.tmp, "outside.txt")
+        open(target, "w").close()
+        try:
+            os.symlink(target, self.path("tests/eval/T-01/inputs/link.txt"))
+        except (OSError, NotImplementedError):
+            self.skipTest("この環境ではシンボリックリンクを作れない")
+        self.edit_json(self.EVAL, lambda d: d.update({"inputs": ["inputs/link.txt"]}))
+        self.assertFailsWith("eval", "シンボリックリンクなので使えない")
+
+    def test_REQ_011_settings_task_keys_must_exist_in_the_task_definition(self):
+        self.edit_json(self.EVAL, lambda d: d["settings"]["task"].update({"week": "2026-W42"}))
+        self.assertFailsWith("eval", "settings.task の「week」が、作業の定義の settings にない", "画面に欄がない")
+
+    def test_REQ_011_settings_task_values_follow_the_setting_type(self):
+        def add(setting):
+            self.edit_json("%s/task.json" % EXT, lambda d: d["settings"].append(setting))
+        add({"key": "n", "label": "回数", "type": "number", "default": 1})
+        add({"key": "flag", "label": "印", "type": "checkbox", "default": False})
+        add({"key": "mode", "label": "形", "type": "select", "default": "a", "options": ["a", "b"]})
+        add({"key": "where", "label": "場所", "type": "path", "default": ""})
+        self.edit_json(self.EVAL, lambda d: d["settings"]["task"].update({"n": "3", "flag": "yes", "mode": "c", "where": 5}))
+        problems = self.problems("eval")
+        self.assertEqual(4, len(problems), problems)
+        self.assertTrue(any("n は、number の設定なので数で書く" in p for p in problems))
+        self.assertTrue(any("flag は、checkbox の設定なので true か false" in p for p in problems))
+        self.assertTrue(any("mode の値 'c' が、作業の定義の選択肢（a、b）にない" in p for p in problems))
+        self.assertTrue(any("where は、path の設定なので文字で書く" in p for p in problems))
+        self.edit_json(self.EVAL, lambda d: d["settings"]["task"].update({"n": 3.5, "flag": True, "mode": "b", "where": "out"}))
+        self.assertPasses("eval")
+
+    def test_REQ_011_required_setting_without_a_first_value_must_be_given(self):
+        self.edit_json(self.EVAL, lambda d: d["settings"]["task"].pop("topic"))
+        self.assertFailsWith("eval", "必須の設定「題材」（topic）の値がない", "画面で開始できない")
+        self.edit_json("%s/task.json" % EXT, lambda d: d["settings"][0].update({"default": "天気"}))
+        self.assertPasses("eval")
+        self.edit_json("%s/task.json" % EXT, lambda d: d["settings"][0].update({"default": "", "required": False}))
+        self.assertPasses("eval")
+
+    def test_REQ_011_eval_json_that_is_not_an_object_fails(self):
+        self.write(self.EVAL, "[]")
+        self.assertFailsWith("eval", "JSON のオブジェクトではない")
+
+
+class EvalParity(Sandbox):
+    """eval.json の形と採点のしかたの決まりが、採点（grade.mjs）と同じ判定になること。同じ例を eval-parity.test.mjs が grade.mjs に通す。"""
+
+    with open(os.path.join(HERE, "eval-cases.json"), encoding="utf-8") as _f:
+        CASES = json.load(_f)
+
+    def setUp(self):
+        super().setUp()
+        # 必須の設定を課題が満たすかは Python 側だけの検査なので、この例には干渉させない
+        self.edit_json("%s/task.json" % EXT, lambda d: d["settings"][0].update({"required": False}))
+
+    @staticmethod
+    def build_task(case):
+        """例から課題を作る。値が "$remove" の項目は消す（eval-parity.test.mjs の buildTask と同じ決まり）"""
+        task = json.loads(json.dumps(EvalParity.CASES["base"]))
+        for key, value in case.get("top", {}).items():
+            if value == "$remove":
+                task.pop(key, None)
+            else:
+                task[key] = value
+        if "criterion" in case:
+            first = dict(task["criteria"][0])
+            for key, value in case["criterion"].items():
+                if value == "$remove":
+                    first.pop(key, None)
+                else:
+                    first[key] = value
+            task["criteria"][0] = first
+        return task
+
+    def test_REQ_041_the_same_examples_get_the_same_verdict_as_the_grader(self):
+        has_node = shutil.which("node") is not None
+        ran = 0
+        for case in self.CASES["cases"]:
+            if case.get("needsNode") and not has_node:
+                continue
+            with self.subTest(case["name"]):
+                self.write("tests/eval/T-01/eval.json", json.dumps(self.build_task(case), ensure_ascii=False))
+                errors = {c.id: c for c in self.report().checks}["eval"].errors
+                if case["ok"]:
+                    self.assertEqual([], errors, "通るはずの課題が断られた")
+                else:
+                    self.assertTrue(errors, "断られるはずの課題が通った")
+                ran += 1
+        self.assertGreaterEqual(ran, 60)
 
 
 class Knowledge(Sandbox):

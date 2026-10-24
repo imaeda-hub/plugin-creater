@@ -13,7 +13,7 @@ export const TOOL_DESCRIPTIONS = Object.freeze({
     'ヒアリングで分かったナレッジ（仕事のやり方や決まり）、流用する資産、標準機能と公開のプラグインの選んだ結果を記録する。ユーザーの答えを受けたら、次の問いの前に呼ぶ。会話の中の答えは、コンパクションで消えるためである。新しいナレッジには番号（K-01 など）が付く。番号を渡すと、そのナレッジを直せる。',
   confirm:
     '生成前の確認で示すもの（決まったナレッジの番号、振る舞いの案、作業の定義の案の場所、EVAL の課題と基準）を受け取り、plugin-creator の画面に出し、Web管理画面の見本の URL を返す。未着手の項目が残っているときは受け付けない。示した内容を直したら、呼び直す。',
-  results: '試験の結果のファイル（`tests/results/latest.json` と EVAL の結果）の場所を受け取り、plugin-creator の画面に出す。試験が終わったら呼ぶ。',
+  results: '試験の結果のファイル（生成プラグインのフォルダの `tests/results/latest.json` と、EVAL の `result.json`）の絶対パスを受け取り、plugin-creator の画面に出す。試験が終わったら呼ぶ。',
   doc_text: 'docx・xlsx・pptx の中の文字を返す。ファイルの読み取りのツールでは、これらの文書の中の文字を読めないので、その代わりに使う。',
   issue:
     '質問の改善案を、plugin-creator のリポジトリ（imaeda-hub/plugin-creator）に Issue として起票する。ユーザーが、その案を起票してよいと答えた後にだけ、1案ずつ呼ぶ。題と本文には決まった言葉（段階と項目の名前、起きたことの種類、数、問いの形、版、モデル）だけを書き、ユーザーの仕事の中身（問いの文、答え、ナレッジの文、ファイル名）を書かない。',
@@ -65,15 +65,15 @@ export const PARAM_DESCRIPTIONS = Object.freeze({
     'evalTasks.inputs.path': '入力のファイルの場所。実物のファイルは、その絶対パス。仮のファイル（`provisional` が true）は、生成プラグインの中の置き場所（`tests/eval/<課題の番号>/inputs/<名前>`）。',
     'evalTasks.inputs.provisional': '仮のファイルなら true',
     'evalTasks.criteria': '課題の合否の基準にするナレッジの番号の一覧。種類が「合否の決め方」のナレッジだけを入れる。',
-    'evalTasks.settings': '【仮】課題を動かすときに、作業の画面に入れる設定の値。繰り返しの上限と、作業ごとの設定の値。省くと、作業の定義の案の初めの値のまま動かす。',
-    'evalTasks.settings.maxIterations': '【仮】繰り返しの上限（1以上の整数）。',
-    'evalTasks.settings.task': '【仮】作業ごとの設定の値。設定の名前（作業の定義の案の設定の key）と、値（文字・数・真偽のどれか）の組。',
+    'evalTasks.settings': '課題を動かすときに作業の画面に入れる設定の値（繰り返しの上限と、作業ごとの設定の値）。生成前の確認でユーザーに示したものを渡す。省くと、作業の定義の案の初めの値のまま動かす。',
+    'evalTasks.settings.maxIterations': '繰り返しの上限（1以上の整数）。',
+    'evalTasks.settings.task': '作業ごとの設定の値。作業の定義の案の設定の key と、その値（文字・数・真偽のどれか）の組。',
     rebuild: '作り直しのときだけ。引き継ぐことと、変わること。',
     'rebuild.keep': '引き継ぐこと',
     'rebuild.change': '変わること',
   },
   results: {
-    paths: '結果のファイルの場所の一覧（JSON のファイル）。',
+    paths: '結果のファイルの絶対パスの一覧（JSON のファイル）。相対パスは、作業フォルダから探される。',
   },
   doc_text: {
     path: '文書のファイルの場所（docx・xlsx・pptx）。',

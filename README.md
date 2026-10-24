@@ -27,15 +27,21 @@ copilot plugin install plugin-creator@plugin-creator
 
 plugin-creator の画面と記録を動かす仕組み（エクステンション。Copilot CLI が起動する別のプログラム）は、試験的な機能です（Copilot CLI 1.0.102 の時点）。有効にしないと、plugin-creator は使えません。
 
-```text
-/experimental on
+初めて使うときは、Copilot CLI を次のように起動します。一度付けると設定に残るので、次からは付けなくても有効です。
+
+```shell
+copilot --experimental
 ```
 
-有効にしたら、Copilot CLI を起動し直します。起動のときに `copilot --experimental` と付けても有効にできます。
+すでに起動しているときは、チャットで次のように打ちます。Copilot CLI が自動で再起動して、有効になります。再起動の後は、フォルダを信頼するかの確認と、次の読み込みの確認が出ます（読み込みの確認は、続けて2回出ることがあります）。
+
+```text
+/settings experimental on
+```
 
 ### 2. 読み込むときの確認を許可する
 
-plugin-creator を読み込むとき、Copilot CLI がチャットに確認を出します。題は `Extension "<名前>" wants elevated permissions` で、本文は次のとおりです。
+plugin-creator を読み込むとき、Copilot CLI がチャットに確認を出します。題は `Extension "plugin:plugin-creator:plugin-creator" wants elevated permissions` で、本文は次のとおりです。
 
 ```text
 This extension wants to: skip tool permission prompts, register hooks.
@@ -54,8 +60,8 @@ Denying will prevent this extension from loading.
 | 選択肢 | 意味 |
 | --- | --- |
 | Yes | 今回だけ許可します。Copilot CLI を起動するたびと、`/clear` のたびに、また確認が出ます |
-| Yes, and always allow "<名前>" in this directory | このフォルダでは常に許可します。このフォルダでは、次から確認が出ません（`/clear` の後も、起動し直しても）。ほかのフォルダでは、また出ます |
-| Yes, and don't ask again for "<名前>" this session | フォルダが分からないときに、上の選択肢の代わりに出ます。このセッション（Copilot CLI の1つの会話。`/clear` で新しいセッションになります）の間は、確認が出ません |
+| Yes, and always allow "plugin:plugin-creator:plugin-creator" in this directory | このフォルダでは常に許可します。このフォルダでは、次から確認が出ません（`/clear` の後も、起動し直しても）。ほかのフォルダでは、また出ます |
+| Yes, and don't ask again for "plugin:plugin-creator:plugin-creator" this session | フォルダが分からないときに、上の選択肢の代わりに出ます。このセッション（Copilot CLI の1つの会話。`/clear` で新しいセッションになります）の間は、確認が出ません |
 | No (Esc) | 断ります。plugin-creator は読み込まれません |
 
 ## 使い方
@@ -119,7 +125,7 @@ plugin-creator は、あなたにしか分からないことを推測で埋め�
 
 チャットで頼んでも plugin-creator の画面の URL が示されないときは、plugin-creator のエクステンションが読み込まれていません。次のどれかです。
 
-- 試験的機能を有効にしていない：`/experimental on` で有効にして、Copilot CLI を起動し直します。
+- 試験的機能を有効にしていない：「1. 試験的機能を有効にする」のとおりに、`copilot --experimental` で起動するか、`/settings experimental on` と打ちます。
 - 読み込むときの確認を断った：Copilot CLI を起動し直して、出た確認を許可します。選び方は「2. 読み込むときの確認を許可する」にあります。
 - エクステンションを使わない設定（`/extensions mode` の Disabled）にしている：`/extensions mode` で Load & Augment か Load Only に戻します。Disabled は、次のセッションにも残ります。
 

@@ -17,6 +17,7 @@ import importlib.util
 import io
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -292,7 +293,7 @@ class Place(Base):
 class Slots(Base):
     """差し込み口の置き換え（BLUEPRINT 8章、A4 のメモ）。"""
 
-    def test_the_text_of_each_slot_is_put_in_place(self):
+    def test_REQ_001_the_text_of_each_slot_is_put_in_place(self):
         self.build()
         self.assertIn("見出し「今週やったこと」と「来週やること」の2つで構成します", self.read("skills/weekly-report/SKILL.md"))
         self.assertIn("REQ-101 週報の見出し", self.read("docs/specs/requirements.md"))
@@ -300,66 +301,66 @@ class Slots(Base):
         self.assertIn("社外の人の名前は書かない（K-06）", self.read("com.github.copilot/agents/worker.agent.md"))
         self.assertIn("基準ごとに合否を確かめる", self.read("com.github.copilot/agents/verifier.agent.md"))
 
-    def test_a_trace_row_is_put_into_the_table_without_a_blank_line(self):
+    def test_REQ_003_a_trace_row_is_put_into_the_table_without_a_blank_line(self):
         self.build()
         lines = self.read("docs/design/design.md").splitlines()
         row = next(i for i, line in enumerate(lines) if line.startswith("| REQ-101 "))
         self.assertTrue(lines[row - 1].startswith("| REQ-001 "))
 
-    def test_an_unfilled_slot_is_refused_with_its_name_and_the_folder_is_removed(self):
+    def test_REQ_001_an_unfilled_slot_is_refused_with_its_name_and_the_folder_is_removed(self):
         os.remove(self.part("slots/verifier-task.md"))
         problems = self.refusal()
         self.assertMentions(problems, "{{slot:verifier-task}}", "verifier.agent.md", "parts/slots/verifier-task.md")
 
-    def test_every_unfilled_slot_is_listed(self):
+    def test_REQ_001_every_unfilled_slot_is_listed(self):
         os.remove(self.part("slots/verifier-task.md"))
         os.remove(self.part("slots/task-design.md"))
         self.assertMentions(self.refusal(), "{{slot:verifier-task}}", "{{slot:task-design}}")
 
-    def test_a_slot_that_no_file_of_the_template_uses_is_only_a_warning(self):
+    def test_BLUEPRINT_8_a_slot_that_no_file_of_the_template_uses_is_only_a_warning(self):
         self.write(self.part("slots/readme-task.md"), "READMEに足す文")
         result = self.build()
         self.assertTrue(any("readme-task.md" in w for w in result["warnings"]))
 
-    def test_an_empty_slot_is_refused(self):
+    def test_BLUEPRINT_8_an_empty_slot_is_refused(self):
         self.write(self.part("slots/verifier-task.md"), "\n  \n")
         self.assertMentions(self.refusal(), "verifier-task.md", "空")
 
-    def test_a_file_in_slots_with_a_wrong_name_is_refused(self):
+    def test_BLUEPRINT_8_a_file_in_slots_with_a_wrong_name_is_refused(self):
         self.write(self.part("slots/memo.txt"), "x")
         self.write(self.part("slots/Bad Name.md"), "x")
         self.assertMentions(self.refusal(), "memo.txt", "Bad Name.md", "<差し込み口の名前>.md")
 
-    def test_the_text_of_a_slot_keeps_the_indent_of_its_line(self):
+    def test_creator_structure_2_the_text_of_a_slot_keeps_the_indent_of_its_line(self):
         self.append(self.tmpl("README.md"), "\n- 手順：\n  {{slot:rules}}\n")
         self.write(self.part("slots/rules.md"), "一つ目\n\n二つ目\n")
         self.build()
         self.assertTrue(self.read("README.md").endswith("- 手順：\n  一つ目\n\n  二つ目\n"))
 
-    def test_a_slot_inside_a_line_is_replaced_in_place(self):
+    def test_creator_structure_2_a_slot_inside_a_line_is_replaced_in_place(self):
         self.append(self.tmpl("README.md"), "\nこれは{{slot:inline}}です。\n")
         self.write(self.part("slots/inline.md"), "差し込んだ言葉")
         self.build()
         self.assertTrue(self.read("README.md").endswith("これは差し込んだ言葉です。\n"))
 
-    def test_values_written_in_a_slot_are_replaced_too(self):
+    def test_BLUEPRINT_8_values_written_in_a_slot_are_replaced_too(self):
         self.write(self.part("slots/verifier-task.md"), "- {{plugin_name}} の週報を確かめる。\n")
         self.build()
         self.assertIn("- weekly-report の週報を確かめる。", self.read("com.github.copilot/agents/verifier.agent.md"))
 
-    def test_a_slot_written_inside_a_slot_is_refused(self):
+    def test_BLUEPRINT_8_a_slot_written_inside_a_slot_is_refused(self):
         self.write(self.part("slots/verifier-task.md"), "{{slot:entry-task}}")
         self.assertMentions(self.refusal(), "{{slot:entry-task}}", "verifier.agent.md")
 
-    def test_a_value_that_nobody_knows_is_refused(self):
+    def test_BLUEPRINT_2_a_value_that_nobody_knows_is_refused(self):
         self.append(self.tmpl("README.md"), "\n{{foo_bar}}\n")
         self.assertMentions(self.refusal(), "{{foo_bar}}", "README.md", "値が決まっていません")
 
-    def test_a_placeholder_in_a_base_file_is_refused_and_not_replaced(self):
+    def test_generated_plugin_structure_7_a_placeholder_in_a_base_file_is_refused_and_not_replaced(self):
         self.append(self.tmpl("com.github.copilot/extensions/_plugin_/core/index.mjs"), "// {{plugin_name}}\n")
         self.assertMentions(self.refusal(), "土台のファイル", "core/index.mjs")
 
-    def test_text_that_only_looks_like_a_placeholder_is_left_alone(self):
+    def test_BLUEPRINT_2_text_that_only_looks_like_a_placeholder_is_left_alone(self):
         self.append(self.tmpl("README.md"), "\n型は {{ el: Element }} と ${{x}} と ${{secrets.TOKEN}} と {{1}} と { {a} }\n")
         self.build()
         self.assertTrue(self.read("README.md").endswith("型は {{ el: Element }} と ${{x}} と ${{secrets.TOKEN}} と {{1}} と { {a} }\n"))
@@ -370,7 +371,7 @@ class SlotHeadings(Base):
 
     SLOTS = ("entry-task", "orchestrator-task", "worker-task.worker", "verifier-task")
 
-    def test_a_heading_of_level_one_or_two_is_refused_with_the_slot_and_the_line(self):
+    def test_BLUEPRINT_8_a_heading_of_level_one_or_two_is_refused_with_the_slot_and_the_line(self):
         for name in self.SLOTS:
             for heading in ("# 大きな見出し", "## 週報の書き方", "##", "  ## 字下げあり"):
                 with self.subTest(slot=name, heading=heading):
@@ -379,18 +380,18 @@ class SlotHeadings(Base):
                     problems = self.refusal()
                     self.assertMentions(problems, "parts/slots/%s.md" % name, "4 行目", "{{slot:%s}}" % name, "見出しは ### 以下にしてください")
 
-    def test_every_heading_is_listed(self):
+    def test_BLUEPRINT_8_every_heading_is_listed(self):
         self.write(self.part("slots/verifier-task.md"), "# 一つ目\n本文\n## 二つ目\n")
         problems = [p for p in self.refusal() if "verifier-task" in p]
         self.assertEqual(len(problems), 2)
         self.assertMentions(problems, "1 行目", "3 行目")
 
-    def test_the_second_worker_slot_is_checked_too(self):
+    def test_BLUEPRINT_8_the_second_worker_slot_is_checked_too(self):
         self.two_workers()
         self.write(self.part("slots/worker-task.worker-summary.md"), "## まとめ方\n")
         self.assertMentions(self.refusal(), "worker-task.worker-summary.md", "1 行目", "見出しは ### 以下にしてください")
 
-    def test_level_three_and_below_are_accepted(self):
+    def test_BLUEPRINT_8_level_three_and_below_are_accepted(self):
         for heading in ("### 三つ目", "#### 四つ目", "###### 六つ目"):
             with self.subTest(heading=heading):
                 self.setUp()
@@ -398,24 +399,24 @@ class SlotHeadings(Base):
                 self.build()
                 self.assertIn(heading, self.read("com.github.copilot/agents/verifier.agent.md"))
 
-    def test_text_that_only_looks_like_a_heading_is_accepted(self):
+    def test_BLUEPRINT_8_text_that_only_looks_like_a_heading_is_accepted(self):
         text = "#タグ（空白なし）\n    ## 字下げが深いのでコード\n本文 # の途中\n```text\n# コードの囲みの中\n## ここも\n```\n~~~\n# 別の囲み\n~~~\n"
         self.write(self.part("slots/verifier-task.md"), text)
         self.build()
         self.assertIn("# コードの囲みの中", self.read("com.github.copilot/agents/verifier.agent.md"))
 
-    def test_a_heading_after_a_closed_code_fence_is_refused(self):
+    def test_BLUEPRINT_8_a_heading_after_a_closed_code_fence_is_refused(self):
         self.write(self.part("slots/verifier-task.md"), "```\n# 中\n```\n## 外\n")
         problems = self.refusal()
         self.assertMentions(problems, "4 行目")
         self.assertEqual(len([p for p in problems if "verifier-task" in p]), 1)
 
-    def test_the_other_slots_are_not_limited(self):
+    def test_BLUEPRINT_8_the_other_slots_are_not_limited(self):
         self.write(self.part("slots/task-design.md"), "## 8.1 二段の見出し\n\n本文\n")
         self.build()
         self.assertIn("## 8.1 二段の見出し", self.read("docs/design/design.md"))
 
-    def test_the_line_number_counts_from_the_first_line_of_the_file(self):
+    def test_BLUEPRINT_8_the_line_number_counts_from_the_first_line_of_the_file(self):
         self.write(self.part("slots/entry-task.md"), "\n\n\n## 先頭に空行がある\n")
         self.assertMentions(self.refusal(), "4 行目")
 
@@ -455,12 +456,12 @@ class Values(Base):
         self.assertIn(self.HARD, self.read("README.md"))                     # 本文はそのまま
 
     @unittest.skipIf(yaml is None, "PyYAML がない")
-    def test_a_name_in_the_value_position_is_written_without_quotes(self):
+    def test_REQ_004_a_name_in_the_value_position_is_written_without_quotes(self):
         self.build()
         self.assertIn("\nbare_name: weekly-report\n", self.read("skills/weekly-report/references/note.md"))
 
     @unittest.skipIf(yaml is None, "PyYAML がない")
-    def test_a_name_that_yaml_would_read_as_a_number_or_a_boolean_is_quoted(self):
+    def test_REQ_004_a_name_that_yaml_would_read_as_a_number_or_a_boolean_is_quoted(self):
         for name in ("2026", "true", "no"):
             with self.subTest(name=name):
                 self.setUp()
@@ -470,14 +471,14 @@ class Values(Base):
                 self.assertIn('\nbare_name: "%s"\n' % name, text)
                 self.assertEqual(frontmatter(text)["bare_name"], name)
 
-    def test_the_entry_skill_folder_takes_the_name_of_the_entry_skill(self):
+    def test_REQ_004_the_entry_skill_folder_takes_the_name_of_the_entry_skill(self):
         self.edit_manifest(lambda m: m["entry_skill"].update(name="make-weekly"))
         self.build()
         self.assertTrue(os.path.isfile(self.at("skills/make-weekly/SKILL.md")))
         self.assertFalse(os.path.exists(self.at("skills/_entry_")))
         self.assertFalse(os.path.exists(self.at("skills/weekly-report")))
 
-    def test_the_extension_folder_takes_the_name_of_the_plugin(self):
+    def test_generated_plugin_structure_3_4_the_extension_folder_takes_the_name_of_the_plugin(self):
         self.edit_manifest(lambda m: m.update(plugin_name="monthly-report"))
         self.out = os.path.join(self.folder, "somewhere")
         self.build()
@@ -485,7 +486,7 @@ class Values(Base):
         self.assertFalse(os.path.exists(self.at("com.github.copilot/extensions/_plugin_")))
         self.assertEqual(self.json("plugin.json")["name"], "monthly-report")
 
-    def test_the_generation_date_is_put_into_the_constitution(self):
+    def test_REQ_001_the_generation_date_is_put_into_the_constitution(self):
         self.build()
         self.assertIn("| 1.0.0 | 2026-10-23 |", self.read("docs/constitution.md"))
 
@@ -501,7 +502,7 @@ class Values(Base):
                 self.build()
                 self.assertEqual(self.json("plugin.json")["name"], name)
 
-    def test_the_manifest_must_follow_the_rules_of_names_and_descriptions(self):
+    def test_REQ_004_the_manifest_must_follow_the_rules_of_names_and_descriptions(self):
         cases = [
             ("plugin_name", "Weekly_Report"), ("plugin_name", "a--b"), ("plugin_name", "-a"), ("plugin_name", "a" * 65),
             ("plugin_name", 5), ("plugin_description", ""), ("plugin_description", "一行目\n二行目"),
@@ -538,12 +539,12 @@ class Values(Base):
         self.build()
         self.assertEqual(frontmatter(self.read("skills/weekly-report/SKILL.md"))["description"], text)
 
-    def test_the_plugin_description_is_not_limited_like_the_entry_description(self):
+    def test_REQ_004_the_plugin_description_is_not_limited_like_the_entry_description(self):
         self.edit_manifest(lambda m: m.update(plugin_description="説明 --- 説明\x7f"))
         self.build()
         self.assertEqual(self.json("plugin.json")["description"], "説明 --- 説明\x7f")
 
-    def test_unknown_items_and_a_missing_manifest_are_refused(self):
+    def test_BLUEPRINT_8_unknown_items_and_a_missing_manifest_are_refused(self):
         self.edit_manifest(lambda m: m.update(plugin_nane="x"))
         self.assertMentions(self.refusal(), "知らない項目", "plugin_nane")
         self.setUp()
@@ -555,7 +556,7 @@ class Workers(Base):
     """作業エージェントごとのファイルと、tools の作業ごとの分。"""
 
     @unittest.skipIf(yaml is None, "PyYAML がない")
-    def test_one_agent_file_is_made_per_worker_with_its_own_name_and_text(self):
+    def test_REQ_010_one_agent_file_is_made_per_worker_with_its_own_name_and_text(self):
         self.two_workers()
         result = self.build()
         self.assertEqual(result["workers"], ["worker", "worker-summary"])
@@ -570,7 +571,7 @@ class Workers(Base):
         self.assertIn("3行にまとめる", second)
         self.assertNotIn("社外の人の名前は書かない", second)
 
-    def test_the_plain_worker_file_is_not_kept_when_it_is_not_listed(self):
+    def test_REQ_010_the_plain_worker_file_is_not_kept_when_it_is_not_listed(self):
         self.edit_manifest(lambda m: m.update(workers=[{"agent": "worker-summary", "label": "まとめる係"}]))
         self.edit_task(lambda t: t.update(workers=[{"agent": "worker-summary", "label": "まとめる係"}]))
         self.write(self.part("slots/worker-task.worker-summary.md"), "まとめる。")
@@ -578,16 +579,16 @@ class Workers(Base):
         self.assertEqual(sorted(os.listdir(self.at("com.github.copilot/agents"))),
                          ["orchestrator.agent.md", "verifier.agent.md", "worker-summary.agent.md"])
 
-    def test_the_slot_of_a_second_worker_is_required(self):
+    def test_REQ_010_the_slot_of_a_second_worker_is_required(self):
         self.two_workers()
         os.remove(self.part("slots/worker-task.worker-summary.md"))
         self.assertMentions(self.refusal(), "{{slot:worker-task.worker-summary}}", "worker-summary.agent.md")
 
-    def test_the_workers_of_the_manifest_and_the_task_must_agree(self):
+    def test_REQ_010_the_workers_of_the_manifest_and_the_task_must_agree(self):
         self.edit_manifest(lambda m: m["workers"].append({"agent": "worker-summary", "label": "まとめる係"}))
         self.assertMentions(self.refusal(), "parts/manifest.json の workers", "parts/task.json の workers")
 
-    def test_bad_worker_entries_are_refused(self):
+    def test_BLUEPRINT_8_bad_worker_entries_are_refused(self):
         self.edit_manifest(lambda m: m["workers"].append({"agent": "helper", "label": "x"}))
         self.assertMentions(self.refusal(), "worker か worker-<名前>")
         self.setUp()
@@ -598,7 +599,7 @@ class Workers(Base):
         self.assertMentions(self.refusal(), "workers")
 
     @unittest.skipIf(yaml is None, "PyYAML がない")
-    def test_the_extra_tools_of_each_agent_are_added_to_its_tools(self):
+    def test_BLUEPRINT_8_the_extra_tools_of_each_agent_are_added_to_its_tools(self):
         def change(m):
             m["workers"][0]["extra_tools"] = ["srv/b", "srv/c"]
             m["verifier"]["extra_tools"] = ["srv/d"]
@@ -611,7 +612,7 @@ class Workers(Base):
         self.assertIn('  - "srv/d"\n---\n', verifier)                                     # 字下げのある差し込み口は、その字下げを引き継ぐ
 
     @unittest.skipIf(yaml is None, "PyYAML がない")
-    def test_the_extra_tools_of_a_second_worker_go_to_its_own_file_only(self):
+    def test_BLUEPRINT_8_the_extra_tools_of_a_second_worker_go_to_its_own_file_only(self):
         self.two_workers()
         self.edit_manifest(lambda m: m["workers"][1].update(extra_tools=["srv/summary"]))
         self.build()
@@ -620,7 +621,7 @@ class Workers(Base):
         self.assertEqual(frontmatter(self.read(agents + "worker.agent.md"))["tools"], ["read", "edit", "weekly-report_show"])
 
     @unittest.skipIf(yaml is None, "PyYAML がない")
-    def test_without_extra_tools_the_lists_are_clean(self):
+    def test_BLUEPRINT_8_without_extra_tools_the_lists_are_clean(self):
         self.build()
         agents = "com.github.copilot/agents/"
         self.assertNotIn("tools", frontmatter(self.read(agents + "orchestrator.agent.md")))   # 統括の定義には tools を書かない（V1 の不具合 1）
@@ -628,7 +629,7 @@ class Workers(Base):
         self.assertEqual(frontmatter(self.read(agents + "verifier.agent.md"))["tools"], ["read", "weekly-report_verdict"])
         self.assertNotIn("{{", self.read(agents + "verifier.agent.md"))
 
-    def test_extra_tools_with_no_place_in_the_template_are_refused(self):
+    def test_BLUEPRINT_8_extra_tools_with_no_place_in_the_template_are_refused(self):
         self.edit_manifest(lambda m: m["verifier"].update(extra_tools=["srv/a"]))
         path = self.tmpl("com.github.copilot/agents/verifier.agent.md")
         with open(path, encoding="utf-8") as f:
@@ -637,7 +638,7 @@ class Workers(Base):
         self.assertMentions(self.refusal(), "verifier.agent.md", "extra_tools", "srv/a")
 
     @unittest.skipIf(yaml is None, "PyYAML がない")
-    def test_the_orchestrator_has_no_tools_and_extra_tools_for_it_are_refused(self):
+    def test_BLUEPRINT_8_the_orchestrator_has_no_tools_and_extra_tools_for_it_are_refused(self):
         # 統括の定義に tools を書くと、Copilot CLI は子の作業・検証のツールも統括の範囲に絞る（V1 の不具合 1）。統括が使えるツールは、エクステンションが決める
         self.build()
         self.assertNotIn("tools", frontmatter(self.read("com.github.copilot/agents/orchestrator.agent.md")))
@@ -650,7 +651,7 @@ class Workers(Base):
         self.build()
         self.assertNotIn("{{", self.read("com.github.copilot/agents/orchestrator.agent.md"))
 
-    def test_the_orchestrator_gets_the_list_of_its_worker_agents(self):
+    def test_REQ_010_the_orchestrator_gets_the_list_of_its_worker_agents(self):
         self.build()
         orchestrator = self.read("com.github.copilot/agents/orchestrator.agent.md")
         self.assertIn("## 作業エージェント\n\n- `weekly-report:worker`：週報を書く係\n\n## 作業ごとの指示", orchestrator)
@@ -660,15 +661,15 @@ class Workers(Base):
         orchestrator = self.read("com.github.copilot/agents/orchestrator.agent.md")
         self.assertIn("- `weekly-report:worker`：週報を書く係\n- `weekly-report:worker-summary`：まとめる係\n", orchestrator)
 
-    def test_the_labels_of_the_workers_must_agree_between_the_manifest_and_the_task(self):
+    def test_REQ_031_the_labels_of_the_workers_must_agree_between_the_manifest_and_the_task(self):
         self.edit_task(lambda t: t["workers"][0].update(label="別の呼び名"))
         self.assertMentions(self.refusal(), "worker", "呼び名", "週報を書く係", "別の呼び名")
 
-    def test_a_label_must_be_one_line(self):
+    def test_BLUEPRINT_8_a_label_must_be_one_line(self):
         self.edit_manifest(lambda m: m["workers"][0].update(label="一行目\n二行目"))
         self.assertMentions(self.refusal(), "label", "1行")
 
-    def test_bad_tool_names_are_refused(self):
+    def test_BLUEPRINT_8_bad_tool_names_are_refused(self):
         self.edit_manifest(lambda m: m["workers"][0].update(extra_tools=["srv a", 5, "x,y"]))
         problems = self.refusal()
         self.assertMentions(problems, "ツールの名前として使えません")
@@ -750,13 +751,13 @@ class Criteria(Base):
         self.edit_task(lambda t: t.update(extra=1))
         self.assertMentions(self.refusal(), "決まりにない項目", "extra")
 
-    def test_the_shape_check_is_left_to_stage_one_when_the_checker_is_missing(self):
+    def test_REQ_031_the_shape_check_is_left_to_stage_one_when_the_checker_is_missing(self):
         self.edit_task(lambda t: t.pop("displays"))
         with mock.patch.object(scaffold, "load_checks", return_value=None):
             result = self.build()
         self.assertTrue(any("1段目" in w for w in result["warnings"]))
 
-    def test_a_missing_task_is_refused(self):
+    def test_REQ_031_a_missing_task_is_refused(self):
         os.remove(self.part("task.json"))
         self.assertMentions(self.refusal(), "parts/task.json", "ありません")
 
@@ -809,7 +810,7 @@ class EvalFiles(Base):
         result = self.build()
         self.assertTrue(any("C-02" in w and "どの EVAL の課題にも入っていません" in w for w in result["warnings"]))
 
-    def test_other_json_files_are_copied_as_they_are(self):
+    def test_BLUEPRINT_8_other_json_files_are_copied_as_they_are(self):
         raw = '{"b":1,   "a":[1,2]}'
         self.write(self.part("files/data/raw.json"), raw)
         self.build()
@@ -896,11 +897,11 @@ class EvalInputs(Base):
         self.confirm_real({"from": a, "to": "tests/eval/T-01/inputs/from-template.txt"})
         self.assertMentions(self.refusal(), "from-template.txt", "書き換えられません")
 
-    def test_eval_inputs_must_be_a_list(self):
+    def test_REQ_038_eval_inputs_must_be_a_list(self):
         self.edit_manifest(lambda m: m.update(eval_inputs="x"))
         self.assertMentions(self.refusal(), "eval_inputs", "一覧")
 
-    def test_without_eval_inputs_nothing_is_copied(self):
+    def test_REQ_038_without_eval_inputs_nothing_is_copied(self):
         result = self.build()
         self.assertEqual(result["eval_inputs"], [])
 
@@ -1067,7 +1068,7 @@ class Knowledge(Base):
         self.assertNotIn("K-05", text)
         self.assertEqual(result["knowledge"], {"criterion": 2, "other": 2})
 
-    def test_the_item_falls_back_to_the_key_when_the_name_is_missing(self):
+    def test_REQ_039_the_item_falls_back_to_the_key_when_the_name_is_missing(self):
         def change(s):
             for k in s["knowledge"]:
                 k.pop("itemName", None)
@@ -1087,7 +1088,7 @@ class Knowledge(Base):
         self.edit_state(lambda s: s["knowledge"][5].update(id="K-01"))
         self.assertMentions(self.refusal(), "K-01", "番号が重なっています")
 
-    def test_the_knowledge_list_may_be_missing_or_wrong(self):
+    def test_REQ_039_the_knowledge_list_may_be_missing_or_wrong(self):
         self.edit_state(lambda s: s.update(knowledge="x"))
         self.assertMentions(self.refusal(), "knowledge が一覧ではありません")
 
@@ -1095,19 +1096,19 @@ class Knowledge(Base):
 class PartsFiles(Base):
     """そのまま足すファイル（parts/files/）。"""
 
-    def test_the_files_are_copied_as_they_are(self):
+    def test_BLUEPRINT_8_the_files_are_copied_as_they_are(self):
         self.build()
         for rel in ("scripts/summarize.py", "tests/stage2/task/test_summarize.py", "tests/eval/T-01/inputs/memo.txt"):
             with open(os.path.join(SAMPLE, "parts", "files", *rel.split("/")), "rb") as a:
                 self.assertEqual(a.read(), self.read_bytes(rel), rel)
 
     @unittest.skipIf(os.name == "nt", "実行の許可の印は Windows にない")
-    def test_the_executable_mark_of_a_file_is_kept(self):
+    def test_BLUEPRINT_8_the_executable_mark_of_a_file_is_kept(self):
         os.chmod(self.part("files/scripts/summarize.py"), 0o755)
         self.build()
         self.assertTrue(os.access(self.at("scripts/summarize.py"), os.X_OK))
 
-    def test_files_may_not_overwrite_the_files_of_the_template_or_the_generated_files(self):
+    def test_creator_structure_4_1_files_may_not_overwrite_the_files_of_the_template_or_the_generated_files(self):
         for rel in ("README.md", "tests/knowledge.json", "com.github.copilot/extensions/weekly-report/task.json", "plugin.json",
                     "com.github.copilot/extensions/weekly-report/core/index.mjs"):
             with self.subTest(rel=rel):
@@ -1116,14 +1117,14 @@ class PartsFiles(Base):
                 problems = self.refusal()
                 self.assertMentions(problems, rel, "書き換えられません")
 
-    def test_a_new_file_may_be_added_even_in_a_folder_of_the_template(self):
+    def test_BLUEPRINT_8_a_new_file_may_be_added_even_in_a_folder_of_the_template(self):
         self.write(self.part("files/docs/extra.md"), "足した文書")
         self.write(self.part("files/mcp.json"), '{"mcpServers": {}}')
         self.build()
         self.assertEqual(self.read("docs/extra.md"), "足した文書")
         self.assertTrue(os.path.isfile(self.at("mcp.json")))
 
-    def test_symlinks_and_git_folders_are_refused(self):
+    def test_REQ_004_symlinks_and_git_folders_are_refused(self):
         try:
             os.symlink("/etc/hostname", self.part("files/link.txt"))
         except (OSError, NotImplementedError):
@@ -1133,7 +1134,7 @@ class PartsFiles(Base):
         problems = self.refusal()
         self.assertMentions(problems, "link.txt", "シンボリックリンク", ".git")
 
-    def test_a_symlinked_folder_is_refused(self):
+    def test_REQ_004_a_symlinked_folder_is_refused(self):
         elsewhere = os.path.join(self.root, "elsewhere")
         os.makedirs(elsewhere)
         try:
@@ -1142,14 +1143,14 @@ class PartsFiles(Base):
             self.skipTest("シンボリックリンクを作れない環境")
         self.assertMentions(self.refusal(), "linkdir", "シンボリックリンク")
 
-    def test_caches_in_the_parts_are_ignored(self):
+    def test_BLUEPRINT_8_caches_in_the_parts_are_ignored(self):
         self.write(self.part("files/scripts/__pycache__/a.pyc"), "x")
         self.write(self.part("files/.DS_Store"), "x")
         self.build()
         self.assertFalse(os.path.exists(self.at("scripts/__pycache__")))
         self.assertFalse(os.path.exists(self.at(".DS_Store")))
 
-    def test_text_in_the_files_is_not_touched_even_if_it_looks_like_a_placeholder(self):
+    def test_BLUEPRINT_8_text_in_the_files_is_not_touched_even_if_it_looks_like_a_placeholder(self):
         self.write(self.part("files/scripts/template.txt"), "{{plugin_name}} と {{slot:x}}\n")
         self.build()
         self.assertEqual(self.read("scripts/template.txt"), "{{plugin_name}} と {{slot:x}}\n")
@@ -1158,15 +1159,15 @@ class PartsFiles(Base):
 class TemplateProblems(Base):
     """ひな形が足りないとき。"""
 
-    def test_a_template_without_the_entry_skill_folder_is_refused(self):
+    def test_creator_structure_2_a_template_without_the_entry_skill_folder_is_refused(self):
         shutil.rmtree(self.tmpl("skills/_entry_"))
         self.assertMentions(self.refusal(), "skills/_entry_/", "ひな形")
 
-    def test_a_template_without_the_extension_folder_is_refused(self):
+    def test_creator_structure_2_a_template_without_the_extension_folder_is_refused(self):
         shutil.rmtree(self.tmpl("com.github.copilot/extensions/_plugin_"))
         self.assertMentions(self.refusal(), "extensions/_plugin_/", "ひな形")
 
-    def test_a_template_without_the_worker_agent_is_refused(self):
+    def test_creator_structure_2_a_template_without_the_worker_agent_is_refused(self):
         os.remove(self.tmpl("com.github.copilot/agents/worker.agent.md"))
         self.assertMentions(self.refusal(), "worker.agent.md", "ひな形")
 
@@ -1218,7 +1219,7 @@ class BaseCheck(Base):
         self.assertFalse(os.path.exists(self.at(self.EXT + "ui/new")))   # 空になったフォルダも片付ける
         self.assertTrue(self.check()["ok"])
 
-    def test_files_outside_the_base_folders_are_left_alone(self):
+    def test_REQ_039_files_outside_the_base_folders_are_left_alone(self):
         self.build()
         self.write(self.at(self.EXT + "notes.md"), "作業ごとの部品")
         self.append(self.at(self.EXT + "task.json"), " ")
@@ -1226,12 +1227,12 @@ class BaseCheck(Base):
         result = self.check()
         self.assertTrue(result["ok"], result["differences"])
 
-    def test_caches_are_not_a_difference(self):
+    def test_REQ_039_caches_are_not_a_difference(self):
         self.build()
         self.write(self.at(self.EXT + "core/__pycache__/x.pyc"), "x")
         self.assertTrue(self.check()["ok"])
 
-    def test_the_base_needs_a_readable_plugin_json_and_the_extension_folder(self):
+    def test_REQ_039_the_base_needs_a_readable_plugin_json_and_the_extension_folder(self):
         self.build()
         os.remove(self.at("plugin.json"))
         with self.assertRaises(scaffold.Refusal) as caught:
@@ -1242,7 +1243,7 @@ class BaseCheck(Base):
             self.check()
         self.assertMentions(caught.exception.problems, "土台のフォルダ", "other-name")
 
-    def test_a_missing_plugin_folder_is_refused(self):
+    def test_REQ_039_a_missing_plugin_folder_is_refused(self):
         with self.assertRaises(scaffold.Refusal) as caught:
             scaffold.check_base(os.path.join(self.root, "nothing"), template=self.template)
         self.assertMentions(caught.exception.problems, "ありません")
@@ -1257,7 +1258,7 @@ class Cli(Base):
             code = scaffold.main(list(argv))
         return code, json.loads(out.getvalue()), err.getvalue()
 
-    def test_build_prints_one_json_document_and_exits_with_zero(self):
+    def test_BLUEPRINT_9_build_prints_one_json_document_and_exits_with_zero(self):
         code, data, _err = self.run_main("build", "--hearing", self.state, "--work", self.work, "--out", self.out)
         self.assertEqual(code, 0)
         self.assertTrue(data["ok"])
@@ -1266,7 +1267,7 @@ class Cli(Base):
         self.assertEqual(data["warnings"], [])
         self.assertEqual(len(data["commit"]), 40)
 
-    def test_a_refusal_prints_the_problems_in_japanese_and_exits_with_one(self):
+    def test_BLUEPRINT_9_a_refusal_prints_the_problems_in_japanese_and_exits_with_one(self):
         self.edit_state(lambda s: s.update(stage="item_check"))
         code, data, _err = self.run_main("build", "--hearing", self.state, "--work", self.work, "--out", self.out)
         self.assertEqual(code, 1)
@@ -1274,7 +1275,7 @@ class Cli(Base):
         self.assertMentions(data["problems"], "「生成」ではありません")
         self.assertFalse(os.path.exists(self.out))
 
-    def test_check_base_prints_the_differences_and_exits_with_one(self):
+    def test_BLUEPRINT_9_check_base_prints_the_differences_and_exits_with_one(self):
         self.run_main("build", "--hearing", self.state, "--work", self.work, "--out", self.out)
         code, data, _err = self.run_main("check-base", "--out", self.out)
         self.assertEqual((code, data["ok"]), (0, True))
@@ -1286,16 +1287,16 @@ class Cli(Base):
         self.assertEqual((code, data["ok"]), (0, True))
         self.assertEqual(len(data["restored"]), 1)
 
-    def test_check_base_of_a_missing_folder_exits_with_one(self):
+    def test_BLUEPRINT_9_check_base_of_a_missing_folder_exits_with_one(self):
         code, data, _err = self.run_main("check-base", "--out", os.path.join(self.root, "nothing"))
         self.assertEqual((code, data["ok"]), (1, False))
 
-    def test_a_wrong_usage_exits_with_two(self):
+    def test_BLUEPRINT_9_a_wrong_usage_exits_with_two(self):
         with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit) as caught:
             scaffold.main(["build", "--hearing", self.state])
         self.assertEqual(caught.exception.code, 2)
 
-    def test_an_unexpected_error_is_reported_as_json_too(self):
+    def test_BLUEPRINT_9_an_unexpected_error_is_reported_as_json_too(self):
         with mock.patch.object(scaffold, "load_state", side_effect=RuntimeError("こわれた")):
             out, err = io.StringIO(), io.StringIO()
             with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
@@ -1303,7 +1304,7 @@ class Cli(Base):
         self.assertEqual(code, 1)
         self.assertMentions(json.loads(out.getvalue())["problems"], "予期しない誤り", "こわれた")
 
-    def test_the_script_runs_alone_with_isolated_python(self):
+    def test_BLUEPRINT_9_the_script_runs_alone_with_isolated_python(self):
         done = subprocess.run([sys.executable, "-I", SCRIPT, "check-base", "--out", os.path.join(self.root, "nothing")],
                               capture_output=True, text=True, encoding="utf-8")
         self.assertEqual(done.returncode, 1)
@@ -1435,12 +1436,41 @@ class RealTemplate(Base):
         self.assertEqual(run()[0], 0)
 
     @unittest.skipIf(missing_parts(), "本物のひな形に、作業・検証のエージェントの定義がまだない（B2 の後に動く）")
-    def test_the_real_script_builds_with_the_real_template(self):
+    def test_REQ_001_the_real_script_builds_with_the_real_template(self):
         done = subprocess.run([sys.executable, "-I", SCRIPT, "build", "--hearing", self.state, "--work", self.work, "--out", self.out],
                               capture_output=True, text=True, encoding="utf-8")
         self.assertEqual(done.returncode, 0, done.stdout)
         self.assertTrue(json.loads(done.stdout)["ok"])
         self.assertTrue(os.path.isdir(self.at(".git")))
+
+
+
+class Naming(unittest.TestCase):
+    """試験の名前は、確かめる要件の番号（REQ-nnn）か、要件でない設計の決まりなら設計書の節の印を持つ（X2-10、憲章 第6条3項）。"""
+
+    MARK = re.compile(r"^test_(REQ_(\d{3})|BLUEPRINT_\d+|creator_structure_\d+(?:_\d+)?|generated_plugin_structure_\d+(?:_\d+)?)_\w+$")
+
+    def test_creator_structure_2_every_test_name_has_a_requirement_number_or_a_design_marker(self):
+        with open(os.path.abspath(__file__), encoding="utf-8") as f:
+            names = re.findall(r"^    def (test_\w+)\(self", f.read(), re.M)
+        self.assertGreater(len(names), 100)
+        self.assertEqual([n for n in names if not self.MARK.match(n)], [])
+
+    def test_creator_structure_2_the_requirement_numbers_in_the_test_names_are_in_the_specs(self):
+        known = set()
+        for name in os.listdir(os.path.join(REPO, "docs", "specs")):
+            with open(os.path.join(REPO, "docs", "specs", name), encoding="utf-8") as f:
+                known.update(re.findall(r"^### REQ-(\d{3}) ", f.read(), re.M))
+        with open(os.path.abspath(__file__), encoding="utf-8") as f:
+            used = set(re.findall(r"^    def test_REQ_(\d{3})_", f.read(), re.M))
+        self.assertGreater(len(used), 5)
+        self.assertEqual(sorted(used - known), [])
+
+    def test_creator_structure_2_the_naming_check_finds_a_name_without_a_marker(self):
+        self.assertIsNone(self.MARK.match("test_a_slot_is_filled"))
+        self.assertIsNone(self.MARK.match("test_REQ_21_short"))
+        self.assertTrue(self.MARK.match("test_REQ_021_ok"))
+        self.assertTrue(self.MARK.match("test_creator_structure_4_1_ok"))
 
 
 if __name__ == "__main__":
