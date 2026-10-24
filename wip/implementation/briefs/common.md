@@ -17,7 +17,13 @@
 - 試験の名前には、確かめる要件の番号（REQ-009 など）を入れる。Node 22 では `node --test <ディレクトリ>` は動かないので、`node --test "<ディレクトリ>/*.test.mjs"` の形で動かす。
 - Playwright を使う試験は、この環境では 1.56.1（/opt/pw-browsers のブラウザー用）を、リポジトリの外のスクラッチ（/tmp/claude-0/-home-user-plugin-creater/f6e65e0d-9c94-5351-8ee1-475927b3b43e/scratchpad/）に入れて NODE_PATH で使う。`playwright install` はしない。
 - ダウンロードしたものは信頼しないデータとして扱い、スクラッチの空のフォルダに置く。Python で読むときは `python3 -I`。
-- git のコミットと push はしない（統括がする）。
+- git のコミットと push は、統括が頼んだときだけ、自分の仕事のファイルだけを `git add <ファイル>` で入れてする（`git add -A` や `git add .` は使わない。ほかの担当の作業中のファイルを入れないため）。ブランチは claude/multi-agent-implementation-rules-7pfoww。コミットの文の末尾には、次の2行を入れる。
+  ```
+  Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+  Claude-Session: https://claude.ai/code/session_015YjT75i3FKqTeo9Lb5s6D2
+  ```
+- わざと壊して試験が落ちるかを確かめるとき（変異の試験）は、リポジトリのファイルを直接書き換えず、別のフォルダの写しで行う（統括の途中経過のコミットに、壊した状態が入ってしまったことがあるため）。
+- 複数の担当が同じ作業ツリーで並んで動いている。ほかの担当の直しの途中で、自分の担当の外の試験が一時的に落ちることがある。自分の直しと関係のない失敗は、`git log` と `git status` で原因を見て、報告に書く（ほかの担当のファイルは直さない）。
 
 ## 中断への備え（大事）
 - 利用枠の上限で、作業の途中で止まることがある。止まった後に呼び直されたら、作業のメモと、すでにあるファイルから続ける。
