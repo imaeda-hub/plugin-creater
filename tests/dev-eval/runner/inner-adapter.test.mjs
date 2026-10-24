@@ -225,7 +225,6 @@ test('REQ-012 統括の実行の終わり：結果が成功なら completed（�
   await startRun(adapter);
   queries[0].push({ type: 'assistant', message: { model: 'claude-sonnet-5-5', content: [{ type: 'text', text: '最後の返事' }] } });
   queries[0].push({ type: 'result', subtype: 'success', is_error: false, result: '最後の返事', total_cost_usd: 0.25, num_turns: 4 });
-  await adapter.whenRunsEnded().catch(() => {});
   queries[0].end();
   await adapter.whenRunsEnded();
   const completed = neutral().find((e) => e.type === 'agent.completed');
