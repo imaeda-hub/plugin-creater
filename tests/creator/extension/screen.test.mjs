@@ -10,7 +10,7 @@ import path from 'node:path';
 import { describe, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
-import { EXTENSION_DIR, TEMPLATE_EXTENSION_DIR, confirmArgs, internalSymbolsIn, knowledge, readyToConfirm, tempDir, withRun } from './helpers.mjs';
+import { EXTENSION_DIR, TEMPLATE_EXTENSION_DIR, confirmArgs, internalSymbolsIn, knowledge, readyToConfirm, startForTest, tempDir, withRun } from './helpers.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
@@ -257,17 +257,60 @@ describe('クリエイターの画面のサーバー', () => {
           prompt: '今週の週報を作ってください。',
           inputs: [{ path: 'inputs/前回の週報.docx', provisional: true }, { path: 'inputs/実績.xlsx', provisional: false }],
           criteria: [{ id: 'K-02', text: '見出しが「今週の実績」「来週の予定」の順に並んでいれば合格' }],
-          settings: { maxIterations: 2, task: { week: '2026-W42', style: '詳細' } },
+          // 作業ごとの設定は、案の設定の見出し（label）を添えて出す（X4-13）
+          settings: { maxIterations: 2, task: [{ key: 'week', label: '対象の週', value: '2026-W42' }, { key: 'style', label: '書き方', value: '詳細' }] },
         },
         {
           prompt: '先週の分も作ってください。',
           inputs: [],
           criteria: [{ id: 'K-02', text: '見出しが「今週の実績」「来週の予定」の順に並んでいれば合格' }],
-          settings: {},
+          settings: { task: [] },
         },
       ]);
       assert.equal(c.rebuild, null);
     });
+  });
+
+  test('REQ-038 REQ-024 課題の設定の値は、案の設定の見出しで出る。見出しが取れないもの（古い記録、見出しのない設定）だけ、名前（key）のまま出る（X4-13）', async () => {
+    const home = tempDir('label-home');
+    const cwd = tempDir('label-cwd');
+    try {
+      const first = await startForTest({ sessionId: 'session-label', home, cwd });
+      await readyToConfirm(first);
+      await first.call('confirm', confirmArgs({ evalTasks: [{ prompt: '頼む', criteria: ['K-02'], settings: { task: { week: '2026-W42', style: '詳細' } } }] }));
+      const file = first.statePath();
+      const state = first.readState();
+      await first.cleanup();
+
+      const labelsOf = async (settingLabels) => {
+        const next = structuredClone(state);
+        if (settingLabels === undefined) delete next.confirmation.settingLabels;
+        else next.confirmation.settingLabels = settingLabels;
+        fs.writeFileSync(file, JSON.stringify(next));
+        const run = await startForTest({ sessionId: 'session-label', home, cwd });
+        try {
+          return (await viewOf(await openScreen(run))).confirmation.evalTasks[0].settings.task;
+        } finally {
+          await run.cleanup();
+        }
+      };
+      assert.deepEqual(await labelsOf(state.confirmation.settingLabels), [
+        { key: 'week', label: '対象の週', value: '2026-W42' },
+        { key: 'style', label: '書き方', value: '詳細' },
+      ]);
+      // 見出しが一部ない・まったくない（この直しの前の記録）：ないものだけ、名前のまま
+      assert.deepEqual(await labelsOf({ week: '対象の週' }), [
+        { key: 'week', label: '対象の週', value: '2026-W42' },
+        { key: 'style', label: 'style', value: '詳細' },
+      ]);
+      assert.deepEqual(
+        (await labelsOf(undefined)).map((item) => item.label),
+        ['week', 'style'],
+      );
+    } finally {
+      fs.rmSync(home, { recursive: true, force: true });
+      fs.rmSync(cwd, { recursive: true, force: true });
+    }
   });
 
   test('REQ-044 作り直しのとき、引き継ぐことと変わることも画面の状態にある', async () => {

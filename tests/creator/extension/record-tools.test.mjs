@@ -685,6 +685,15 @@ describe('課題の設定の値（plugin-creator_confirm の evalTasks.settings�
   test('REQ-038 REQ-020 課題ごとの、作業の画面に入れる設定の値（繰り返しの上限と作業ごとの設定）を渡すと、記録に残る。省くと空のまとまり', async () => {
     await withRun(async (run) => {
       await readyToConfirm(run);
+      // 案の設定：対象の週（文字）、書き方（選択肢）、厳しく見る（チェック）、件数（数）
+      writeDraft(run.cwd, {
+        settings: [
+          { key: 'week', label: '対象の週', type: 'text', default: '', required: true },
+          { key: 'style', label: '書き方', type: 'select', default: '簡易', options: ['簡易', '詳細'] },
+          { key: 'strict', label: '厳しく見る', type: 'checkbox', default: false },
+          { key: 'count', label: '件数', type: 'number', default: 3 },
+        ],
+      });
       await run.call('confirm', confirmArgs({
         evalTasks: [
           task({ maxIterations: 2, task: { week: '2026-W42', style: '詳細', strict: true, count: 3 } }),
@@ -698,6 +707,61 @@ describe('課題の設定の値（plugin-creator_confirm の evalTasks.settings�
         run.readState().confirmation.evalTasks.map((t) => t.settings),
         [{ maxIterations: 2, task: { week: '2026-W42', style: '詳細', strict: true, count: 3 } }, { task: { week: '2026-W43' } }, { maxIterations: 5 }, {}, {}],
       );
+      // 案の設定の見出し（label）も残す。画面に、英字の名前（key）でなく見出しで出すため（X4-13）
+      assert.deepEqual(run.readState().confirmation.settingLabels, { week: '対象の週', style: '書き方', strict: '厳しく見る', count: '件数' });
+    });
+  });
+
+  test('REQ-038 設定の値の名前（key）が作業の定義の案の設定にない・値の型や選択肢が合わない・必須の設定に値がないときは、何が違うかと案にある名前を返して断る。確認は受け付けない（X4-04）', async () => {
+    await withRun(async (run) => {
+      await readyToConfirm(run);
+      writeDraft(run.cwd, {
+        settings: [
+          { key: 'week', label: '対象の週', type: 'text', default: '', required: true },
+          { key: 'style', label: '書き方', type: 'select', default: '簡易', options: ['簡易', '詳細'] },
+          { key: 'strict', label: '厳しく見る', type: 'checkbox', default: false },
+          { key: 'count', label: '件数', type: 'number', default: 3 },
+          { key: 'report', label: '週報の場所', type: 'path', default: '' },
+        ],
+      });
+      const cases = [
+        // 名前が案にない（書き間違い）：案にある名前を示す
+        [{ weeks: '2026-W42' }, [/作業ごとの設定「weeks」が、画面と合格の条件の設定の案の設定にありません（案にある設定の名前：week、style、strict、count、report）。/, /必須の設定「対象の週」（week）の値がありません/]],
+        // 型が合わない
+        [{ week: 202642 }, [/課題 1 の作業ごとの設定「week」の値は、文字で渡してください。/]],
+        [{ week: 'W42', count: '3' }, [/「count」の値は、数で渡してください。/]],
+        [{ week: 'W42', strict: 'true' }, [/「strict」の値は、true か false で渡してください。/]],
+        [{ week: 'W42', report: 5 }, [/「report」の値は、文字で渡してください。/]],
+        // 選択肢にない
+        [{ week: 'W42', style: '超詳細' }, [/「style」の値 「超詳細」 が、案の選択肢（簡易、詳細）にありません。/]],
+        // 必須で初めの値のない設定に値がない（空の文字も同じ）
+        [{ style: '詳細' }, [/必須の設定「対象の週」（week）の値がありません（案に初めの値がないので、画面で開始できません）。/]],
+        [{ week: '  ' }, [/必須の設定「対象の週」（week）の値がありません/]],
+      ];
+      for (const [given, patterns] of cases) {
+        const r = await run.callSafe('confirm', confirmArgs({ evalTasks: [task({ task: given })] }));
+        assert.equal(r.ok, false, JSON.stringify(given));
+        assert.match(r.error, /^課題の、作業の画面に入れる設定の値（settings\.task）が、画面と合格の条件の設定の案（.*task\.json）に合いません。直してから、もう一度知らせてください。/);
+        for (const pattern of patterns) assert.match(r.error, pattern, JSON.stringify(given));
+        assert.deepEqual(leftWordsIn(r.error), [], r.error);
+        assert.deepEqual(internalSymbolsIn(r.error), []);
+        assert.equal(run.readState().confirmation, null, '確認は受け付けない');
+      }
+      // 2つ目の課題の誤りは、2つ目と示す。1つ目が合っていても断る
+      const second = await run.callSafe('confirm', confirmArgs({ evalTasks: [task({ task: { week: 'W42' } }), task({ task: { week: 'W43', style: 'x' } })] }));
+      assert.match(second.error, /課題 2 の作業ごとの設定「style」の値/);
+      // 合っていれば受け付ける。設定の値を省いた課題や、task を省いた課題は、比べない（1段目と同じ）
+      const ok = await run.call('confirm', confirmArgs({ evalTasks: [task({ task: { week: 'W42', style: '詳細', strict: true, count: 2, report: 'inputs/a.docx' } }), task(), task({ maxIterations: 2 })] }));
+      assert.match(ok, /受け付けました/);
+    });
+  });
+
+  test('REQ-038 案の設定が1つもないときは、案にある設定の名前は「なし」と示す', async () => {
+    await withRun(async (run) => {
+      await readyToConfirm(run);
+      writeDraft(run.cwd, { settings: [] });
+      const r = await run.callSafe('confirm', confirmArgs({ evalTasks: [task({ task: { week: 'W42' } })] }));
+      assert.match(r.error, /「week」が、画面と合格の条件の設定の案の設定にありません（案にある設定の名前：（なし））。/);
     });
   });
 

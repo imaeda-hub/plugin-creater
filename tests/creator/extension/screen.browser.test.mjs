@@ -255,7 +255,8 @@ describe('クリエイターの画面（ブラウザー）', { skip: skipReason 
         assert.match(evalText, /inputs\/実績\.xlsx/);
         assert.match(evalText, /K-02：見出しが「今週の実績」「来週の予定」の順に並んでいれば合格/);
         // 作業の画面に入れる設定の値（X2-02）：値のある課題は一覧で、ない課題は「ない」と
-        assert.match(evalText, /この課題で作業の画面に入れる設定の値.*繰り返しの上限：2.*week：2026-W42.*style：詳細/);
+        assert.match(evalText, /この課題で作業の画面に入れる設定の値.*繰り返しの上限：2.*対象の週：2026-W42.*書き方：詳細/);
+        assert.ok(!/week：|style：/.test(evalText), '英字の名前（key）のまま出ていない');
         assert.match(evalText, /作業の画面に入れる設定の値はありません/);
         const criteriaRows = await view.page.locator('#s-confirm table').nth(1).evaluateAll((tables) => [...tables[0].querySelectorAll('tbody tr')].map((r) => [...r.cells].map((c) => c.textContent)));
         assert.deepEqual(criteriaRows, [['C-01', '見出しが「今週の実績」「来週の予定」の順に並んでいれば合格', 'K-02']]);

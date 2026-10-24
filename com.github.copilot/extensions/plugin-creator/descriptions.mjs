@@ -65,7 +65,7 @@ export const PARAM_DESCRIPTIONS = Object.freeze({
     'evalTasks.inputs.path': '入力のファイルの場所。実物のファイルは、その絶対パス。仮のファイル（`provisional` が true）は、生成プラグインの中の置き場所（`tests/eval/<課題の番号>/inputs/<名前>`）。',
     'evalTasks.inputs.provisional': '仮のファイルなら true',
     'evalTasks.criteria': '課題の合否の基準にするナレッジの番号の一覧。種類が「合否の決め方」のナレッジだけを入れる。',
-    'evalTasks.settings': '課題を動かすときに作業の画面に入れる設定の値（繰り返しの上限と、作業ごとの設定の値）。生成前の確認でユーザーに示したものを渡す。省くと、作業の定義の案の初めの値のまま動かす。',
+    'evalTasks.settings': '課題を動かすときに作業の画面に入れる設定の値（繰り返しの上限と、作業ごとの設定の値）。生成前の確認でユーザーに示す値を渡す。省くと、作業の定義の案の初めの値のまま動かす。',
     'evalTasks.settings.maxIterations': '繰り返しの上限（1以上の整数）。',
     'evalTasks.settings.task': '作業ごとの設定の値。作業の定義の案の設定の key と、その値（文字・数・真偽のどれか）の組。',
     rebuild: '作り直しのときだけ。引き継ぐことと、変わること。',
