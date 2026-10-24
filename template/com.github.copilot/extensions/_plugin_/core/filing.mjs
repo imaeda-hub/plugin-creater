@@ -6,6 +6,9 @@ import { newAttemptId, summarizeText } from './util.mjs';
 // Issue の起票（4.11）。画面で案ごとに承認すると、gh で起票する。
 // 順番待ちの列に入れるのは、印のファイルを作ることと、結果を印に書くことだけ。gh そのものは列の外で動かす。
 
+// 印を作れなかった（印の名前を変えられなかった）のは、同じ記録を見ているほかの Copilot CLI が、先に起票を始めたとき
+const OTHER_FILING_MESSAGE = 'ほかの Copilot CLI が、この案を起票しています。';
+
 export async function refreshCanFile(ctx) {
   const result = await checkCanFile({ pluginRoot: ctx.pluginRoot, ghCommand: ctx.ghCommand, clock: ctx.clock });
   ctx.canFile = result;
@@ -66,14 +69,14 @@ function prepareMarker(ctx, runId, issueId) {
     if (state === 'filing') return { ok: false, error: 'この案は、いま起票しています。' };
     // 失敗か、起票したか分からない。前の印の名前を変えて退ける（成功するのは 1 つのセッションだけ）
     if (!store.retireMarker(runId, issueId, newAttemptId())) {
-      return { ok: false, error: 'ほかのセッションが、この案を起票しています。' };
+      return { ok: false, error: OTHER_FILING_MESSAGE };
     }
     previousState = state;
   }
   const attempt = newAttemptId();
   const marker = { runId, issueId, attempt, state: 'filing', startedAt: ctx.clock.now(), url: null, reason: null };
   if (!store.createMarkerExclusive(runId, issueId, marker)) {
-    return { ok: false, error: 'ほかのセッションが、この案を起票しています。' };
+    return { ok: false, error: OTHER_FILING_MESSAGE };
   }
   return { ok: true, attempt, previousState };
 }

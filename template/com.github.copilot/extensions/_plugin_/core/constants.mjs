@@ -34,7 +34,7 @@ export const ACTIVE_STATUSES = Object.freeze(['starting', 'running', 'summarizin
 // 画面の文字になる決まった文（REQ-007 の文言）
 export const AUTO_NOTICE = 'Auto のため、役割ごとのモデルが効かないことがあります';
 export const OVERRIDE_NOTICE =
-  '実行が終わると、このセッションでほかのサブエージェントに設定したモデルの上書きも消えます。';
+  '実行が終わると、このチャットでほかのエージェントに設定したモデルの指定も消えます。';
 export const CLEAR_NOTICE = '実行中は /clear を使わないでください。実行が途中で切れます。';
 export const CHAT_CONFIRM_NOTICE =
   '実行中にエージェントが確認（ツールの許可、AI クレジットの上限、質問）を求めたときは、このチャットで答えてください。画面には、確認を待っていることが出ます。';

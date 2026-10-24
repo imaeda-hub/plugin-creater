@@ -102,6 +102,18 @@ gtest('REQ-014 2 つのセッションから同じ案を承認しても、1 件�
   assert.equal(b.state().previous.issues[0].filing.state, 'filed');
 });
 
+gtest('REQ-014 同じ記録を見ているほかの Copilot CLI が先に印を作っていたときは、「ほかの Copilot CLI が、この案を起票しています」と断り、起票しない', async (t) => {
+  const gh = newGh(t);
+  const h = await makeHarness(t, { gh });
+  const run = await finishedRun(h);
+  // ほかのプロセスが印を書いている途中（読めない形）。こちらは印を作れない
+  writeFileSync(markerFile(h, run.id, 'O1'), '{"runId":');
+  const message = await expectRefusal(h.core.fileIssue('O1'));
+  assert.equal(message, 'ほかの Copilot CLI が、この案を起票しています。');
+  assert.doesNotMatch(message, /セッション/, '説明のない言葉を使わない（REQ-025）');
+  assert.equal(createCalls(gh).length, 0);
+});
+
 gtest('REQ-014 準備中に開けた前の実行の案も、承認して起票できる', async (t) => {
   const gh = newGh(t);
   const h = await makeHarness(t, { gh });

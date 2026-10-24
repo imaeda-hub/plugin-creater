@@ -192,7 +192,8 @@ test('REQ-007 開始前の設定の初めの値は、エージェントの定義
   assert.deepEqual(setup.taskSettings.map((s) => s.key), ['week', 'items', 'tone', 'attach']);
   assert.equal(setup.isAuto, false);
   assert.equal(setup.autoNotice, null);
-  assert.match(setup.overrideNotice, /上書きも消えます/);
+  assert.match(setup.overrideNotice, /このチャットでほかのエージェントに設定したモデルの指定も消えます/);
+  assert.doesNotMatch(setup.overrideNotice, /セッション|サブエージェント/, '説明のない言葉を使わない（REQ-025）');
 });
 
 test('REQ-007 定義の model の最初が選べるモデルになければ、その次のものを使う。リストにないときは今のモデル', async (t) => {
