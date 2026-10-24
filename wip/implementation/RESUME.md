@@ -165,7 +165,7 @@
 | D1b 模擬ユーザー | a28af96a1b11b7fea（完了。週報・議事録・研修のアンケートの集計の3人） |
 | D1d 内側の EVAL | afe3eb2243185d726 |
 | D1c 外側の EVAL | af526bb1af09f9618 |
-| H1 見ない模擬ユーザー | ac4ca894931c3fb3d（tests/dev-eval/heldout/h1/ に作る。統括はこのフォルダの中身を読まない。git の出力も `grep -v heldout` で外して見る） |
+| H1 見ない模擬ユーザー | ac4ca894931c3fb3d（完了。形の確かめに通った。tests/dev-eval/heldout/h1/ に作る。統括はこのフォルダの中身を読まない。git の出力も `grep -v heldout` で外して見る） |
 | B3 の点検 | 4つとも完了（design 19件〔high 2〕、format 7件、models 24件〔high 1〕、language 34件） |
 | B3 を直す | ad474ab788e9b207f（完了。84件中81件を直した。上位の文書で直すこと14件は tasks/B3-fix.md） |
 | B1 | a7b491f44bb4b21eb（完了） |
