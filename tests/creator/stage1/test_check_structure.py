@@ -477,6 +477,46 @@ class Symlinks(Sandbox):
         self.make_link("docs/readme-link.md", self.path("README.md"))
         self.assertPasses("symlinks")
 
+    def make_real_venv(self):
+        """python3 -m venv tests/.venv と同じ仮想環境を作る。bin/python は外の Python へのリンクになる（Windows ではコピーなので飛ばす）"""
+        import venv
+        target = self.path("tests/.venv")
+        venv.create(target, with_pip=False, symlinks=True)
+        links = [os.path.join(d, f) for d, _, fs in os.walk(target) for f in fs if os.path.islink(os.path.join(d, f))]
+        outside = [p for p in links if not os.path.realpath(p).startswith(os.path.realpath(self.root))]
+        if not outside:
+            self.skipTest("この環境の仮想環境は、外の Python へのリンクを持たない")
+        return outside
+
+    def test_REQ_004_a_real_virtual_environment_in_tests_venv_does_not_fail_the_check(self):
+        outside = self.make_real_venv()
+        self.assertTrue(outside)   # 外を指すリンクが本当にある（調べていたら必ず不合格になっていた）
+        self.assertPasses("symlinks")
+        self.assertTrue(self.report().ok, [c.errors for c in self.report().checks if c.errors])
+
+    def test_REQ_004_links_inside_tests_node_modules_are_not_checked(self):
+        os.makedirs(self.path("tests/node_modules/pkg"))
+        self.make_link("tests/node_modules/pkg/escape", self.tmp)
+        self.make_link("tests/node_modules/escape-file", os.path.join(self.tmp, "nothing.txt"))
+        self.assertPasses("symlinks")
+
+    def test_REQ_004_only_those_two_folders_are_left_out(self):
+        self.make_real_venv()
+        outside = self.tmp
+        for link in ("tests/other-escape", "tests/stage2/escape", "docs/escape", "tests/venv-like/escape", ".venv-escape"):
+            os.makedirs(os.path.dirname(self.path(link)), exist_ok=True)
+            self.make_link(link, outside)
+        os.makedirs(self.path("node_modules"))
+        self.make_link("node_modules/escape", outside)   # 根の直下の node_modules は、除く2つではない
+        os.makedirs(self.path("tests/stage2/.venv"))
+        self.make_link("tests/stage2/.venv/escape", outside)   # 名前が同じでも、tests/ の直下でなければ除かない
+        problems = self.problems("symlinks")
+        self.assertEqual(7, len(problems), problems)
+        for link in ("tests/other-escape", "tests/stage2/escape", "docs/escape", "tests/venv-like/escape", ".venv-escape",
+                     "node_modules/escape", "tests/stage2/.venv/escape"):
+            self.assertTrue(any(p.startswith(link + ":") for p in problems), (link, problems))
+        self.assertFalse(any("tests/.venv" in p for p in problems), problems)
+
 
 class Task(Sandbox):
     TASK = EXT + "/task.json"
@@ -691,6 +731,12 @@ class Eval(Sandbox):
         self.assertPasses("eval")
         self.edit_json("%s/task.json" % EXT, lambda d: d["settings"][0].update({"default": "", "required": False}))
         self.assertPasses("eval")
+
+    def test_REQ_011_a_broken_task_definition_does_not_make_the_eval_check_crash(self):
+        for broken in (None, 5, {"a": 1}, [None, 3, {"key": 7}]):
+            self.edit_json("%s/task.json" % EXT, lambda d: d.update({"settings": broken}))
+            self.assertIsInstance(self.problems("eval"), list)   # 例外にならず、検査の結果が返る
+            self.assertTrue(self.problems("task"))   # 定義の誤りは task の試験が示す
 
     def test_REQ_011_eval_json_that_is_not_an_object_fails(self):
         self.write(self.EVAL, "[]")

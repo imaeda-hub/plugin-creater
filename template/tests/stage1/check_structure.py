@@ -658,9 +658,15 @@ def check_layout(ctx: Context, c: Check) -> None:
                 c.error("com.github.copilot/extensions/%s/: 入口のファイル（extension.mjs）がない" % entry)
 
 
+# Copilot CLI に読み込まれない、試験の道具の置き場所（git にも入れない。ひな形の .gitignore）。仮想環境の bin/python は
+# 外の Python へのリンクなので、中を調べると、仮想環境を作っただけで必ず不合格になる。調べないのはこの2つのフォルダだけ。
+TOOL_FOLDERS = (("tests", ".venv"), ("tests", "node_modules"))
+
+
 def check_symlinks(ctx: Context, c: Check) -> None:
+    tool_folders = {os.path.join(ctx.root, *parts) for parts in TOOL_FOLDERS}
     for directory, dirs, files in os.walk(ctx.root):
-        dirs[:] = [d for d in dirs if d != ".git"]
+        dirs[:] = [d for d in dirs if d != ".git" and os.path.join(directory, d) not in tool_folders]
         for entry in dirs + files:
             path = os.path.join(directory, entry)
             if os.path.islink(path) and not is_within(os.path.realpath(path), ctx.real_root):
@@ -933,7 +939,8 @@ def js_regex_errors(regexes: Regexes) -> Dict[str, str]:
 
 def settings_problems(task_def: Dict[str, Any], given: Dict[str, Any], label: str) -> List[str]:
     """課題の settings.task の値が、作業の定義の settings（画面の欄）に合うか。合わないと、EVAL が画面を操作できない。"""
-    defs = {d["key"]: d for d in task_def.get("settings", []) if isinstance(d, dict) and isinstance(d.get("key"), str)}
+    settings = task_def.get("settings")
+    defs = {d["key"]: d for d in settings if isinstance(d, dict) and isinstance(d.get("key"), str)} if isinstance(settings, list) else {}
     out = []
     for key, value in given.items():
         d = defs.get(key)
