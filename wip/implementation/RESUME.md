@@ -146,7 +146,8 @@
 | C1 | ad77758fe8b6dfff7（完了。続きとして、B3 の説明の文の取り込みと、候補の出どころを頼んだ） |
 | B3（書く） | a85fc7bf7ada9e044（完了。次は点検：briefs/review.md） |
 | B2 | ae0285d8193b30123（完了） |
-| B2 の点検 | design ab9b178fb21c516c7、format a601e2263da67d231、models a8867cdfa37807567、language af819d6c8db5a58b7。指摘は reviews/B2-<観点>.md。全部そろったら、直す担当（Opus）を立てる |
+| B2 の点検 | 4つとも完了（design 8件、format 6件、models 19件、language 9件。high はなし） |
+| B2 を直す | aacc17a8675d68a69（指示は briefs/fix.md。メモは tasks/B2-fix.md） |
 | B3 の点検 | 4つとも完了（design 19件〔high 2〕、format 7件、models 24件〔high 1〕、language 34件） |
 | B3 を直す | ad474ab788e9b207f（指示は briefs/fix.md。メモは tasks/B3-fix.md） |
 | B1 | a7b491f44bb4b21eb（完了） |
