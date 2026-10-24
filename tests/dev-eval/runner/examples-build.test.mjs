@@ -111,12 +111,13 @@ test('REQ-037 聞かれないと話さないナレッジを引き出した質問
   assert.deepEqual([...markedAnswers(r, null)], []);
 });
 
-test('REQ-037 会話例の Markdown：冒頭に、AI が演じた会話であること・クリエイターの版・日付。会話は全文', () => {
+test('REQ-037 会話例の Markdown：冒頭に、AI が演じた会話であること・plugin-creator の版・日付。会話は全文', () => {
   const r = record();
   const md = renderExample({ record: r, persona: weekly, pluginVersion: '0.1.0', date: '2026-10-25' });
   const head = md.split('\n').slice(0, 30).join('\n');
   assert.match(head, /^# 会話例：週報（営業チームのリーダー）/);
-  assert.match(head, /クリエイターの版：0\.1\.0/);
+  assert.match(head, /plugin-creator の版：0\.1\.0/);
+  assert.ok(!md.includes('クリエイターの版'), 'エンドユーザーが読む言葉は、画面と同じ plugin-creator にそろえる');
   assert.match(head, /会話を行った日：2026-10-25/);
   assert.match(head, /AI が演じたユーザー/);
   assert.match(head, /人と話すと、質問の数や順番が変わります/);
@@ -131,6 +132,10 @@ test('REQ-037 会話例の Markdown：冒頭に、AI が演じた会話である
   assert.ok(md.endsWith('\n') && !md.endsWith('\n\n'));
   assert.ok(hasVersionInHead(md, '0.1.0'));
   assert.ok(!hasVersionInHead(md, '0.2.0'));
+  // 「クリエイターの版」の古い書き方は受けない
+  assert.ok(!hasVersionInHead('# 会話例\n\nクリエイターの版：0.1.0\n'));
+  assert.ok(hasVersionInHead('# 会話例\n\nplugin-creator の版: v0.1.0\n', '0.1.0'));
+  assert.ok(!hasVersionInHead(`${'行\n'.repeat(40)}plugin-creator の版：0.1.0\n`));
   assert.throws(() => renderExample({ record: { ...r, creator: {} }, persona: weekly }), /版が分かりません/);
 });
 
@@ -139,7 +144,7 @@ test('REQ-037 作る：模擬ユーザーごとに 1 つのファイル。選ば
   const out = tmp('out');
   writeRecords(records, [record(), record({ arm: 'control' })]);
   fs.writeFileSync(path.join(out, 'human.md'), '# 人が書いた会話例\n');
-  fs.writeFileSync(path.join(out, 'old-persona.md'), `# 古い\n${GENERATED_MARK}\nクリエイターの版：0.0.1\n`);
+  fs.writeFileSync(path.join(out, 'old-persona.md'), `# 古い\n${GENERATED_MARK}\nplugin-creator の版：0.0.1\n`);
   const dry = await buildExamples({ recordInputs: [records], outDir: out, pluginVersion: '0.1.0', dryRun: true, clean: true });
   assert.equal(dry.written.length, 1);
   assert.ok(!fs.existsSync(path.join(out, 'weekly-report.md')), '--dry-run は書かない');
@@ -150,7 +155,7 @@ test('REQ-037 作る：模擬ユーザーごとに 1 つのファイル。選ば
   assert.equal(result.skipped.length, 1);
   assert.deepEqual(result.removed.map((f) => path.basename(f)), ['old-persona.md']);
   assert.ok(fs.existsSync(path.join(out, 'human.md')), '人が書いたファイルは消さない');
-  assert.match(fs.readFileSync(path.join(out, 'weekly-report.md'), 'utf8'), /クリエイターの版：0\.1\.0/);
+  assert.match(fs.readFileSync(path.join(out, 'weekly-report.md'), 'utf8'), /plugin-creator の版：0\.1\.0/);
   await assert.rejects(() => buildExamples({ recordInputs: [out], outDir: out, pluginVersion: '0.1.0' }), /記録（schema が outer-record\/1 の JSON）が見つかりません/);
   fs.rmSync(records, { recursive: true, force: true });
   fs.rmSync(out, { recursive: true, force: true });

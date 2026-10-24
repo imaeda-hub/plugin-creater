@@ -8,7 +8,8 @@
 //   - 話し方は normal（既定。--style で変えられる）
 //   - クリエイターの版が、今の plugin.json の版と同じ（版を上げるたびに、その版の会話から作り直す）
 //   - 見ない模擬ユーザー（heldout）の会話は載せない（読めば、見ない模擬ユーザーではなくなるため）
-// 冒頭に、AI が演じたユーザーとの会話であることと、クリエイターの版と日付を書く（冒頭 30 行に「クリエイターの版：x.y.z」。A3 の 1段目が突き合わせる）。
+// 冒頭に、AI が演じたユーザーとの会話であることと、plugin-creator の版と日付を書く（冒頭 30 行に「plugin-creator の版：x.y.z」。A3 の 1段目が突き合わせる）。
+// 会話例はエンドユーザーが README と画面から読むので、書く言葉は画面と同じ「plugin-creator」にする（仕様 REQ-037 の「クリエイターの版」は開発者の用語）。
 // 聞かれないと話さないナレッジを引き出した質問には印を付ける（6.3 の記録：ナレッジごとの聞いたか・答えたか）。
 // 置き場所はクリエイターのスキルのフォルダの外（既定は examples/）。変換スクリプトが、置き換えた版から外す。
 //
@@ -123,7 +124,7 @@ export function renderExample({ record, persona, date, pluginVersion }) {
     '',
     GENERATED_MARK,
     '',
-    `クリエイターの版：${version}`,
+    `plugin-creator の版：${version}`,
     `会話を行った日：${date ?? record.startedAt?.slice(0, 10)}`,
     '',
     'この会話は、AI が演じたユーザーと plugin-creator の会話です。人と話すと、質問の数や順番が変わります。',
@@ -150,10 +151,10 @@ export function renderExample({ record, persona, date, pluginVersion }) {
   return `${lines.join('\n').replace(/\n{3,}/g, '\n\n').trimEnd()}\n`;
 }
 
-/** 会話例の冒頭 30 行に、クリエイターの版があるか（A3 の 1段目の見方と同じ） */
+/** 会話例の冒頭 30 行に、plugin-creator の版があるか（A3 の 1段目の見方と同じ。「クリエイターの版」の書き方は受けない） */
 export function hasVersionInHead(markdown, version) {
   const head = markdown.split('\n').slice(0, EXAMPLE_HEAD_LINES).join('\n');
-  const m = /クリエイターの版[：:]\s*`?v?(\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?)/.exec(head);
+  const m = /plugin-creator の版[：:]\s*`?v?(\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?)/.exec(head);
   return m !== null && (version === undefined || m[1] === version);
 }
 
@@ -173,7 +174,7 @@ export async function buildExamples({ recordInputs, outDir, pluginVersion, style
   for (const [id, item] of selected) {
     const persona = await loadPersonaById(id);
     const markdown = renderExample({ record: item.record, persona, pluginVersion, date: item.record.startedAt?.slice(0, 10) });
-    if (!hasVersionInHead(markdown, pluginVersion)) throw new ExamplesError('no_version', `会話例 ${id} の冒頭に、クリエイターの版が書かれていません。`);
+    if (!hasVersionInHead(markdown, pluginVersion)) throw new ExamplesError('no_version', `会話例 ${id} の冒頭に、「plugin-creator の版：x.y.z」が書かれていません。`);
     const file = path.join(outDir, `${id}.md`);
     if (!dryRun) {
       fs.mkdirSync(outDir, { recursive: true });

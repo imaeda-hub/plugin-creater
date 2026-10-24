@@ -38,7 +38,7 @@ class Creator(unittest.TestCase):
             "name": "plugin-creator", "version": "0.3.0", "description": "見本"}))
         self.write("skills/make-plugin/SKILL.md", SKILL_HEAD + "# 手順\n\nこの段階の始めに `references/stage1.md` を読む。\n")
         self.write("skills/make-plugin/references/stage1.md", "問いの型\n")
-        self.write("examples/weekly-report.md", "# 会話例\n\nAI が演じたユーザーとの会話です。\nクリエイターの版：0.3.0（2026-10-22）\n")
+        self.write("examples/weekly-report.md", "# 会話例\n\nAI が演じたユーザーとの会話です。\nplugin-creator の版：0.3.0（2026-10-22）\n")
 
     def tearDown(self):
         shutil.rmtree(self.root, ignore_errors=True)
@@ -183,34 +183,39 @@ class ExamplesVersion(Creator):
         self.assertEqual([], self.problems("examples-version"))
 
     def test_REQ_037_old_version_fails_and_names_the_file(self):
-        self.write("examples/weekly-report.md", "クリエイターの版：0.2.0\n")
+        self.write("examples/weekly-report.md", "plugin-creator の版：0.2.0\n")
         self.assertFailsWith("examples-version", "examples/weekly-report.md", "0.2.0", "0.3.0", "作り直す")
 
     def test_REQ_037_every_example_is_checked(self):
-        self.write("examples/second.md", "クリエイターの版：0.1.0\n")
+        self.write("examples/second.md", "plugin-creator の版：0.1.0\n")
         problems = self.problems("examples-version")
         self.assertEqual(1, len(problems), problems)
         self.assertIn("second.md", problems[0])
 
     def test_REQ_037_version_label_is_required(self):
         self.write("examples/weekly-report.md", "# 会話例\n\n0.3.0 のときの会話\n")
-        self.assertFailsWith("examples-version", "クリエイターの版：x.y.z")
+        self.assertFailsWith("examples-version", "plugin-creator の版：x.y.z")
+
+    def test_REQ_037_the_old_label_is_not_accepted(self):
+        # 会話例はエンドユーザーが読むので、画面と同じ「plugin-creator」の呼び方にそろえた。「クリエイターの版」の書き方は受けない
+        self.write("examples/weekly-report.md", "# 会話例\n\nクリエイターの版：0.3.0\n")
+        self.assertFailsWith("examples-version", "plugin-creator の版：x.y.z")
 
     def test_REQ_037_label_variants(self):
-        for line in ("クリエイターの版: 0.3.0", "クリエイターの版：`0.3.0`", "クリエイターの版：v0.3.0 / 2026-10-22"):
+        for line in ("plugin-creator の版: 0.3.0", "plugin-creator の版：`0.3.0`", "plugin-creator の版：v0.3.0 / 2026-10-22"):
             self.write("examples/weekly-report.md", "# 会話例\n\n%s\n" % line)
             self.assertEqual([], self.problems("examples-version"), line)
 
     def test_REQ_037_a_longer_version_is_not_mistaken_for_the_same(self):
-        self.write("examples/weekly-report.md", "クリエイターの版：0.3.0-beta.1\n")
+        self.write("examples/weekly-report.md", "plugin-creator の版：0.3.0-beta.1\n")
         self.assertFailsWith("examples-version", "0.3.0-beta.1")
 
     def test_REQ_037_version_must_be_in_the_first_lines(self):
-        self.write("examples/weekly-report.md", "行\n" * 40 + "クリエイターの版：0.3.0\n")
+        self.write("examples/weekly-report.md", "行\n" * 40 + "plugin-creator の版：0.3.0\n")
         self.assertFailsWith("examples-version", "冒頭 30 行")
 
     def test_REQ_037_nested_examples_are_checked_too(self):
-        self.write("examples/sub/deep.md", "クリエイターの版：0.0.1\n")
+        self.write("examples/sub/deep.md", "plugin-creator の版：0.0.1\n")
         self.assertFailsWith("examples-version", "examples/sub/deep.md")
 
     def test_REQ_037_plugin_json_without_version_fails(self):

@@ -34,7 +34,7 @@ SKILL_MAX_LINES = 500
 SKILL_MAX_TOKENS = 5000
 TOKEN_ENCODING = "o200k_base"   # ユーザーが決めた数え方（OpenAI の tiktoken）。エンコーディングは作業者が決めた
 EXAMPLE_HEAD_LINES = 30         # 版は会話例の冒頭にある、と見る範囲
-EXAMPLE_VERSION = re.compile(r"クリエイターの版[：:]\s*`?v?(\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?)")
+EXAMPLE_VERSION = re.compile(r"plugin-creator の版[：:]\s*`?v?(\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?)")
 
 
 def load_template_checks() -> Any:
@@ -103,7 +103,7 @@ def check_examples_version(cs: Any, root: str, c: Any) -> None:
             head = "\n".join(f.read().splitlines()[:EXAMPLE_HEAD_LINES])
         found = EXAMPLE_VERSION.search(head)
         if not found:
-            c.error("%s の冒頭 %d 行に「クリエイターの版：x.y.z」の形で版が書かれていない" % (shown, EXAMPLE_HEAD_LINES))
+            c.error("%s の冒頭 %d 行に「plugin-creator の版：x.y.z」の形で版が書かれていない" % (shown, EXAMPLE_HEAD_LINES))
         elif found.group(1) != version:
             c.error("%s に書かれた版 %s が plugin.json の版 %s と違う（会話例を作り直す）" % (shown, found.group(1), version))
 

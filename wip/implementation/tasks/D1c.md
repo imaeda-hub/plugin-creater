@@ -107,7 +107,7 @@
 
 会話例（examples-build.mjs）
 - 選ぶ条件：腕 with、話し方 normal、生成まで進んだ、`exampleCandidate`（全観点に合格し、ユーザー役の誤りがない。Haiku 以外）、クリエイターの版が今の plugin.json の版と同じ、見ない模擬ユーザーでない。条件を満たす中で点数が高いもの（同点なら新しいもの）。点数だけでは選ばない。選ばれなかった記録は理由つきで返す
-- 冒頭に、AI が演じたユーザーとの会話であること、クリエイターの版（`クリエイターの版：x.y.z`）、会話を行った日を書く。聞かれないと話さないナレッジを引き出した質問（質問が `asked` に、答えが `answered` に当たる）の答えの前に ★ の印。会話は引用の形で全文を載せる。ファイルに印のコメントを入れ、`--clean` はその印のあるファイルだけを消す。冒頭 30 行の版の書き方は、A3 の 1段目（`check_examples_version`）で通ることを試験した
+- 冒頭に、AI が演じたユーザーとの会話であること、plugin-creator の版（`plugin-creator の版：x.y.z`）、会話を行った日を書く。聞かれないと話さないナレッジを引き出した質問（質問が `asked` に、答えが `answered` に当たる）の答えの前に ★ の印。会話は引用の形で全文を載せる。ファイルに印のコメントを入れ、`--clean` はその印のあるファイルだけを消す。冒頭 30 行の版の書き方は、A3 の 1段目（`check_examples_version`）で通ることを試験した
 - **実際の EVAL の記録がまだないので、examples/ は作っていない。B3-fix の引き継ぎ「会話例を置いたら、README の「置きます」を「あります」に直す」は、会話例を置いた後に統括が行う**（README はこの担当の置き場所の外）
 
 開発の試験の確かめの層（実際のモデルなし）
@@ -172,3 +172,5 @@ X2-09 の(1)：REQ-045・REQ-046 のモデルの確かめ（`gradeModels`。腕 
 
 上位の文書で直すこと
 - testing.md 6.5：記録する数の出し方（record.json の `grading.counts`、`outer-report.json` の要約）と、REQ-045・REQ-046 の観点（`main-model`・`worker-model`）を書く。X2-09 の(2)（Haiku の合格に 1・2段目を足す）を直した後に、`HAIKU_REQUIRED` を直す
+
+会話例の冒頭の版の書き方（統括の決定）：会話例はエンドユーザーが README と画面から読むので、画面と同じ呼び方にそろえ、「クリエイターの版：x.y.z」を「plugin-creator の版：x.y.z」にした（examples-build.mjs の書き出しと `hasVersionInHead`、tests/creator/check_creator.py の REQ-037 の確かめ〔冒頭 30 行〕と test_check_creator.py）。新しい書き方だけを受ける（古い書き方は受けない試験を足した）。仕様 REQ-037 の「クリエイターの版」は開発者の用語なので変えない。skills/make-plugin/references/improve.md の同じ文は B3 が直す。
