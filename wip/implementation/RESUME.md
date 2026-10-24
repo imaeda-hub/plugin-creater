@@ -171,8 +171,8 @@
 ## 次にすること（2026-10-24 時点）
 
 1. （済み）V1 の追加の確かめ：クリエイターの直下の `template/` に移しても、中のスキル・エージェント・エクステンション・MCP・plugin.json は読み込まれない。Related files は97件→16件。試験的機能の案内は `copilot --experimental`（一度付ければ settings.json に残る。起動した後なら `/settings experimental on`：自動で再起動し、エクステンションの確認が2回出る）。報告の7節。
-2. ひな形を移す（答え25。Sonnet。指示は briefs/M1.md。D1d が convert.py を直し終えてから立てる）。SKILL.md・references（confirm.md、generate.md）・scaffold.py・check_creator.py・test_scaffold.py・test_convert.py の置き場所の参照を直す。あわせて generate.md 27〜28行目の manifest の `"orchestrator": { "extra_tools": [] }` を消す（B1 の報告）。
-3. X3 の仕分けを待ち、担当ごとの直しを立てる。D の問いはユーザーに聞く。ひな形の docs/design/design.md の統括の表（B1 の報告）も直しに入れる。
+2. ひな形を移す（答え25。Sonnet。指示は briefs/M1.md）。2026-10-24 に M1 を立てた。あわせて X3 の段1の束（C1：X2-02・12・18・10、C3：X2-10・X1-16〔答え27〕、D1c：X2-08・X2-09(1)、D1b：X2-21〔答え26〕）を頼んだ。統括の分（BLUEPRINT 8章の readme-task を消す X1-17、X2-05 の bash の事実を報告に残す）は M1 の後にする。SKILL.md・references（confirm.md、generate.md）・scaffold.py・check_creator.py・test_scaffold.py・test_convert.py の置き場所の参照を直す。あわせて generate.md 27〜28行目の manifest の `"orchestrator": { "extra_tools": [] }` を消す（B1 の報告）。
+3. M1 の後に X3 の段2の束（B3〔Opus〕、C2、A1、A2、A3、A4、B1）と、試験的機能の案内の直し（答え29。B3：README・setup.md、A4：ひな形の README・requirements.md・design.md 2.3、B2：ひな形の入口の SKILL.md）を立てる。A4 にはひな形の design.md の統括の表（答え24）も入れる。答え28（作り直しの流れの最終確認）は最終確認の一覧に入れる。
 4. 直しが全部入ったら、V1 に本物の Copilot CLI で確かめ直してもらう（統括の許す一覧で通るか、GPT の族の統括が受け取るツールの全部、apply_patch のフックの toolName、update_todo を拒んで困らないか、断りの文、担当の欄）。
 5. T1 の通しをもう一度。
 6. EVAL：まず1回だけ回して費用を測る（ユーザーに承認をとる）。会話例。README の「置きます」→「あります」。
@@ -213,6 +213,7 @@
 | X2 突き合わせ（クリエイターの側） | a015be8b3c3f5b5f0（完了。22件〔high 0〕。reviews/X2.md） |
 | T1 すべての試験の通し | a7e9349258395fe6a（完了。約1,500件が通り、落ちたのは会話例がないこと〔REQ-037。EVAL の後に作る〕だけ。組み立てた生成プラグインの tests/run.py も、Playwright を入れた後に合格） |
 | V1 Copilot CLI の読み込みの確かめ | a2958fd3e81866605（不具合3件と追加の確かめ2つを報告〔7001605〕。道具は scratchpad/v1/。直しが全部入った後に確かめ直しを頼む） |
+| M1 ひな形を移す | adf071c830ffd5da8（指示は briefs/M1.md） |
 | X3 突き合わせの指摘の仕分け | a806235c922ce2476（完了。40行：A 5、B 33、D 2〔答え26〜28〕。担当ごとの束は reviews/X3-triage.md の2章） |
 | H1 見ない模擬ユーザー | ac4ca894931c3fb3d（完了。形の確かめに通った。tests/dev-eval/heldout/h1/ に作る。統括はこのフォルダの中身を読まない。git の出力も `grep -v heldout` で外して見る） |
 | B3 の点検 | 4つとも完了（design 19件〔high 2〕、format 7件、models 24件〔high 1〕、language 34件） |
