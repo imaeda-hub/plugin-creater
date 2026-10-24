@@ -4,7 +4,7 @@
 export const CREATOR_NAME = 'plugin-creator';
 
 /** 質問の改善案を起票するリポジトリ（ユーザーの答え5。GitHub の名前の変更は、実装を main に取り込んだ後にユーザーが行う） */
-export const ISSUE_REPOSITORY = 'imaeda-hub/plugin-creator';
+export const ISSUE_REPOSITORY = 'xclang-brain/plugin-creator';
 
 /** gh issue create の待ち時間の上限（ミリ秒。generated-plugin-structure.md 4.11） */
 export const GH_TIMEOUT_MS = 60_000;

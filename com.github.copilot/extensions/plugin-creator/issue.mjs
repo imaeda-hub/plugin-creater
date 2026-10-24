@@ -1,6 +1,6 @@
 // 質問の改善案の起票（creator-structure.md 4.5、generated-plugin-structure.md 4.11）。
 //
-// - gh issue create --repo imaeda-hub/plugin-creator を、シェルを通さず動かす。題は引数の配列に、本文は標準入力で渡す。
+// - gh issue create --repo xclang-brain/plugin-creator を、シェルを通さず動かす。題は引数の配列に、本文は標準入力で渡す。
 //   題や本文がコマンドの一部として解釈されないようにするため。
 // - 起票は gh のログイン（gh 自身が持つ資格情報）に任せる。環境変数（GITHUB_TOKEN など）を求めない。
 // - 60秒の上限を付ける。上限を超えたときは、送信は済んで返事だけ遅れたことがあるので、起票したか分からないと示す。

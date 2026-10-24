@@ -148,7 +148,7 @@ test('REQ-017 文書をテキストにするツールは、作業フォルダに
 test('REQ-049 起票は偽物の gh で受け、題と本文を残すだけ（本物の gh は動かさない）', async () => {
   await withToolkit(async ({ toolkit }) => {
     const out = await toolkit.callTool('issue', { title: '質問の改善案：進め方', body: '段階と項目の名前だけで書いた本文' });
-    assert.match(out, /起票しました：https:\/\/github\.com\/imaeda-hub\/plugin-creator\/issues\/9001/);
+    assert.match(out, /起票しました：https:\/\/github\.com\/xclang-brain\/plugin-creator\/issues\/9001/);
     assert.equal(toolkit.issues.length, 1);
     assert.equal(toolkit.issues[0].title, '質問の改善案：進め方');
     assert.equal(toolkit.issues[0].body, '段階と項目の名前だけで書いた本文');
