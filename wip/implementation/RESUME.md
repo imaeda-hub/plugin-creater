@@ -173,6 +173,7 @@
 1. （済み）V1 の追加の確かめ：クリエイターの直下の `template/` に移しても、中のスキル・エージェント・エクステンション・MCP・plugin.json は読み込まれない。Related files は97件→16件。試験的機能の案内は `copilot --experimental`（一度付ければ settings.json に残る。起動した後なら `/settings experimental on`：自動で再起動し、エクステンションの確認が2回出る）。報告の7節。
 2. ひな形を移す（答え25。Sonnet。指示は briefs/M1.md）。2026-10-24 に M1 を立てた。あわせて X3 の段1の束（C1：X2-02・12・18・10、C3：X2-10・X1-16〔答え27〕、D1c：X2-08・X2-09(1)、D1b：X2-21〔答え26〕）を頼んだ。統括の分（BLUEPRINT 8章の readme-task を消す X1-17、X2-05 の bash の事実を報告に残す）は M1 の後にする。SKILL.md・references（confirm.md、generate.md）・scaffold.py・check_creator.py・test_scaffold.py・test_convert.py の置き場所の参照を直す。あわせて generate.md 27〜28行目の manifest の `"orchestrator": { "extra_tools": [] }` を消す（B1 の報告）。
 3. M1 の後に X3 の段2の束（B3〔Opus〕、C2、A1、A2、A3、A4、B1）と、試験的機能の案内の直し（答え29。B3：README・setup.md、A4：ひな形の README・requirements.md・design.md 2.3、B2：ひな形の入口の SKILL.md）を立てる。A4 にはひな形の design.md の統括の表（答え24）も入れる。答え28（作り直しの流れの最終確認）は最終確認の一覧に入れる。
+3b. 会話例の冒頭の「クリエイターの版：」を、画面の文（X2-18 で「plugin-creator の版」にそろえた）に合わせて「plugin-creator の版：」にする（統括の判断。エンドユーザーに見える文なので。D1c：examples-build.mjs と試験、check_creator.py の REQ-037 の確かめ。B3：improve.md）。仕様 REQ-037 の「クリエイターの版」は開発者の用語なので、そのままでよい。
 4. 直しが全部入ったら、V1 に本物の Copilot CLI で確かめ直してもらう（統括の許す一覧で通るか、GPT の族の統括が受け取るツールの全部、apply_patch のフックの toolName、update_todo を拒んで困らないか、断りの文、担当の欄）。
 5. T1 の通しをもう一度。
 6. EVAL：まず1回だけ回して費用を測る（ユーザーに承認をとる）。会話例。README の「置きます」→「あります」。
@@ -200,7 +201,7 @@
 | A2 | a4dd7b3736f4dd2a9（完了） |
 | A3 | a6ae7ad9d3151a163（完了） |
 | A4 | afd1d4ef4c0e6d043（完了） |
-| C1 | ad77758fe8b6dfff7（完了。V1 の不具合2〔guard〕を直して push〔78644fb〕） |
+| C1 | ad77758fe8b6dfff7（完了。V1 の不具合2〔78644fb〕、X の直し4件〔bf9b154：confirm の evalTasks[].settings、作業の定義の案の sha256（taskHash）、「クリエイター」→「plugin-creator」、試験の名前〕。B3 に descriptions.mjs の【仮】、C2 に settings の突き合わせを渡す） |
 | B3（書く） | a85fc7bf7ada9e044（完了。次は点検：briefs/review.md） |
 | B2 | ae0285d8193b30123（完了） |
 | B2 の点検 | 4つとも完了（design 8件、format 6件、models 19件、language 9件。high はなし） |
