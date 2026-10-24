@@ -114,6 +114,8 @@
 - A1（続き）：上位の文書で直すこと。設計書 4.3 の統括への指示文の中身に最初の1文を足す。6.2 の表と 4.2 に「実行中に呼ばれたら頼みの文は受け付けず、始められない旨の知らせを返す」を足す。ひな形の docs/design/design.md も同じ。
 - D1b：上位の文書で直すこと（tasks/D1b.md）。creator-structure.md 2章の部品の表に模擬ユーザー（tests/dev-eval/personas/、validate.mjs）の行がない。testing.md 6.1：ファイルに入れる決まりに、4つ目の答え「違う」に当たるもの（wrong）を足す。6.2：決まりの確かめへの答え（confirm）が7観点にない。6.3・6.5：急ぐ合図を signal で足す形にした。6.5：課題の入力のファイルは、示すファイルのうち role が input のもの。
 - C1（言葉）：生成プラグインの Web管理画面の文（ページの題「Web管理画面」、「評価基準をすべて満たした」「ユーザーと確かめた基準」など）は、言葉の置き換えの表の範囲（ユーザーの答え22はクリエイターの返り値と画面）の外で、変えていない。REQ-025（説明のない専門用語を使わない）に照らして、生成プラグインの画面の言葉を見直すかは判断が要る。
+- D1a：上位の文書で直すこと（tasks/D1a.md の末尾）。testing.md 4章：task の引数の扱い（task→Agent、agent_type→subagent_type、mode "sync"→run_in_background false）、変数の置き換えは設定ファイルだけ、写さないもの（docs/、tests/、examples/、wip/、heldout）、エクステンションのツール名の規則（<ext>_<tool> → mcp__<ext>__<tool>）、skill→Skill は公式の表にない補い、.eval/ の中身、claude -p の init で読み込みを確かめられること。testing.md 6.3・6.6：見ない模擬ユーザーを置き換えた版に入れない（変換スクリプトが tests/ を写さないことで守る）。creator-structure.md 2章：変換スクリプトの行がない。
+- D1a：要確認。Agent を run_in_background: false で呼ぶと結果が同じ手番に返るか。記録の tool_use の名前が Agent か Task か（両方を受ける）。同じプロセスの MCP サーバーのツールをサブエージェントの tools で絞れるか。.mcp.json の cwd が効くか。試験の claude は 2.1.310、SDK 同梱は 2.1.307。
 - R2：`requestSandboxPermissive` を「サンドボックスの外で動かす」と示さない（generated-plugin-structure.md 6.3）。tasks.list には shell と client のタスクも入る。
 
 ## 後の仕事に渡すこと（作業のエージェントの報告から）
@@ -162,7 +164,7 @@
 | B2 | ae0285d8193b30123（完了） |
 | B2 の点検 | 4つとも完了（design 8件、format 6件、models 19件、language 9件。high はなし） |
 | B2 を直す | aacc17a8675d68a69（完了。42件中36件を直した） |
-| D1a 変換 | a94162dfbb0aaf6aa（指示は briefs/D1.md） |
+| D1a 変換 | a94162dfbb0aaf6aa（完了） |
 | D1b 模擬ユーザー | a28af96a1b11b7fea（完了。週報・議事録・研修のアンケートの集計の3人） |
 | D1d 内側の EVAL | afe3eb2243185d726 |
 | D1c 外側の EVAL | af526bb1af09f9618 |
