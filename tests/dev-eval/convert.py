@@ -520,10 +520,10 @@ def convert_hooks(ctx: Context) -> None:
                 command = entry.get("bash") or entry.get("command") or entry.get("powershell") or ""
                 hook["command"] = substitute_variables(command)
                 if not (entry.get("bash") or entry.get("command")) and entry.get("powershell"):
-                    hook["shell"] = "powershell"
+                    pass
             timeout = entry.get("timeoutSec", entry.get("timeout"))
             if timeout is not None:
-                pass
+                hook["timeout"] = timeout
             if entry.get("env") or entry.get("cwd"):
                 ctx.warn(f"hooks.json: {event} の env や cwd は移さなかった")
             group: dict = {"hooks": [hook]}
