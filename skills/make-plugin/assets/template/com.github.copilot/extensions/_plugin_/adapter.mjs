@@ -14,7 +14,7 @@ import { fileURLToPath } from 'node:url';
 
 import { createCore } from './core/index.mjs';
 import { RecordRefusal } from './core/records.mjs';
-import { buildToolDefinitions } from './core/tools.mjs';
+import { TOOL_DEFS, buildToolDefinitions, toolFullName } from './core/tools.mjs';
 import { startApp } from './ui/app.mjs';
 
 const AGENT_FILE_SUFFIX = '.agent.md';
@@ -59,6 +59,38 @@ async function readWorkingDirectory(session) {
     // 取れなければ、エクステンションの作業フォルダ（Copilot CLI がセッションの作業フォルダで起動する）を使う
   }
   return process.cwd();
+}
+
+// ---- 統括エージェントが使ってよいツール -----------------------------------------------------------------------
+
+// 統括の定義（orchestrator.agent.md）には tools を書かない。書くと、Copilot CLI は子（作業・検証）のツールも、統括が持つ範囲に絞る
+// （更新履歴 1.0.67・1.0.68。V1 の不具合 1）。そのため統括には全ツールを持たせ、使ってよいツールの一覧（下）にないものを、
+// フック onPreToolUse で拒む。一覧にないものを拒む形なので、Copilot CLI の版が上がって新しい書き込みのツールが増えても、
+// 統括が書き込める向きには倒れない。ツールの名前は Copilot CLI のもので、子のモデルの族で変わる（V1 の 4 節）。
+//
+// 一覧は、tools の別名 agent・read・search に当たるツールと、統括が呼ぶ記録のツール（core/tools.mjs で caller に orchestrator を持つもの）。
+// 許さないもの（判断はメモの「V1 不具合1の直し」）：edit・execute・web の別名、skill、todo、MCP のツール、ほかのエクステンションのツール、
+// 検証の記録のツール（<名前>_verdict）、canvas、sql、スケジュール、ツール検索など。
+const ORCHESTRATOR_BUILTIN_TOOLS = Object.freeze([
+  'view', // read
+  'grep', 'glob', 'rg', // search（Claude の族：grep・glob、GPT の族：rg・glob）
+  'task', 'read_agent', 'list_agents', 'write_agent', // agent
+]);
+
+// 入力の項目を読む。読めなければ undefined（入力が壊れていても、フックは例外を投げない）
+function readField(input, key) {
+  try {
+    return input?.[key];
+  } catch {
+    return undefined;
+  }
+}
+
+// 統括が呼ぶ記録のツールの、名前の後ろの部分（plan・review・issue・finish・show）
+const ORCHESTRATOR_RECORD_SHORT_NAMES = TOOL_DEFS.filter((def) => String(def.caller).split(',').includes('orchestrator')).map((def) => def.name);
+
+function orchestratorToolsOf(pluginName) {
+  return new Set([...ORCHESTRATOR_BUILTIN_TOOLS, ...ORCHESTRATOR_RECORD_SHORT_NAMES.map((name) => toolFullName(pluginName, name))]);
 }
 
 // ---- 許可の求め → 待ちの中身（BLUEPRINT 3.1 の detail） ----------------------------------------------------
@@ -307,6 +339,8 @@ export async function startAdapter({ joinSession }) {
   const copilotHome = process.env.COPILOT_HOME || path.join(os.homedir(), '.copilot');
   const dataRoot = path.join(copilotHome, 'plugin-data', pluginName, 'runs');
   const converter = createEventConverter({ pluginName, ownAgentNames: listOwnAgentNames(pluginRoot) });
+  const orchestratorAgentType = `${pluginName}:orchestrator`;
+  const orchestratorTools = orchestratorToolsOf(pluginName);
 
   // 中心の処理は、セッションに加わった後でないと作れない（窓口・セッションの番号・作業フォルダが要る）。
   // ツールは加わるときに渡す必要があるので、呼ばれたら中心の処理ができるまで待たせる。
@@ -334,13 +368,31 @@ export async function startAdapter({ joinSession }) {
     }
   }
 
+  const deny = (reason) => ({ permissionDecision: 'deny', permissionDecisionReason: reason });
+
+  // 統括が使えなかったツールを断る文。拒まれた理由として、モデルにそのまま届く（「Denied by preToolUse hook: <理由>」。V1）。
+  function orchestratorDenyReason(toolName) {
+    const shown = typeof toolName === 'string' && toolName !== '' ? toolName.slice(0, 80) : '（名前なし）';
+    return (
+      `統括エージェントは、ツール「${shown}」を使えません。使えるのは、ファイルを読む・探すツール、作業エージェントと検証エージェントを呼ぶツール（task など）、` +
+      `記録のツール（${ORCHESTRATOR_RECORD_SHORT_NAMES.map((name) => `${pluginName}_${name}`).join('、')}）だけです。` +
+      '成果物を作る仕事やコマンドを動かす仕事は、task で作業エージェントに頼んでください。'
+    );
+  }
+
   // ツールを使ってよいかの問い合わせ。同期で答え、例外を投げない（投げると拒まずに進む。設計書 4.4）。
+  // 順番：止められた実行のエージェントを先に拒む（その理由は「作業を終えてください」で、統括の拒みの理由「作業エージェントに頼む」と食い違うため）。
+  // 次に、統括が一覧にないツールを使おうとしたときに拒む。中心の処理が失敗しても、統括の拒みは効かせる。
   function onPreToolUse(input) {
     try {
       const verdict = core?.preToolUse(input);
-      if (verdict?.deny) return { permissionDecision: 'deny', permissionDecisionReason: String(verdict.reason ?? '') };
+      if (verdict?.deny) return deny(String(verdict.reason ?? ''));
     } catch (error) {
       console.error('[つなぎ口] ツールの問い合わせを処理できませんでした：', error);
+    }
+    if (converter.qualify(readField(input, 'agentType')) === orchestratorAgentType) {
+      const toolName = readField(input, 'toolName'); // 読めない・文字でないときも、一覧にないので拒む
+      if (!orchestratorTools.has(toolName)) return deny(orchestratorDenyReason(toolName));
     }
     return undefined;
   }

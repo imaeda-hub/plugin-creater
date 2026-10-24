@@ -89,8 +89,9 @@ KINDS = ("criterion", "other")          # ナレッジの種類「合否の決�
 MANIFEST_KEYS = ("plugin_name", "plugin_description", "entry_skill", "workers", "verifier", "orchestrator", "eval_inputs")
 DESCRIPTION_MAX = 1024
 
-# tools の作業ごとの分を入れる差し込み口（B2 のひな形の名前に合わせる。BLUEPRINT 8章に名前の決まりはない）
-TOOL_TOKENS = {"orchestrator": "orchestrator_extra_tools", "worker": "worker_extra_tools", "verifier": "verifier_extra_tools"}
+# tools の作業ごとの分を入れる差し込み口（B2 のひな形の名前に合わせる。BLUEPRINT 8章に名前の決まりはない）。
+# 統括の定義には tools を書かない（書くと、Copilot CLI は子の作業・検証のツールも統括の範囲に絞る。V1 の不具合 1）ので、統括の分はない
+TOOL_TOKENS = {"worker": "worker_extra_tools", "verifier": "verifier_extra_tools"}
 
 FALLBACK_GIT_NAME = "plugin-creator"
 FALLBACK_GIT_EMAIL = "plugin-creator@localhost"
@@ -380,6 +381,10 @@ def load_manifest(work: str, problems: List[str]) -> Optional[Dict[str, Any]]:
             roles[role] = []
         else:
             roles[role] = check_tools(part.get("extra_tools"), "%s の %s.extra_tools" % (label, role), problems)
+            if role == "orchestrator" and roles[role]:
+                problems.append("%s の orchestrator.extra_tools は空にしてください。統括エージェントの定義には tools を書きません"
+                                "（書くと、作業・検証のエージェントが受け取れるツールも絞られます）。統括が使えるツールは、エクステンションが決めています。"
+                                "作業や検証に MCP のツールが要るときは、その作業エージェント（workers の extra_tools）か検証エージェント（verifier.extra_tools）に書いてください。" % label)
 
     eval_inputs = load_eval_inputs(data.get("eval_inputs"), label, problems)
 
@@ -392,7 +397,6 @@ def load_manifest(work: str, problems: List[str]) -> Optional[Dict[str, Any]]:
         "entry_description": entry_description,
         "workers": workers,
         "verifier_tools": roles["verifier"],
-        "orchestrator_tools": roles["orchestrator"],
         "eval_inputs": eval_inputs,
     }
 
@@ -811,7 +815,6 @@ def line_token_map(manifest: Dict[str, Any]) -> Dict[str, Dict[str, Tuple[str, L
     plugin = manifest["plugin_name"]
     tokens = {
         "%s/orchestrator.agent.md" % AGENTS_REL: {
-            TOOL_TOKENS["orchestrator"]: tools(manifest["orchestrator_tools"]),
             "worker_agents": ("", ["- `%s:%s`：%s" % (plugin, w["agent"], w["label"]) for w in manifest["workers"]], ""),
         },
         "%s/verifier.agent.md" % AGENTS_REL: {TOOL_TOKENS["verifier"]: tools(manifest["verifier_tools"])},

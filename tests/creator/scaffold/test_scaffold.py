@@ -567,15 +567,11 @@ class Workers(Base):
     @unittest.skipIf(yaml is None, "PyYAML がない")
     def test_the_extra_tools_of_each_agent_are_added_to_its_tools(self):
         def change(m):
-            m["orchestrator"]["extra_tools"] = ["srv/a"]
             m["workers"][0]["extra_tools"] = ["srv/b", "srv/c"]
             m["verifier"]["extra_tools"] = ["srv/d"]
         self.edit_manifest(change)
         self.build()
         agents = "com.github.copilot/agents/"
-        orchestrator = self.read(agents + "orchestrator.agent.md")
-        self.assertEqual(frontmatter(orchestrator)["tools"], ["agent", "read", "weekly-report_plan", "srv/a"])
-        self.assertIn('  - "weekly-report_plan"\n  - "srv/a"\n---\n', orchestrator)       # 行頭に空白のない差し込み口は、2つの空白の字下げになる
         self.assertEqual(frontmatter(self.read(agents + "worker.agent.md"))["tools"], ["read", "edit", "weekly-report_show", "srv/b", "srv/c"])
         verifier = self.read(agents + "verifier.agent.md")
         self.assertEqual(frontmatter(verifier)["tools"], ["read", "weekly-report_verdict", "srv/d"])
@@ -594,18 +590,32 @@ class Workers(Base):
     def test_without_extra_tools_the_lists_are_clean(self):
         self.build()
         agents = "com.github.copilot/agents/"
-        self.assertEqual(frontmatter(self.read(agents + "orchestrator.agent.md"))["tools"], ["agent", "read", "weekly-report_plan"])
+        self.assertNotIn("tools", frontmatter(self.read(agents + "orchestrator.agent.md")))   # 統括の定義には tools を書かない（V1 の不具合 1）
         self.assertEqual(frontmatter(self.read(agents + "worker.agent.md"))["tools"], ["read", "edit", "weekly-report_show"])
         self.assertEqual(frontmatter(self.read(agents + "verifier.agent.md"))["tools"], ["read", "weekly-report_verdict"])
         self.assertNotIn("{{", self.read(agents + "verifier.agent.md"))
 
     def test_extra_tools_with_no_place_in_the_template_are_refused(self):
-        self.edit_manifest(lambda m: m["orchestrator"].update(extra_tools=["srv/a"]))
-        path = self.tmpl("com.github.copilot/agents/orchestrator.agent.md")
+        self.edit_manifest(lambda m: m["verifier"].update(extra_tools=["srv/a"]))
+        path = self.tmpl("com.github.copilot/agents/verifier.agent.md")
         with open(path, encoding="utf-8") as f:
             text = f.read()
-        self.write(path, text.replace("{{orchestrator_extra_tools}}\n", ""))
-        self.assertMentions(self.refusal(), "orchestrator.agent.md", "extra_tools", "srv/a")
+        self.write(path, text.replace("  {{verifier_extra_tools}}\n", ""))
+        self.assertMentions(self.refusal(), "verifier.agent.md", "extra_tools", "srv/a")
+
+    @unittest.skipIf(yaml is None, "PyYAML がない")
+    def test_the_orchestrator_has_no_tools_and_extra_tools_for_it_are_refused(self):
+        # 統括の定義に tools を書くと、Copilot CLI は子の作業・検証のツールも統括の範囲に絞る（V1 の不具合 1）。統括が使えるツールは、エクステンションが決める
+        self.build()
+        self.assertNotIn("tools", frontmatter(self.read("com.github.copilot/agents/orchestrator.agent.md")))
+        self.setUp()
+        self.edit_manifest(lambda m: m["orchestrator"].update(extra_tools=["srv/a"]))
+        problems = self.refusal()
+        self.assertMentions(problems, "orchestrator.extra_tools", "空にしてください", "統括", "workers", "verifier")
+        self.setUp()
+        self.edit_manifest(lambda m: m.pop("orchestrator"))   # orchestrator の項目は、なくてよい
+        self.build()
+        self.assertNotIn("{{", self.read("com.github.copilot/agents/orchestrator.agent.md"))
 
     def test_the_orchestrator_gets_the_list_of_its_worker_agents(self):
         self.build()

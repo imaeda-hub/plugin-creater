@@ -60,7 +60,7 @@ CATALOG: Dict[str, Tuple[List[str], str]] = {
     "task": (["REQ-011"], "作業の定義（task.json）が task.schema.json に合う"),
     "eval": (["REQ-011"], "EVAL の課題の基準の番号と文が作業の定義の写しと同じ"),
     "knowledge": (["REQ-039"], "ナレッジの番号がそれぞれの置き場所にある"),
-    "agent-tools": (["REQ-010"], "統括・作業・検証の定義がそろい、tools があり、検証エージェントに書き込みとコマンドがない"),
+    "agent-tools": (["REQ-010"], "統括・作業・検証の定義がそろい、作業と検証に tools があり、統括に tools がなく、検証エージェントに書き込みとコマンドがない"),
     "tool-names": (["REQ-010"], "記録のツールの名前の頭がプラグインの名前"),
     "trace": (["REQ-003"], "要件の追跡の表がそろっている"),
 }
@@ -602,7 +602,9 @@ def check_agents(ctx: Context, c: Check) -> None:
                 isinstance(meta["tools"], list) and all(isinstance(t, str) for t in meta["tools"]))):
             c.error("%s tools は文字か、文字のリストにする" % label)
         tools = agent_tools(meta)
-        if tools is None:
+        if agent_id == "orchestrator":
+            pass   # 統括は tools を書かない（検査 agent-tools が見る）
+        elif tools is None:
             c.warn("%s tools がない（書かないと、すべてのツールとスキルが使える）" % label)
         else:
             check_agent_tool_names(ctx, label, meta, tools, c)
@@ -855,7 +857,15 @@ def check_agent_tools(ctx: Context, c: Check) -> None:
             c.error("%sエージェントの com.github.copilot/agents/%s.agent.md がない" % (label, role))
         for name in names:
             where = "com.github.copilot/agents/%s.agent.md（%s）:" % (name, label)
-            tools = agent_tools(ctx.agents[name][0])
+            meta = ctx.agents[name][0]
+            tools = agent_tools(meta)
+            if role == "orchestrator":
+                # 統括は全ツールを持ち、使ってよいツールはエクステンションがフックで決める。tools を書くと、Copilot CLI は
+                # 子（作業・検証）のツールも統括の範囲に絞る（更新履歴 1.0.67・1.0.68。V1 の不具合 1）
+                if "tools" in meta:
+                    c.error("%s tools がある（統括の定義には tools を書かない。書くと、子の作業・検証が受け取れるツールも、統括の範囲に絞られる。"
+                            "統括が使えるツールは、エクステンションが決める）" % where)
+                continue
             if tools is None:
                 c.error("%s tools が書かれていない（書かないと、すべてのツールとスキルが使える）" % where)
                 continue

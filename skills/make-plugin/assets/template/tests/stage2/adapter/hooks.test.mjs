@@ -7,7 +7,7 @@
 import assert from 'node:assert/strict';
 import { after, describe, test } from 'node:test';
 
-import { PLUGIN, beginRun, cleanupAll, delay, holdAfterJoin, sdkEvent, startChild, startPlugin, until } from './harness.mjs';
+import { PLUGIN, TOOLS, beginRun, cleanupAll, delay, holdAfterJoin, sdkEvent, startChild, startPlugin, until } from './harness.mjs';
 
 after(cleanupAll);
 
@@ -184,5 +184,151 @@ describe('許可の求めの受け口（onPermissionRequest。REQ-005）', () =>
     assert.deepEqual(prepared.fake.config.onPermissionRequest({ kind: 'shell' }, { sessionId: 's' }), { kind: 'no-result' });
     release();
     prepared.finish(await starting);
+  });
+});
+
+// ---- 統括エージェントが使ってよいツール（V1 の不具合 1。ユーザーの決定） ----------------------------------------------
+// 統括の定義には tools を書かない（書くと、子の作業・検証のツールも絞られる）。統括は全ツールを持ち、一覧にないツールをフックで拒む。
+
+const ORCHESTRATOR = `${PLUGIN}:orchestrator`;
+const LISTED_BUILTIN = ['view', 'grep', 'glob', 'rg', 'task', 'read_agent', 'list_agents', 'write_agent'];
+const LISTED_RECORD = ['plan', 'review', 'issue', 'finish', 'show'].map((name) => `${PLUGIN}_${name}`);
+// 実機（Copilot CLI 1.0.102）で、tools を書かない統括が受け取ったツール（V1 の生データ）のうち、一覧にないもの
+const UNLISTED_OBSERVED = [
+  'bash', 'read_bash', 'stop_bash', 'list_bash', 'create', 'edit', 'fetch_copilot_cli_documentation', 'skill', 'list_canvas_capabilities',
+  'open_canvas', 'invoke_canvas_action', 'sql', 'session_store_sql', 'manage_schedule', 'tool_search_tool', 'update_todo', 'extensions_reload',
+  'extensions_manage', `${PLUGIN}_verdict`, `${PLUGIN}_open`,
+];
+// 観測にはないが、あり得るツール（GPT の族の編集、Web、メインのエージェント向け、MCP、ほかのエクステンション、将来のツール）
+const UNLISTED_POSSIBLE = ['apply_patch', 'str_replace_editor', 'web_fetch', 'web_search', 'ask_user', 'exit_plan_mode', 'lsp', 'report_intent', 'github-mcp-server-search_issues', 'srv-do_it', 'other-plugin_plan', 'brand_new_write_tool'];
+
+describe('統括エージェントが使ってよいツール（フック onPreToolUse。REQ-010、REQ-009）', () => {
+  const hookOf = (p) => p.fake.config.hooks.onPreToolUse;
+  const asOrchestrator = (toolName, agentType = ORCHESTRATOR) => ({ toolName, agentType, agentId: 'ag-orch' });
+
+  test('REQ-009 一覧のツール（ファイルを読む・探す、エージェントを呼ぶ、統括の記録のツール）は通す。種類は、プラグインの名前つきでも名前だけでもよい', async () => {
+    const p = await startPlugin();
+    const hook = hookOf(p);
+    for (const toolName of [...LISTED_BUILTIN, ...LISTED_RECORD]) {
+      assert.equal(hook(asOrchestrator(toolName)), undefined, toolName);
+      assert.equal(hook(asOrchestrator(toolName, 'orchestrator')), undefined, `${toolName}（種類が名前だけ）`);
+    }
+  });
+
+  test('REQ-009 統括の記録のツールの一覧は、中心の処理の定義（caller に orchestrator を持つもの）から決まる', async () => {
+    const p = await startPlugin();
+    const hook = hookOf(p);
+    const callers = (def) => String(def.caller).split(',');
+    for (const def of TOOLS.TOOL_DEFS) {
+      const name = `${PLUGIN}_${def.name}`;
+      assert.equal(hook(asOrchestrator(name)) === undefined, callers(def).includes('orchestrator'), `${name}（caller：${def.caller}）`);
+    }
+    assert.deepEqual(
+      TOOLS.TOOL_DEFS.filter((def) => callers(def).includes('orchestrator')).map((def) => `${PLUGIN}_${def.name}`).sort(),
+      [...LISTED_RECORD].sort(),
+      '統括が呼ぶ記録のツールは plan・review・issue・finish・show',
+    );
+  });
+
+  test('REQ-009 一覧にないツールは、deny と理由で拒む。実機で統括が受け取ったツールも、あり得るほかのツールも、検証の記録のツールも', async () => {
+    const p = await startPlugin();
+    const hook = hookOf(p);
+    for (const toolName of [...UNLISTED_OBSERVED, ...UNLISTED_POSSIBLE]) {
+      const result = hook(asOrchestrator(toolName));
+      assert.deepEqual(Object.keys(result ?? {}).sort(), ['permissionDecision', 'permissionDecisionReason'], toolName);
+      assert.equal(result.permissionDecision, 'deny', toolName);
+      assert.ok(result.permissionDecisionReason.includes(`「${toolName}」`), `${toolName}：理由にツールの名前が入る`);
+      assert.match(result.permissionDecisionReason, /作業エージェントに頼んでください/);
+      assert.doesNotMatch(result.permissionDecisionReason, /undefined|\[object|Error/);
+    }
+  });
+
+  test('REQ-009 ツールの名前が読めない・文字でない・大文字小文字が違うときも、一覧にないので拒む。名前が長くても理由は短く切る', async () => {
+    const p = await startPlugin();
+    const hook = hookOf(p);
+    for (const toolName of [undefined, null, '', 5, {}, [], 'View', 'TASK']) {
+      const result = hook({ toolName, agentType: ORCHESTRATOR, agentId: 'ag-orch' });
+      assert.equal(result?.permissionDecision, 'deny', JSON.stringify(toolName));
+    }
+    assert.equal(hook({ agentType: ORCHESTRATOR })?.permissionDecision, 'deny');
+    const hostile = { agentType: ORCHESTRATOR, get toolName() { throw new Error('壊れた入力'); } };
+    assert.equal(hook(hostile).permissionDecision, 'deny');
+    const long = hook(asOrchestrator('x'.repeat(500)));
+    assert.ok(!long.permissionDecisionReason.includes('x'.repeat(100)), '長い名前は切って示す');
+    assert.ok(long.permissionDecisionReason.includes('x'.repeat(80)));
+    assert.ok(LISTED_RECORD.every((name) => long.permissionDecisionReason.includes(name)), '使える記録のツールの名前を示す');
+  });
+
+  test('REQ-009 作業・検証・メインのエージェント、ほかのプラグインの統括のツールは、今までどおり通す（統括の一覧は統括にだけ効く）', async () => {
+    const p = await startPlugin();
+    const hook = hookOf(p);
+    for (const agentType of [`${PLUGIN}:worker`, `${PLUGIN}:worker-b`, `${PLUGIN}:verifier`, 'worker', 'verifier', 'explore', 'other-plugin:orchestrator', 'general-purpose', undefined, null, '']) {
+      for (const toolName of ['bash', 'edit', 'create', 'apply_patch', 'skill', 'web_fetch', `${PLUGIN}_verdict`, `${PLUGIN}_show`, 'srv-do_it']) {
+        assert.equal(hook({ toolName, agentType, agentId: 'ag-x' }), undefined, `${agentType}：${toolName}`);
+      }
+    }
+    assert.equal(hook({ toolName: 'bash' }), undefined, 'メインのエージェント（種類も番号もない）');
+  });
+
+  test('REQ-009 止められた実行は、統括のツールを、止められた理由で拒む（統括の理由より先）。一覧のツールも拒む', async () => {
+    const p = await startPlugin();
+    const root = await beginRun(p);
+    await p.core.stop();
+    await p.core.whenIdle();
+    const hook = hookOf(p);
+    for (const toolName of ['view', 'task', 'bash', `${PLUGIN}_verdict`]) {
+      const result = hook({ toolName, agentType: ORCHESTRATOR, agentId: root });
+      assert.equal(result.permissionDecision, 'deny', toolName);
+      assert.match(result.permissionDecisionReason, /止められ/, toolName);
+      assert.doesNotMatch(result.permissionDecisionReason, /作業エージェントに頼んでください/, '止められた後に「頼め」とは言わない');
+    }
+  });
+
+  test('REQ-009 動いている実行でも、統括は一覧にないツールを拒まれ、一覧のツールは通る。作業エージェントの編集と実行は通り、実行の状態は変わらない', async () => {
+    const p = await startPlugin();
+    const root = await beginRun(p);
+    await startChild(p, { agentId: 'ag-w', parentAgentId: root, agent: 'worker' });
+    const hook = hookOf(p);
+    assert.equal(hook({ toolName: 'create', agentType: ORCHESTRATOR, agentId: root }).permissionDecision, 'deny');
+    assert.equal(hook({ toolName: 'view', agentType: ORCHESTRATOR, agentId: root }), undefined);
+    assert.equal(hook({ toolName: 'create', agentType: `${PLUGIN}:worker`, agentId: 'ag-w', parentAgentId: root }), undefined);
+    assert.equal(hook({ toolName: 'bash', agentType: `${PLUGIN}:worker`, agentId: 'ag-w', parentAgentId: root }), undefined);
+    assert.equal(p.core.getState().run.status, 'running');
+  });
+
+  test('REQ-009 偽物の SDK のフックの呼び方でも、統括の一覧にないツールは拒まれる。拒むときの形は Copilot CLI の拒み方（permissionDecision: deny）', async () => {
+    const p = await startPlugin();
+    const result = await p.fake.callHook('onPreToolUse', { toolName: 'bash', toolArgs: { command: 'ls' }, agentType: ORCHESTRATOR, agentId: 'ag-orch', parentAgentId: undefined });
+    assert.equal(result.permissionDecision, 'deny');
+    assert.equal(typeof result.permissionDecisionReason, 'string');
+    assert.equal(await p.fake.callHook('onPreToolUse', { toolName: 'view', agentType: ORCHESTRATOR, agentId: 'ag-orch' }), undefined);
+  });
+
+  test('REQ-009 中心の処理がフックの中で失敗しても、統括の一覧にないツールは拒む。中心の処理ができる前でも拒む', async () => {
+    const p = await startPlugin();
+    p.core.preToolUse = () => {
+      throw new Error('中心の処理の失敗');
+    };
+    const original = console.error;
+    console.error = () => {};
+    try {
+      assert.equal(hookOf(p)(asOrchestrator('bash')).permissionDecision, 'deny');
+      assert.equal(hookOf(p)(asOrchestrator('view')), undefined);
+    } finally {
+      console.error = original;
+    }
+    const { prepared, release } = await holdAfterJoin();
+    const starting = prepared.launch();
+    await until(() => prepared.fake.config !== null);
+    assert.equal(prepared.fake.config.hooks.onPreToolUse(asOrchestrator('edit')).permissionDecision, 'deny');
+    assert.equal(prepared.fake.config.hooks.onPreToolUse(asOrchestrator('task')), undefined);
+    release();
+    prepared.finish(await starting);
+  });
+
+  test('REQ-009 拒みは同期で答える（Promise を返さない）', async () => {
+    const p = await startPlugin();
+    const result = hookOf(p)(asOrchestrator('bash'));
+    assert.ok(!(result instanceof Promise));
   });
 });

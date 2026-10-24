@@ -661,13 +661,31 @@ class AgentTools(Sandbox):
         self.replace(self.VERIFIER, self.VERIFIER_TOOLS, "tools: read, edit")
         self.assertFailsWith("agent-tools", "書き込みのツール edit")
 
-    def test_REQ_010_skill_is_not_allowed_in_any_of_the_three_roles(self):
-        for path, old in ((self.ORCH, "tools: [agent,"), (self.VERIFIER, "tools: [read,"),
-                          ("com.github.copilot/agents/worker.agent.md", "tools: [read,")):
+    def test_REQ_010_skill_is_not_allowed_in_the_tools_of_workers_and_verifiers(self):
+        for path, old in ((self.VERIFIER, "tools: [read,"), ("com.github.copilot/agents/worker.agent.md", "tools: [read,")):
             text = self.read(path)
             self.replace(path, old, old + " Skill,")
             self.assertFailsWith("agents", "skill がある")
             self.write(path, text)
+
+    def test_REQ_010_the_orchestrator_has_no_tools_and_that_is_not_a_warning(self):
+        self.assertNotIn("tools:", self.read(self.ORCH).split("---")[1])
+        self.assertPasses("agent-tools")
+        self.assertPasses("agents")
+        warnings = {c.id: c.warnings for c in self.report().checks}["agents"]
+        self.assertFalse(any("orchestrator.agent.md" in w and "tools" in w for w in warnings), warnings)
+
+    def test_REQ_010_the_orchestrator_may_not_write_tools_because_the_children_would_lose_theirs(self):
+        # 統括が tools を持つと、Copilot CLI は子（作業・検証）のツールも統括の範囲に絞る（V1 の不具合 1）
+        for line in ("tools: [agent, read, search]", "tools: []", "tools: ['*']", "tools: agent, read", "tools:\n  - agent"):
+            text = self.read(self.ORCH)
+            self.replace(self.ORCH, "model: [gpt-6-luna, claude-haiku-5.5]\n", "model: [gpt-6-luna, claude-haiku-5.5]\n%s\n" % line)
+            self.assertFailsWith("agent-tools", "orchestrator.agent.md", "tools がある", "統括")
+            self.write(self.ORCH, text)
+
+    def test_REQ_010_workers_and_verifiers_still_need_tools(self):
+        self.replace("com.github.copilot/agents/worker.agent.md", "tools: [read, edit, execute, search, sample-plugin_show]\n", "")
+        self.assertFailsWith("agent-tools", "worker.agent.md", "tools が書かれていない")
 
     def test_REQ_010_a_missing_role_fails(self):
         self.remove(self.VERIFIER)
