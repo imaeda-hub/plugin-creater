@@ -143,6 +143,12 @@ test('REQ-005 画面を開くと URL が返り、実行中に開くツールが�
   const id = h.run().id;
   const again = await h.core.open({ requestText: '別の依頼' });
   assert.equal(again.url, first.url);
+  // 新しい頼みの文は受け付けない。黙って捨てずに、始められないことを知らせる（準備中の知らせにはない文）
+  const busy = 'いまの実行が終わるまで、新しい作業は始められません。今の画面で実行の様子を見られます。変えた作業を頼むときは、画面で止めてから、もう一度チャットで頼んでください。';
+  assert.ok(!first.notices.includes(busy), '準備中には出さない');
+  assert.equal(again.notices[0], busy);
+  assert.ok(again.notices.some((n) => n.includes('/clear')), '準備中と同じ知らせも付く');
+  assert.ok(again.notices.some((n) => n.includes('チャットで答えてください')));
   assert.equal(h.run().id, id, '新しい実行を始めない');
   assert.equal(h.state().setup.requestText, '最初の依頼', '実行中は依頼の文を変えない');
   assert.equal(h.uiCalls.length, 1, '画面は 1 回だけ起こす');
@@ -156,7 +162,8 @@ test('REQ-005 終わった後に開くツールが呼ばれたら、新しい実
   await h.tool('finish', { summary: '週報ができました' }, h.root);
   await h.rootIdle();
   const finishedId = h.run().id;
-  await h.core.open({ requestText: '次の依頼' });
+  const reopened = await h.core.open({ requestText: '次の依頼' });
+  assert.ok(!reopened.notices.some((n) => n.includes('新しい作業は始められません')), '終わった後は、新しい作業を始められる');
   const state = h.state();
   assert.equal(state.run, null);
   assert.equal(state.previous.runId, finishedId);
@@ -296,4 +303,25 @@ test('REQ-014 準備中に開ける前の結果（previous）にも、起票で�
   await h.settle();
   await p;
   assert.deepEqual(Object.keys(h.run().canFile).sort(), Object.keys(previous.canFile).sort());
+});
+
+test('REQ-005 開始中や停止中に画面を開くツールが呼ばれても、新しい作業は始められないと知らせる', async (t) => {
+  const h = await makeHarness(t);
+  await h.core.open({ requestText: '最初の依頼' });
+  h.port.behave('startAgent', { delay: 3000 });
+  const started = h.core.start(h.settings());
+  await h.settle();
+  assert.equal(h.run().status, 'starting');
+  const whileStarting = await h.core.open({ requestText: '別の依頼' });
+  assert.match(whileStarting.notices[0], /新しい作業は始められません/);
+  assert.equal(h.state().setup.requestText, '最初の依頼');
+  await h.clock.advance(3000);
+  await started;
+  h.port.behave('cancelAgent', { hang: true });
+  await h.core.stop();
+  assert.equal(h.run().status, 'stopping');
+  const whileStopping = await h.core.open({ requestText: '別の依頼' });
+  assert.match(whileStopping.notices[0], /新しい作業は始められません/);
+  await h.clock.advance(LIMITS.STOP_DEADLINE_MS);
+  assert.equal(h.run().status, 'finished');
 });

@@ -1,4 +1,4 @@
-import { LIMITS, ROLE_LABELS, UNSTOPPED_HOW_TO } from './constants.mjs';
+import { INSTRUCTION_HEAD, LIMITS, ROLE_LABELS, UNSTOPPED_HOW_TO } from './constants.mjs';
 import { analyzeEntries, buildMechanicalSummary, numberIssues } from './analysis.mjs';
 import { logEntry } from './log.mjs';
 import { attachStopSignal, computePhase, createRun, roleForType, slotByName, syncSlot, viewRun } from './run.mjs';
@@ -77,9 +77,10 @@ function formatSettingValue(def, value) {
   return String(value);
 }
 
-// 統括への指示文（4.3）。決まった形で組み立てる。
+// 統括への指示文（4.3）。決まった形で組み立てる。始めに、定義の手順で進めて作業・検証に任せる旨の 1 文を置く。
 export function buildInstruction(ctx, run) {
   const lines = [];
+  lines.push(INSTRUCTION_HEAD, '');
   lines.push(`実行の番号：${run.id}`, '');
   lines.push('## 頼まれた作業', run.requestText || '（作業の文は渡されませんでした）', '');
   lines.push('## 繰り返しの上限', `${run.settings.maxIterations} 回`, '');

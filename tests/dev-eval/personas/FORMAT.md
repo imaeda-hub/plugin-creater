@@ -123,7 +123,7 @@ JSON である。文字は UTF-8。正規表現と書いてあるところは、
 | `abstain` | 作らない | 「特に決まっていません」と答えたとみなす表現（正規表現） | — |
 | `context` | 前の話を踏まえる | `{ "turns": [質問, 質問, …], "expect": 正規表現 }` の並び（1 件以上）。後の質問が前の答えを指す | 最後の答えが `expect` に当たる |
 | `options` | 選択肢で済ませない | `{ "question": 質問, "choices": [選択肢, …], "expect": 正規表現 }` の並び（1 件以上） | 答えが `expect` に当たる（選択肢の言葉だけでは当たらない） |
-| `confirm` | 答える（決まりの確かめ） | `{ "knowledge": id, "question": 質問, "expect": 正規表現 }` の並び。`from` が `file` のナレッジごとに 1 件以上。選択肢は `CONFIRM_ANSWERS` の 4 つを、hearing.md 6.1 の順（そうしないときもある、違う、決まりではなく、たまたま、このとおり）で付ける | 答えが `expect` に当たる（`answer` の選択肢を選ぶ） |
+| `confirm` | 答える（決まりの確かめ） | `{ "knowledge": id, "question": 質問, "expect": 正規表現 }` の並び。`from` が `file` のナレッジごとに 1 件以上。選択肢は `validate.mjs` の `CONFIRM_CHOICES`（hearing.md 6.1 の順で、そうしないときもある、違う、決まりではなく、たまたま、このとおり）を付ける | 答えが `expect` に当たる（`answer` の選択肢を選ぶ） |
 
 - 「指示のことを話さない」の観点は、すべての答えを見る。指示の言葉（答える条件、自分から話す、答え方の決まりなど）の一覧は、ユーザー役を動かす側が持つ。
 - 質問を聞く回数と、合格の割合は、ユーザー役を動かす側が決める。
@@ -165,7 +165,7 @@ JSON である。文字は UTF-8。正規表現と書いてあるところは、
   - 文字や形で決まるものは `program`（`file_exists`、`contains`、`not_contains`、`regex`）、それ以外は `model` にする。「最後の行が決まった文字」は `regex` で書く。文字が出ていないことを正規表現で見るときは、先頭に `(?![\s\S]*(…))` を置く。
   - `markers.task` を持つナレッジには、基準を 1 件以上付ける。
 - `inner/inputs/`：入力のファイル。課題の `inputs` が指す。
-- `inner/golden/`：正しい成果物の見本。作業フォルダの形（`weekly_report.md` など）で置く。`validate.mjs` が、`program` の基準がすべて合格することを確かめる。何もないフォルダでは、すべて不合格になることも確かめる（基準が空振りしていないか）。
+- `inner/golden/`：正しい成果物の見本。作業フォルダの形（`weekly_report.md` など）で置く。`validate.mjs` が、`program` の基準がすべて合格することを確かめる（基準が厳しすぎないか、書き間違っていないかを見るため）。`model` の基準は確かめない。
 - 画面で選ぶモデルは書かない（画面の既定のまま）。
 
 ## 4. 作る人への決まり
@@ -216,9 +216,9 @@ node tests/dev-eval/personas/validate.mjs <模擬ユーザーのフォルダ>…
 - 読み込みに使うとき：
 
   ```js
-  import { loadPersona, CONFIRM_ANSWERS, STYLE_KEYS } from './validate.mjs';
+  import { loadPersona, CONFIRM_ANSWERS, CONFIRM_CHOICES, STYLE_KEYS } from './validate.mjs';
   const { persona, dir, files } = await loadPersona('tests/dev-eval/personas/weekly-report'); // 誤りがあれば Error
   ```
 
   `files` は、示すファイルの元の絶対の場所と、作業フォルダでの置き場所の対応（`{ src, place, role }`）である。
-- 確かめること：persona.json の項目と型、id の重なり、正規表現が読めるか、`answered`・`leak` が `fact` の中の言葉か、示すファイルの有無と `evidence` が文書の文字にあるか、3 種類の決まり、`userRoleTests` の質問、話し方、`inner/eval.json`（`validateTask`）、基準と `knowledge` の対応、`golden` で `program` の基準が合格し、空のフォルダで不合格になること。
+- 確かめること：persona.json の項目と型、id の重なり、正規表現が読めるか、`answered`・`leak` が `fact` の中の言葉か、示すファイルの有無と `evidence` が文書の文字にあるか、3 種類の決まり、`userRoleTests` の質問、話し方、`inner/eval.json`（`validateTask`）、基準と `knowledge` の対応、`golden` で `program` の基準が合格すること。

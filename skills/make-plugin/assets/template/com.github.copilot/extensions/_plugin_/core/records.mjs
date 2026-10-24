@@ -221,7 +221,7 @@ function recordShow(ctx, run, args, agentId) {
   const def = ctx.task.displays.find((d) => d.key === args?.key);
   if (!def) {
     const keys = ctx.task.displays.map((d) => d.key);
-    refuse(`作業の定義にない表示です：${args?.key}。使える表示の番号：${keys.length > 0 ? keys.join('、') : '（なし）'}`);
+    refuse(`作業ごとの指示にない表示です：${args?.key}。使える表示の名前（key）：${keys.length > 0 ? keys.join('、') : '（なし）'}`);
   }
   run.displays[def.key] = normalizeDisplay(ctx, run, def, args.value);
   return `表示「${def.key}」を記録しました。`;

@@ -254,7 +254,10 @@ test('REQ-031 表示の記録は、作業の定義にある表示で、値の形
   assert.deepEqual(h.run().displays.meta, { 担当: '山田', 件数: 3 });
   assert.deepEqual(h.run().displays.progress, 50, '値は上書きされる');
 
-  assert.match(await expectRefusal(h.tool('show', { key: 'nothing', value: 'x' }, root)), /作業の定義にない表示です：nothing/);
+  const unknownKey = await expectRefusal(h.tool('show', { key: 'nothing', value: 'x' }, root));
+  assert.match(unknownKey, /作業ごとの指示にない表示です：nothing/);
+  assert.match(unknownKey, /使える表示の名前（key）：draft、meta、stats、progress、chart、report/);
+  assert.doesNotMatch(unknownKey, /番号|作業の定義/, 'key は名前であって番号ではない');
   assert.match(await expectRefusal(h.tool('show', { key: 'draft', value: { a: 1 } }, root)), /文字列で渡してください/);
   assert.match(await expectRefusal(h.tool('show', { key: 'stats', value: { columns: ['a', 'b'], rows: [['x']] } }, root)), /同じ数の値/);
   assert.match(await expectRefusal(h.tool('show', { key: 'progress', value: { value: 5, max: 4 } }, root)), /max 以下/);

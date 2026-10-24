@@ -72,6 +72,12 @@ SLOT_NAME = re.compile(r"^[A-Za-z][A-Za-z0-9_.-]*$")
 WORKER_SLOT = re.compile(r"\{\{slot:worker-task(?:\.[A-Za-z0-9._-]*)?\}\}")
 EVAL_REL = re.compile(r"^tests/eval/[^/]+/eval\.json$")
 EVAL_INPUT_REL = re.compile(r"^tests/eval/[^/]+/inputs/.+$")   # eval_inputs の to（EVAL の課題の入力のファイルの置き場所）
+HEADING_SLOTS = re.compile(r"^(?:entry-task|orchestrator-task|verifier-task|worker-task(?:\..+)?)$")   # ひな形の ## の節の中に入る文
+HIGH_HEADING = re.compile(r"^ {0,3}#{1,2}(?:[ \t]|$)")                                                  # # か ## で始まる見出し
+FENCE = re.compile(r"^ {0,3}(`{3,}|~{3,})")                                                              # コードの囲み
+# YAML の読み手が読めない字（json.dumps は escape しない）：U+007F〜U+009F、U+FFFE、U+FFFF。
+# U+2028・U+2029 は読めるが、前後の空白ごと改行として畳まれて内容が変わる（PyYAML で確かめた）
+INVISIBLE = re.compile("[\u007f-\u009f\u2028\u2029\ufffe\uffff]")
 YAML_PLAIN = re.compile(r"^[A-Za-z][A-Za-z0-9._-]*$")        # 引用符なしで YAML に置いてよい値
 YAML_RESERVED = {"y", "n", "yes", "no", "true", "false", "on", "off", "null"}   # YAML が真偽や null に読む言葉
 
@@ -246,6 +252,13 @@ def check_description(value: Any, label: str, problems: List[str]) -> None:
         problems.append("%s は %d 文字以内にしてください（今は %d 文字）。" % (label, DESCRIPTION_MAX, len(value)))
 
 
+def check_frontmatter_text(value: Any, label: str, problems: List[str]) -> None:
+    """SKILL.md のフロントマターに入る文（入口のスキルの description）に、フロントマターを壊す字を入れさせない。
+    `---` は、フロントマターの終わりと読まれて引用符が閉じない（Agent Skills の検証の参照実装が --- で分ける）。"""
+    if isinstance(value, str) and ("---" in value or INVISIBLE.search(value)):
+        problems.append("%s に --- や見えない制御文字を入れないでください（SKILL.md のフロントマターが壊れます）。" % label)
+
+
 def check_tools(value: Any, label: str, problems: List[str]) -> List[str]:
     if value is None:
         return []
@@ -329,6 +342,7 @@ def load_manifest(work: str, problems: List[str]) -> Optional[Dict[str, Any]]:
             entry_name = None
         entry_description = entry.get("description")
         check_description(entry_description, "%s の entry_skill.description" % label, problems)
+        check_frontmatter_text(entry_description, "%s の entry_skill.description" % label, problems)
 
     workers: List[Dict[str, Any]] = []
     raw_workers = data.get("workers")
@@ -459,6 +473,19 @@ def load_task(work: str, template: str, manifest: Optional[Dict[str, Any]], crit
     return task
 
 
+def high_headings(text: str) -> List[Tuple[int, str]]:
+    """# か ## で始まる見出しの行（行の番号, 行）。コードの囲みの中は数えない。"""
+    found: List[Tuple[int, str]] = []
+    fence = ""
+    for number, line in enumerate(text.split("\n"), 1):
+        mark = FENCE.match(line)
+        if mark:
+            fence = "" if fence == mark.group(1)[0] else (fence or mark.group(1)[0])
+        elif not fence and HIGH_HEADING.match(line):
+            found.append((number, line.strip()))
+    return found
+
+
 def load_slots(work: str, problems: List[str]) -> Dict[str, str]:
     """parts/slots/<差し込み口の名前>.md を読む。空のものと、名前の形が違うものは断る。"""
     base = os.path.join(work, "parts", "slots")
@@ -479,7 +506,12 @@ def load_slots(work: str, problems: List[str]) -> Dict[str, str]:
         except (OSError, UnicodeDecodeError) as e:
             problems.append("parts/slots/%s を読めません（%s）。" % (entry, e))
             continue
-        text = text.replace("\r\n", "\n").replace("\r", "\n").strip("\n")
+        text = text.replace("\r\n", "\n").replace("\r", "\n")
+        if HEADING_SLOTS.match(name):   # ひな形の ## の節の中に入るので、見出しは ### 以下
+            for number, line in high_headings(text):
+                problems.append("parts/slots/%s の %d 行目「%s」：差し込み口 {{slot:%s}} の文の見出しは ### 以下にしてください"
+                                "（ひな形の ## の節の中に入るため）。" % (entry, number, line, name))
+        text = text.strip("\n")
         if not text.strip():
             problems.append("parts/slots/%s の中身が空です。差し込み口 %s に入れる文を書いてください。" % (entry, "{{slot:%s}}" % name))
             continue

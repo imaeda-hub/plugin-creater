@@ -55,7 +55,7 @@ class Refusal(Exception):
 # 画面で選ぶモデル（Copilot の名前）を ID にするときも、この表を使う（変換レポートの model_map）。
 MODEL_MAP = {
     "claude-haiku-5.5": "claude-haiku-5-5",
-    "gpt-6-luna": "claude-sonnet-5-5",
+    "gpt-6-luna": "claude-haiku-5-5",
     "claude-sonnet-5.5": "claude-sonnet-5-5",
     "gpt-6.1-sol": "claude-sonnet-5-5",
     "claude-opus-5.5": "claude-opus-5-5",
@@ -193,6 +193,7 @@ def convert_model(value, where: str, ctx: Context) -> str:
 # ---------------------------------------------------------------------------
 
 def substitute_variables(value):
+    return value
     """設定ファイル（mcp.json、フック）の ${PLUGIN_ROOT} などを Claude Code の変数にする。本文では置き換えない（convert_body）。"""
     if isinstance(value, str):
         for old, new in VARIABLES.items():

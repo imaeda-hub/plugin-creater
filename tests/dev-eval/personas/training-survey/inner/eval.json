@@ -1,0 +1,13 @@
+{
+  "id": "T-01",
+  "prompt": "inputs/survey.csv から、アンケートのまとめを作ってください。",
+  "inputs": ["inputs/survey.csv"],
+  "settings": { "maxIterations": 2 },
+  "criteria": [
+    { "id": "C-01", "knowledge": "output", "text": "成果物は survey_summary.md という名前のファイルである", "grading": "program", "check": { "type": "file_exists", "file": "survey_summary.md" } },
+    { "id": "C-02", "knowledge": "average", "text": "満足度の平均が、小数第1位までの「3.3」で書かれている", "grading": "program", "check": { "type": "regex", "file": "survey_summary.md", "pattern": "(?<![\\d.])3\\.3(?!\\d)" } },
+    { "id": "C-03", "knowledge": "anonymize", "text": "受講者の氏名（山田、佐々木、高橋、中村、伊藤、小林）が、どこにも出ていない", "grading": "program", "check": { "type": "regex", "file": "survey_summary.md", "pattern": "^(?![\\s\\S]*(?:山田|佐々木|高橋|中村|伊藤|小林))[\\s\\S]*\\S[\\s\\S]*$" } },
+    { "id": "C-04", "knowledge": "anonymize", "text": "コメントが、「受講者A」のような書き方で載っている", "grading": "program", "check": { "type": "contains", "file": "survey_summary.md", "text": "受講者A" } },
+    { "id": "C-05", "knowledge": "low-first", "text": "コメントが、満足度の低い順に並んでいる（満足度1の「休憩が短かった」が、満足度5の「講師の説明が分かりやすかった」より前にある）", "grading": "model", "check": { "files": ["survey_summary.md"] } }
+  ]
+}

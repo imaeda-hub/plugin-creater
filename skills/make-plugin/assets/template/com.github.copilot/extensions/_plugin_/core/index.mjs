@@ -3,6 +3,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   AUTO_NOTICE,
+  BUSY_NOTICE,
   CHAT_CONFIRM_NOTICE,
   CLEAR_NOTICE,
   LIMITS,
@@ -140,6 +141,8 @@ async function open(ctx, api, args) {
   // 起票できるかは、画面を開いたときに確かめる（待たない）
   startCanFileCheck(ctx);
   const notices = [CLEAR_NOTICE, CHAT_CONFIRM_NOTICE];
+  // 実行中に呼ばれたときは、頼みの文を受け付けない。黙って捨てずに、始められないことを知らせる
+  if (active) notices.unshift(BUSY_NOTICE);
   if (!active && ctx.endedAtStartup.length > 0) {
     notices.push('前の実行が途中で終わっていました。画面で結果を見られます。');
     ctx.endedAtStartup.length = 0;

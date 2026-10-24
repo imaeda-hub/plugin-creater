@@ -163,7 +163,7 @@ class Base(unittest.TestCase):
         """作業エージェントを2体にする（worker と worker-summary）。"""
         self.edit_manifest(lambda m: m["workers"].append({"agent": "worker-summary", "label": "まとめる係"}))
         self.edit_task(lambda t: t["workers"].append({"agent": "worker-summary", "label": "まとめる係"}))
-        self.write(self.part("slots/worker-task.worker-summary.md"), "## まとめ方\n\n- 3行にまとめる。\n")
+        self.write(self.part("slots/worker-task.worker-summary.md"), "### まとめ方\n\n- 3行にまとめる。\n")
 
 
 class Gate(Base):
@@ -344,6 +344,61 @@ class Slots(Base):
         self.assertTrue(self.read("README.md").endswith("型は {{ el: Element }} と ${{x}} と ${{secrets.TOKEN}} と {{1}} と { {a} }\n"))
 
 
+class SlotHeadings(Base):
+    """差し込み口の文の見出し（B2 の依頼）。4つの差し込み口は、ひな形の ## の節の中に入るので、見出しは ### 以下。"""
+
+    SLOTS = ("entry-task", "orchestrator-task", "worker-task.worker", "verifier-task")
+
+    def test_a_heading_of_level_one_or_two_is_refused_with_the_slot_and_the_line(self):
+        for name in self.SLOTS:
+            for heading in ("# 大きな見出し", "## 週報の書き方", "##", "  ## 字下げあり"):
+                with self.subTest(slot=name, heading=heading):
+                    self.setUp()
+                    self.write(self.part("slots/%s.md" % name), "\n本文の1行目\n\n%s\n本文\n" % heading)
+                    problems = self.refusal()
+                    self.assertMentions(problems, "parts/slots/%s.md" % name, "4 行目", "{{slot:%s}}" % name, "見出しは ### 以下にしてください")
+
+    def test_every_heading_is_listed(self):
+        self.write(self.part("slots/verifier-task.md"), "# 一つ目\n本文\n## 二つ目\n")
+        problems = [p for p in self.refusal() if "verifier-task" in p]
+        self.assertEqual(len(problems), 2)
+        self.assertMentions(problems, "1 行目", "3 行目")
+
+    def test_the_second_worker_slot_is_checked_too(self):
+        self.two_workers()
+        self.write(self.part("slots/worker-task.worker-summary.md"), "## まとめ方\n")
+        self.assertMentions(self.refusal(), "worker-task.worker-summary.md", "1 行目", "見出しは ### 以下にしてください")
+
+    def test_level_three_and_below_are_accepted(self):
+        for heading in ("### 三つ目", "#### 四つ目", "###### 六つ目"):
+            with self.subTest(heading=heading):
+                self.setUp()
+                self.write(self.part("slots/verifier-task.md"), "%s\n\n本文\n" % heading)
+                self.build()
+                self.assertIn(heading, self.read("com.github.copilot/agents/verifier.agent.md"))
+
+    def test_text_that_only_looks_like_a_heading_is_accepted(self):
+        text = "#タグ（空白なし）\n    ## 字下げが深いのでコード\n本文 # の途中\n```text\n# コードの囲みの中\n## ここも\n```\n~~~\n# 別の囲み\n~~~\n"
+        self.write(self.part("slots/verifier-task.md"), text)
+        self.build()
+        self.assertIn("# コードの囲みの中", self.read("com.github.copilot/agents/verifier.agent.md"))
+
+    def test_a_heading_after_a_closed_code_fence_is_refused(self):
+        self.write(self.part("slots/verifier-task.md"), "```\n# 中\n```\n## 外\n")
+        problems = self.refusal()
+        self.assertMentions(problems, "4 行目")
+        self.assertEqual(len([p for p in problems if "verifier-task" in p]), 1)
+
+    def test_the_other_slots_are_not_limited(self):
+        self.write(self.part("slots/task-design.md"), "## 8.1 二段の見出し\n\n本文\n")
+        self.build()
+        self.assertIn("## 8.1 二段の見出し", self.read("docs/design/design.md"))
+
+    def test_the_line_number_counts_from_the_first_line_of_the_file(self):
+        self.write(self.part("slots/entry-task.md"), "\n\n\n## 先頭に空行がある\n")
+        self.assertMentions(self.refusal(), "4 行目")
+
+
 class Values(Base):
     """決まった値（plugin_name など）の差し込み。JSON と YAML で壊れないこと。"""
 
@@ -430,6 +485,30 @@ class Values(Base):
         self.setUp()
         self.edit_manifest(lambda m: m["entry_skill"].update(description=" "))
         self.assertMentions(self.refusal(), "entry_skill.description")
+
+    def test_REQ_004_an_entry_description_that_breaks_the_frontmatter_is_refused(self):
+        bad = {
+            "---": "手順 --- 手順", "行頭の ---": "---abc", "U+007F": "前\x7f後", "U+0085": "前\x85後", "U+009F": "前\x9f後",
+            "U+2028": "前\u2028後", "U+2029": "前\u2029後", "U+FFFE": "前\ufffe後", "U+FFFF": "前\uffff後",
+        }
+        for name, text in bad.items():
+            with self.subTest(char=name):
+                self.setUp()
+                self.edit_manifest(lambda m: m["entry_skill"].update(description=text))
+                problems = self.refusal()
+                self.assertMentions(problems, "entry_skill.description", "--- や見えない制御文字を入れないでください")
+
+    @unittest.skipIf(yaml is None, "PyYAML がない")
+    def test_REQ_004_an_entry_description_with_harmless_characters_is_accepted(self):
+        text = "二つのハイフン -- と長音 ー と ダッシュ — と 絵文字 😀 と NBSP\u00a0 と タブ\t と 0x80未満の記号 \x1f と BOM\ufeff と ｛｛"
+        self.edit_manifest(lambda m: m["entry_skill"].update(description=text))
+        self.build()
+        self.assertEqual(frontmatter(self.read("skills/weekly-report/SKILL.md"))["description"], text)
+
+    def test_the_plugin_description_is_not_limited_like_the_entry_description(self):
+        self.edit_manifest(lambda m: m.update(plugin_description="説明 --- 説明\x7f"))
+        self.build()
+        self.assertEqual(self.json("plugin.json")["description"], "説明 --- 説明\x7f")
 
     def test_unknown_items_and_a_missing_manifest_are_refused(self):
         self.edit_manifest(lambda m: m.update(plugin_nane="x"))

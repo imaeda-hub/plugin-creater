@@ -38,6 +38,12 @@ export const OVERRIDE_NOTICE =
 export const CLEAR_NOTICE = '実行中は /clear を使わないでください。実行が途中で切れます。';
 export const CHAT_CONFIRM_NOTICE =
   '実行中にエージェントが確認（ツールの許可、AI クレジットの上限、質問）を求めたときは、このチャットで答えてください。画面には、確認を待っていることが出ます。';
+// 実行中にまた作業を頼まれたとき、画面を開くツールの知らせに足す文。新しい頼みは受け付けない。
+export const BUSY_NOTICE =
+  'いまの実行が終わるまで、新しい作業は始められません。今の画面で実行の様子を見られます。変えた作業を頼むときは、画面で止めてから、もう一度チャットで頼んでください。';
+// 統括への指示文の始めの 1 文。作ることは作業エージェントに、確かめることは検証エージェントに任せさせる。
+export const INSTRUCTION_HEAD =
+  'あなたの定義の手順で、この実行を進めてください。成果物は作業エージェントに、確かめは検証エージェントに、`task` で頼みます。';
 export const UNSTOPPED_HOW_TO =
   'チャットで Esc を2回押すか、Copilot CLI を終えてください。';
 export const DISCONNECTED_MESSAGE = '画面とのつながりが切れたので、作業を終えてください。';

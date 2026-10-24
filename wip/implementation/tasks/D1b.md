@@ -11,7 +11,8 @@
 
 - [x] 読み込み（憲章、CLAUDE.md、RESUME、BLUEPRINT、testing.md、hearing.md、ナレッジ、R4、試作の personas と lib.mjs・outer.mjs・test_user_role.mjs・inner.mjs、C3 の grade.mjs・tasks.mjs、doc-text.mjs）
 - [x] FORMAT.md（書き上げた。統括に SendMessage で知らせた。変えるときは知らせる）
-- [ ] 週報の模擬ユーザー
+- [x] validate.mjs（形を確かめる。試験はまだ）
+- [x] 週報の模擬ユーザー（weekly-report/。validate.mjs --all-styles 合格。ユーザー役の試験は D1c が動かす）
 - [ ] 議事録の模擬ユーザー
 - [ ] ファイルのない新しい1人
 - [ ] docx・xlsx を作るスクリプト

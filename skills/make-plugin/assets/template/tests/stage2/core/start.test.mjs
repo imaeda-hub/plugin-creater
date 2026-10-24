@@ -25,6 +25,10 @@ test('REQ-005 開始すると、選んだモデルで統括が起動され、指
   assert.ok(start.name.includes(run.id), '名前に実行の番号が入る');
   // 指示文：頼まれた作業の文、上限、作業ごとの設定の値、基準の番号と文
   assert.ok(start.prompt.includes('先週の週報を作ってください'));
+  // 始めに、定義の手順で進めて作業・検証に任せる旨の 1 文が来て、その後ろに実行の番号などが続く
+  const head = 'あなたの定義の手順で、この実行を進めてください。成果物は作業エージェントに、確かめは検証エージェントに、`task` で頼みます。';
+  assert.ok(start.prompt.startsWith(`${head}\n\n実行の番号：${run.id}\n`), start.prompt.slice(0, 120));
+  assert.equal(start.prompt.split(head).length, 2, '1 文は 1 回だけ');
   assert.ok(start.prompt.includes('4 回'));
   for (const c of TASK.criteria) assert.ok(start.prompt.includes(`${c.id}：${c.text}`), `${c.id} の番号と文がそのまま入る`);
   assert.ok(start.prompt.includes('対象の週（week）：2026-W42'));
