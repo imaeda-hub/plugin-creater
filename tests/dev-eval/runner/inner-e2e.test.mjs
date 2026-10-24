@@ -210,8 +210,10 @@ test('REQ-007 REQ-031 ありの実行：課題に作業ごとの設定がなく�
     await api.close();
   });
   const questions = [];
-  const userRole = async ({ question }) => {
-    questions.push(question);
+  const requests = [];
+  const userRole = async (request) => {
+    questions.push(request.question);
+    requests.push(request);
     return '2026-W44';
   };
   const result = await runInnerArm({
@@ -226,6 +228,11 @@ test('REQ-007 REQ-031 ありの実行：課題に作業ごとの設定がなく�
   assert.equal(result.finalState.settings.task.week, '2026-W44');
   assert.deepEqual(result.settings.map((d) => [d.key, d.source, d.value]), [['week', 'user-role', '2026-W44']]);
   assert.equal(result.grading.passed, 2);
+  // 人は、画面を開いたと伝えるチャットの文を、設定の前に読む。その文が、設定の欄を聞くときにユーザー役へ渡る（見せた文は記録に残る）
+  assert.equal(requests[0].notes.length, 1);
+  assert.match(requests[0].notes[0], /画面を開きました。/);
+  assert.match(requests[0].notes[0], /画面で設定して、開始ボタンを押してください。/);
+  assert.equal(result.settings[0].notes, requests[0].notes[0]);
 });
 
 test('REQ-007 ありの実行：必須の欄をユーザー役が決められなければ、画面は開始できず、入れなかった欄を理由に示して incomplete にする', { skip: SKIP, timeout: 240_000 }, async (t) => {
@@ -380,4 +387,20 @@ test('REQ-010 REQ-011 統括は、使ってよいツールだけを持つ（書�
   assert.ok(written, 'orchestrator_tools の記録がない');
   assert.deepEqual(written.tools.slice(0, 4), ['Agent', 'Read', 'Grep', 'Glob']);
   assert.deepEqual(written.tools.slice(4).sort(), ['finish', 'issue', 'plan', 'review', 'show'].map(mcp).sort());
+});
+
+test('REQ-007 質問のツールを呼ぶ応答の中の、質問の前にチャットに書いた文が、本物の Agent SDK でも、その問いと一緒にユーザー役へ渡る', { skip: SKIP, timeout: 120_000 }, async (t) => {
+  const fixture = buildSamplePlugin();
+  const api = await startFakeAnthropic(scriptedModel({ plain: true, askTool: true, askNote: '上のまとめのとおり、今週と先週のどちらかを決めます。' }));
+  const sdk = guardSdk(realSdk, api); // 守り：偽の API につながっていない query は断る（実際のモデルを呼ばない）
+  t.after(() => api.close());
+  const userRole = recordingUserRole();
+  const result = await runInnerArm({
+    arm: 'without', task: fixture.task, runDir: tmpDir('run-notes-tool'), sdk, userRole, judge,
+    envExtra: { ...FAKE_ENV, ANTHROPIC_BASE_URL: api.url }, timeoutMs: 100_000,
+  });
+  assert.equal(result.status, 'completed', result.reason);
+  assert.equal(userRole.calls.length, 1);
+  assert.deepEqual(userRole.calls[0].notes, ['上のまとめのとおり、今週と先週のどちらかを決めます。']);
+  assert.equal(result.history[0].notes, '上のまとめのとおり、今週と先週のどちらかを決めます。');
 });

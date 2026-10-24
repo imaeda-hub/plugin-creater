@@ -11,6 +11,7 @@
 import path from 'node:path';
 
 import { readArtifactText } from '../../../skills/test-plugin/scripts/grade.mjs';
+import { joinNotes } from './user-role.mjs';
 
 const TYPE_NAMES = { text: '文字', number: '数', select: '選択', checkbox: 'チェック', path: 'ファイルやフォルダの場所' };
 /** 入力のファイルの中身を、質問に付ける長さ（文字） */
@@ -18,6 +19,12 @@ export const INPUT_PREVIEW = Object.freeze({ files: 3, chars: 800 });
 /** 短い答えが「決められない・そのままでよい」の意味か（長い答えは値として扱う） */
 const ABSTAIN = /決まっていません|決まってません|分かりません|わかりません|未定|そのまま|初期値|既定|デフォルト|空欄|入れません|入力しません|特にありません|特にない/;
 const ABSTAIN_MAX_CHARS = 40;
+
+/** ユーザー役に見せた、メインのエージェントが質問の前にチャットに書いた文を、記録の項目にする（なければ項目なし）。見せた文を使う側が確かめられるように */
+export function notesField(notes) {
+  const text = joinNotes(notes);
+  return text === '' ? {} : { notes: text };
+}
 
 const optionOf = (option) =>
   typeof option === 'object' && option !== null
@@ -113,11 +120,13 @@ export async function previewInputs(inputs, workDir) {
  * @param {string} o.prompt 課題の頼みの文
  * @param {Array} [o.inputs] previewInputs の結果
  * @param {Array} [o.history]
+ * @param {() => string[]} [o.takeNotes] メインのエージェントがチャットに書いた文のうち、まだユーザー役に渡していないものを取り出す（取り出したものは、次からは出ない）。
+ *   最初にユーザー役に聞く欄にだけ付く（画面を開いたと伝える文などを、人は設定の前に読む）
  * @returns {Promise<{ values: object, decisions: Array }>}
  *   values は画面の欄に入れる { 鍵: 値 }（決めた分と、課題・補いの分）。decisions は欄ごとの記録
  *   decisions[].source：cli、eval-json、user-role（ユーザー役が決めた）、default（ユーザー役が決められず、初めの値のまま）
  */
-export async function decideSettings({ definitions, fromEval = {}, fromCli = {}, userRole, prompt, inputs = [], history = [] }) {
+export async function decideSettings({ definitions, fromEval = {}, fromCli = {}, userRole, prompt, inputs = [], history = [], takeNotes = () => [] }) {
   const values = {};
   const decisions = [];
   for (const def of definitions ?? []) {
@@ -134,14 +143,15 @@ export async function decideSettings({ definitions, fromEval = {}, fromCli = {},
     }
     const question = describeSetting(def, { prompt, inputs });
     const choices = choicesOf(def);
-    const answer = String(await userRole({ question, choices, history: [...history], via: 'setting', meta: { setting: def.key } }) ?? '');
-    history.push({ via: 'setting', question, choices, answer });
+    const notes = takeNotes();
+    const answer = String(await userRole({ question, choices, history: [...history], via: 'setting', meta: { setting: def.key }, notes }) ?? '');
+    history.push({ via: 'setting', question, choices, answer, ...notesField(notes) });
     const parsed = normalizeSettingAnswer(def, answer);
     if (parsed.ok) {
       values[def.key] = parsed.value;
-      decisions.push({ ...base, source: 'user-role', value: parsed.value, question, answer });
+      decisions.push({ ...base, source: 'user-role', value: parsed.value, question, answer, ...notesField(notes) });
     } else {
-      decisions.push({ ...base, source: 'default', value: def.default ?? null, question, answer, note: parsed.reason });
+      decisions.push({ ...base, source: 'default', value: def.default ?? null, question, answer, ...notesField(notes), note: parsed.reason });
     }
   }
   // 欄にない鍵も、課題の settings.task と補いにあれば入れる（画面が受けない鍵は screen.mjs が断る）

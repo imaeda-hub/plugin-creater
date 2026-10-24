@@ -234,6 +234,18 @@ test('REQ-007 ユーザー役の関数：質問のしかた（via）と印（met
   assert.equal(await fn({ question: 'Q1', choices: ['a'] }), '答え');
   assert.equal(await fn({ question: 'Q2' }), '答え');
   assert.equal(await fn({ question: 'Q3', choices: [], via: 'setting', meta: { setting: 'week' } }), '答え');
-  assert.deepEqual(calls, [['Q1', ['a'], 'AskUserQuestion', {}], ['Q2', [], 'text', {}], ['Q3', [], 'setting', { setting: 'week' }]]);
+  assert.deepEqual(calls, [['Q1', ['a'], 'AskUserQuestion', {}, []], ['Q2', [], 'text', {}, []], ['Q3', [], 'setting', { setting: 'week' }, []]]);
   assert.equal(fn.cost(), 0.5);
+});
+
+test('REQ-007 ユーザー役の関数：メインのエージェントが質問の前にチャットに書いた文（notes）も、そのままユーザー役に渡す', async () => {
+  const calls = [];
+  const role = { cost: 0, answer: async (...args) => { calls.push(args); return { answer: '答え' }; } };
+  const fn = userRoleFunction(role);
+  await fn({ question: 'どちらですか？', choices: ['今週', '先週'], notes: ['まとめを書きます。', '週は2つあります。'] });
+  await fn({ question: 'どの週ですか？', notes: ['確認です。'] });
+  assert.deepEqual(calls, [
+    ['どちらですか？', ['今週', '先週'], 'AskUserQuestion', {}, ['まとめを書きます。', '週は2つあります。']],
+    ['どの週ですか？', [], 'text', {}, ['確認です。']],
+  ]);
 });

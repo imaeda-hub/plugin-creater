@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 
-import { choicesOf, decideSettings, describeSetting, normalizeSettingAnswer, previewInputs } from './inner-settings.mjs';
+import { choicesOf, decideSettings, describeSetting, normalizeSettingAnswer, notesField, previewInputs } from './inner-settings.mjs';
 
 const WEEK = { key: 'week', label: '対象の週', type: 'text', default: '', required: true, help: '週報を作る週を書きます（例：2026-W42）。' };
 const COUNT = { key: 'count', label: '項目の数', type: 'number', default: 5, required: false };
@@ -137,4 +137,38 @@ test('REQ-007 渡したファイルの中身は先頭の数件・数百文字だ
   assert.ok(preview[0].preview.length < 900);
   assert.equal(preview[1].preview, '短い');
   assert.equal(preview[2].preview, null);
+});
+
+test('REQ-007 設定の欄をユーザー役に聞くとき、メインのエージェントがチャットに書いた文（まだ渡していないもの）を、最初に聞く欄にだけ付ける。見せた文は記録に残る', async () => {
+  const unread = ['画面を開きました。', 'URL は上のとおりです。'];
+  const takeNotes = () => unread.splice(0);
+  const asked = [];
+  const history = [];
+  const userRole = async (request) => {
+    asked.push({ key: request.meta.setting, notes: request.notes });
+    return request.meta.setting === 'week' ? '2026-W44' : '特に決まっていません';
+  };
+  const { decisions } = await decideSettings({
+    definitions: [WEEK, COUNT, STYLE], fromEval: { style: 'である' }, userRole, prompt: 'p', history, takeNotes,
+  });
+  // 課題で決まっている欄（style）は聞かないので、前の文は最初に聞いた欄（week）にだけ付く。次の欄（count）には付かない
+  assert.deepEqual(asked, [{ key: 'week', notes: ['画面を開きました。', 'URL は上のとおりです。'] }, { key: 'count', notes: [] }]);
+  assert.equal(decisions.find((d) => d.key === 'week').notes, '画面を開きました。\n\nURL は上のとおりです。');
+  assert.equal(Object.hasOwn(decisions.find((d) => d.key === 'count'), 'notes'), false);
+  assert.equal(Object.hasOwn(decisions.find((d) => d.key === 'style'), 'notes'), false);
+  // 決められなかった欄の記録にも、見せた文が残る
+  const abstained = await decideSettings({ definitions: [WEEK], userRole: async () => '決まっていません', prompt: 'p', takeNotes: () => ['案内です。'] });
+  assert.deepEqual(abstained.decisions.map((d) => [d.source, d.notes]), [['default', '案内です。']]);
+  assert.deepEqual(history.map((h) => [h.via, h.notes]), [['setting', '画面を開きました。\n\nURL は上のとおりです。'], ['setting', undefined]]);
+  // 文を取り出す関数を渡さなければ、今までどおり（notes は空）
+  const seen = [];
+  await decideSettings({ definitions: [WEEK], userRole: async (request) => { seen.push(request.notes); return '2026-W42'; }, prompt: 'p' });
+  assert.deepEqual(seen, [[]]);
+});
+
+test('REQ-007 見せた文の記録：空の文は項目にしない。複数あれば空行でつなぐ', () => {
+  assert.deepEqual(notesField([]), {});
+  assert.deepEqual(notesField(['', '  ']), {});
+  assert.deepEqual(notesField(undefined), {});
+  assert.deepEqual(notesField(['A', ' B ']), { notes: 'A\n\nB' });
 });

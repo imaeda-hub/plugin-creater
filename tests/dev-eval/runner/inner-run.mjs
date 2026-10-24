@@ -19,7 +19,7 @@ import { gradeRun } from '../../../skills/test-plugin/scripts/grade.mjs';
 import { findScreenUrl } from '../../../skills/test-plugin/scripts/screen.mjs';
 import { prepareWorkDir } from '../../../skills/test-plugin/scripts/tasks.mjs';
 import { createInnerAdapter, summarizeMessage } from './inner-adapter.mjs';
-import { decideSettings, previewInputs } from './inner-settings.mjs';
+import { decideSettings, notesField, previewInputs } from './inner-settings.mjs';
 import { makeQueryOptions, usageLimitPrefixes } from './isolation.mjs';
 import { modelMapOf, readConversionReport, toClaudeModelId } from './model-map.mjs';
 
@@ -100,7 +100,7 @@ function ensureDir(dir) {
  * @param {{ id: string, dir: string, json: object }} o.task tasks.mjs の課題の形（dir は eval.json のあるフォルダ。入力はそこからの相対）
  * @param {string} o.runDir この実行の記録の置き場所（作る）
  * @param {{ query: Function }} o.sdk Agent SDK
- * @param {Function} o.userRole ({ question, choices, history }) => Promise<string> チャットでの返事
+ * @param {Function} o.userRole ({ question, choices, history, notes }) => Promise<string> チャットでの返事。notes は、メインのエージェントが質問の前にチャットに書いた文（文字の並び。なければ空）
  * @param {Function} [o.judge] モデルで判定する関数（grade.mjs の judge）
  * @param {object} [o.screen] createScreen() の入れ物（ありのとき。ブラウザーは使い回す）
  * @param {string} [o.pluginRoot] Copilot CLI 向けの生成プラグイン（ありのとき）
@@ -164,20 +164,30 @@ export async function runInnerArm(o) {
   });
   let currentQuery = null;
 
+  // メインのエージェントがチャットに書いた文のうち、まだユーザー役に渡していないもの（前の質問の後に書かれたもの）。
+  // 人は、質問と一緒にこれを読む。「上のまとめで…」のような質問に答えられるように、次の質問と一緒にユーザー役へ渡す
+  // （testing.md 6.1「ユーザー役には、それまでのやり取りも渡す」。外側の EVAL の outer-run.mjs と同じ渡し方）。
+  const unreadNotes = [];
+  const takeNotes = () => unreadNotes.splice(0);
+
   const answerQuestions = async (questions) => {
     const answers = {};
+    // 質問の直前の文の処理が、この呼び出しより後になることがあるので、1 回譲ってから受け取る
+    await new Promise((resolve) => setImmediate(resolve));
+    let notes = takeNotes();
     for (const q of questions) {
       const choices = (q.options ?? []).map((option) => option.label);
       let answer;
       try {
-        answer = await userRole({ question: q.question, choices, history: [...history], multiSelect: Boolean(q.multiSelect) });
+        answer = await userRole({ question: q.question, choices, history: [...history], multiSelect: Boolean(q.multiSelect), notes });
       } catch (error) {
         // ユーザー役が答えられないまま続けると、モデルが答えなしで進んでしまう。この実行は止める
         result.userRoleError = error;
         abort.abort();
         throw error;
       }
-      history.push({ via: 'AskUserQuestion', question: q.question, choices, answer });
+      history.push({ via: 'AskUserQuestion', question: q.question, choices, answer, ...notesField(notes) });
+      notes = []; // 1 回の呼び出しに問いの欄が複数あるときも、前の文は最初の欄にだけ付ける
       answers[q.question] = answer;
     }
     return answers;
@@ -210,6 +220,7 @@ export async function runInnerArm(o) {
           for (const block of m.message?.content ?? []) {
             if (block.type === 'text') {
               turn.lastText = block.text;
+              if (block.text.trim() !== '') unreadNotes.push(block.text.trim());
               const found = findScreenUrl(block.text);
               if (found && !result.url) {
                 result.url = found;
@@ -252,8 +263,10 @@ export async function runInnerArm(o) {
         // ありで URL が出たあとは、人が画面を操作する。チャットの返事は要らない
         if (result.url) return;
         if (!asksForReply(turn.finalText) || result.replies >= maxReplies) return;
-        const answer = await userRole({ question: turn.finalText, choices: [], history: [...history] });
-        history.push({ via: 'chat', question: turn.finalText, answer });
+        // 手番の最後の文は問いそのもの。それより前に書いた文だけを、前の文として渡す
+        const notes = takeNotes().filter((note) => note !== turn.finalText.trim());
+        const answer = await userRole({ question: turn.finalText, choices: [], history: [...history], notes });
+        history.push({ via: 'chat', question: turn.finalText, answer, ...notesField(notes) });
         result.replies += 1;
         prompt = answer;
         resume = turn.sessionId;
@@ -275,7 +288,7 @@ export async function runInnerArm(o) {
     try {
       decided = await decideSettings({
         definitions: state.setup?.taskSettings ?? [], fromEval: base.task ?? {}, fromCli: taskSettings, userRole, prompt: task.json.prompt,
-        inputs: await previewInputs(inputs, workDir), history,
+        inputs: await previewInputs(inputs, workDir), history, takeNotes,
       });
     } catch (error) {
       // ユーザー役が答えられないまま開始すると、決めていない値で動いてしまう。この実行は止める

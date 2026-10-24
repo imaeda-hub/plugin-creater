@@ -223,11 +223,13 @@ function convertPlugin(pluginRoot, convertedRoot) {
 }
 
 /**
- * D1c のユーザー役（createUserRole の返り値）を、内側の EVAL が呼ぶ形 ({ question, choices, via, meta }) => 答えの文字 にする。
+ * D1c のユーザー役（createUserRole の返り値）を、内側の EVAL が呼ぶ形 ({ question, choices, via, meta, notes }) => 答えの文字 にする。
+ * notes は、メインのエージェントが質問の前にチャットに書いた文（文字の並び）。人は質問と一緒にこれを読むので、ユーザー役にも渡す（testing.md 6.1）。
  * via は、質問のしかた（AskUserQuestion、text、setting）。省くと、選択肢があれば AskUserQuestion、なければ text。
  */
 export function userRoleFunction(role) {
-  const fn = async ({ question, choices, via, meta }) => (await role.answer(question, choices ?? [], via ?? ((choices ?? []).length > 0 ? 'AskUserQuestion' : 'text'), meta ?? {})).answer;
+  const fn = async ({ question, choices, via, meta, notes }) =>
+    (await role.answer(question, choices ?? [], via ?? ((choices ?? []).length > 0 ? 'AskUserQuestion' : 'text'), meta ?? {}, notes ?? [])).answer;
   fn.cost = () => role.cost;
   return fn;
 }

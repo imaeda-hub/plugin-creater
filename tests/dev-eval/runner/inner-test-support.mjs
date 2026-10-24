@@ -85,10 +85,11 @@ const tool = (name, input, extra = {}) => ({ type: 'tool_use', name, input, ...e
  * @param {string} [scenario.content] 作業エージェントが書く成果物の中身
  * @param {string} [scenario.plainContent] プラグインなしのメインが書く成果物の中身（省くと content と同じ）
  * @param {boolean} [scenario.askTool] メインが質問のツール（AskUserQuestion）で週を聞く
+ * @param {string} [scenario.askNote] askTool のとき、質問のツールを呼ぶ前に、同じ応答でチャットに書く文
  * @param {(role: string, body: object) => void} [scenario.onRequest]
  */
 export function scriptedModel(scenario = {}) {
-  const { server = 'weekly-report', workerWrites = true, verifierPass = true, verifierDelayMs = 0, workerDelayMs = 0, askFirst = false, background = false, useSkill = true, badPlan = false, plain: forcedPlain, askTool = false, deliverable = 'out/weekly.md', content: workerContent = WEEKLY, plainContent = workerContent, onRequest } = scenario;
+  const { server = 'weekly-report', workerWrites = true, verifierPass = true, verifierDelayMs = 0, workerDelayMs = 0, askFirst = false, background = false, useSkill = true, badPlan = false, plain: forcedPlain, askTool = false, askNote = '', deliverable = 'out/weekly.md', content: workerContent = WEEKLY, plainContent = workerContent, onRequest } = scenario;
   const mcp = (name) => `mcp__${server}__${name}`;
   return async ({ body }) => {
     const role = roleOf(body);
@@ -103,7 +104,7 @@ export function scriptedModel(scenario = {}) {
       const answered = JSON.stringify(body.messages).includes('はい、お願いします');
       if (askTool && !used.includes('AskUserQuestion')) {
         const questions = [{ question: 'どの週の週報ですか？', header: '対象の週', multiSelect: false, options: [{ label: '今週', description: '今週の分' }, { label: '先週', description: '先週の分' }] }];
-        return { model, blocks: [tool('AskUserQuestion', { questions })] };
+        return { model, blocks: [...(askNote ? [textBlock(askNote)] : []), tool('AskUserQuestion', { questions })] };
       }
       if (plain) {
         if (askFirst && !answered) return { model, blocks: [textBlock('どの週の週報ですか？')] };

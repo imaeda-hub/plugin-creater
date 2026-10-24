@@ -343,3 +343,86 @@ test('REQ-007 ありの実行：設定をユーザー役が決められずに失
   assert.match(run.reason, /ユーザー役の呼び出しに失敗しました：API が応答しません/);
   assert.equal(run.grading, null);
 });
+
+// ---- チャットに書いた文を、次の質問と一緒にユーザー役に渡す（testing.md 6.1。外側の EVAL と同じ渡し方） ----------------------------------
+
+/** 質問のツールを呼ぶ偽の Agent SDK。steps は順に、{ say: 文 } か { ask: 問いの欄の並び } か { early: 問いの欄の並び, say: 文 }（問いのほうが先に届く） */
+function askingSdk(steps, finalText = '終わりました') {
+  return {
+    query: ({ options }) => (async function* generate() {
+      yield { type: 'system', subtype: 'init', session_id: 's', model: 'x', plugins: [], mcp_servers: [] };
+      for (const step of steps) {
+        if (step.early) {
+          // 文の処理が、質問の呼び出しより遅れる場合（Claude Code が質問を先に呼ぶ）
+          const pending = options.canUseTool('AskUserQuestion', { questions: step.early }, {});
+          yield { type: 'assistant', session_id: 's', message: { model: 'x', content: [{ type: 'text', text: step.say }] }, parent_tool_use_id: null };
+          await pending;
+        } else if (step.say) {
+          yield { type: 'assistant', session_id: 's', message: { model: 'x', content: [{ type: 'text', text: step.say }] }, parent_tool_use_id: null };
+        } else {
+          await options.canUseTool('AskUserQuestion', { questions: step.ask }, {});
+        }
+      }
+      yield { type: 'result', subtype: 'success', is_error: false, result: finalText, total_cost_usd: 0, num_turns: 1, session_id: 's' };
+    })(),
+  };
+}
+const ONE = [{ question: 'どの週？', options: [{ label: '今週' }, { label: '先週' }] }];
+const TWO = [{ question: '対象の週は？', options: [{ label: '今週' }] }, { question: '文体は？', options: [{ label: 'です・ます' }] }];
+
+test('REQ-007 質問のツールの問いには、その前にメインのエージェントがチャットに書いた文を一緒に渡し、渡した文は履歴に残る。渡した文は、次の問いには付かない', async () => {
+  const fixture = buildSamplePlugin();
+  const sdk = askingSdk([{ say: '先に、週を確認します。' }, { say: '週は今週と先週の2つです。' }, { ask: ONE }, { ask: ONE }]);
+  const requests = [];
+  const run = await runInnerArm({
+    arm: 'without', task: fixture.task, runDir: tmpDir('notes-ask'), sdk, userRole: async (request) => { requests.push(request); return '今週'; }, judge,
+  });
+  assert.equal(run.status, 'completed');
+  assert.deepEqual(requests.map((r) => r.notes), [['先に、週を確認します。', '週は今週と先週の2つです。'], []]);
+  assert.deepEqual(run.history.map((h) => h.notes), ['先に、週を確認します。\n\n週は今週と先週の2つです。', undefined]);
+});
+
+test('REQ-007 文の処理が質問の呼び出しより遅れても、直前の文を取りこぼさない（1 回譲ってから受け取る）', async () => {
+  const fixture = buildSamplePlugin();
+  const sdk = askingSdk([{ early: ONE, say: '上のまとめのとおりです。' }]);
+  const requests = [];
+  await runInnerArm({
+    arm: 'without', task: fixture.task, runDir: tmpDir('notes-race'), sdk, userRole: async (request) => { requests.push(request); return '今週'; }, judge,
+  });
+  assert.deepEqual(requests.map((r) => r.notes), [['上のまとめのとおりです。']]);
+});
+
+test('REQ-007 1 回の呼び出しに問いの欄が複数あるときは、前の文を最初の欄にだけ付ける', async () => {
+  const fixture = buildSamplePlugin();
+  const sdk = askingSdk([{ say: '2つ確認します。' }, { ask: TWO }]);
+  const requests = [];
+  const run = await runInnerArm({
+    arm: 'without', task: fixture.task, runDir: tmpDir('notes-two'), sdk, userRole: async (request) => { requests.push(request); return 'はい'; }, judge,
+  });
+  assert.deepEqual(requests.map((r) => [r.question, r.notes]), [['対象の週は？', ['2つ確認します。']], ['文体は？', []]]);
+  assert.deepEqual(run.history.map((h) => h.notes), ['2つ確認します。', undefined]);
+});
+
+test('REQ-007 手番の最後の文で返事を求めたときは、問いそのものを前の文に入れず、それより前に書いた文だけを渡す', async () => {
+  const fixture = buildSamplePlugin();
+  const sdk = fakeSdk([[init(), say('まず資料を確認しました。'), say('どの週ですか？'), done('どの週ですか？')], [init(), say('作りました。'), done('作りました。')]]);
+  const requests = [];
+  const run = await runInnerArm({
+    arm: 'without', task: fixture.task, runDir: tmpDir('notes-chat'), sdk, userRole: async (request) => { requests.push(request); return '今週です'; }, judge,
+  });
+  assert.equal(run.replies, 1);
+  assert.deepEqual(requests.map((r) => [r.question, r.notes]), [['どの週ですか？', ['まず資料を確認しました。']]]);
+  assert.equal(run.history[0].via, 'chat');
+  assert.equal(run.history[0].notes, 'まず資料を確認しました。');
+});
+
+test('REQ-007 サブエージェントの文や、空の文は、ユーザー役に渡す前の文に入れない', async () => {
+  const fixture = buildSamplePlugin();
+  const sub = { type: 'assistant', message: { model: 'x', content: [{ type: 'text', text: '作業エージェントの途中の文' }] }, parent_tool_use_id: 'toolu_1', agent_id: 'agent-1', subagent_type: 'w:worker' };
+  const sdk = fakeSdk([[init(), say('   '), sub, say('確認です。'), done('どの週ですか？')], [init(), done('作りました。')]]);
+  const requests = [];
+  await runInnerArm({
+    arm: 'without', task: fixture.task, runDir: tmpDir('notes-sub'), sdk, userRole: async (request) => { requests.push(request); return '今週です'; }, judge,
+  });
+  assert.deepEqual(requests.map((r) => r.notes), [['確認です。']]);
+});
