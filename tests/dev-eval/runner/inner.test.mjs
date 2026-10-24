@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 import * as sdk from '@anthropic-ai/claude-agent-sdk';
 
 import { startFakeAnthropic } from './fake-anthropic.mjs';
-import { InnerEvalError, innerEval, main, parseArgs, scoresOf, summarizeRun } from './inner.mjs';
+import { describeFailure, InnerEvalError, innerEval, main, parseArgs, scoresOf, summarizeRun } from './inner.mjs';
 import { buildSamplePlugin, pythonHasModules, scriptedModel, tmpDir } from './inner-test-support.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -134,10 +134,10 @@ test('REQ-041 あり・なしを回して、点数とその差を出し、実行
   const saved = JSON.parse(fs.readFileSync(record.resultFile, 'utf8'));
   assert.equal(saved.status, 'completed');
   for (const arm of ['with-1', 'without-1']) {
-    assert.ok(fs.existsSync(path.join(outDir, 'runs', 'T-01', arm, 'result.json')), arm);
-    assert.ok(fs.existsSync(path.join(outDir, 'runs', 'T-01', arm, 'events.jsonl')), arm);
+    assert.ok(fs.existsSync(path.join(outDir, 'inner-runs', 'T-01', arm, 'result.json')), arm);
+    assert.ok(fs.existsSync(path.join(outDir, 'inner-runs', 'T-01', arm, 'events.jsonl')), arm);
   }
-  assert.ok(fs.existsSync(path.join(outDir, 'runs', 'T-01', 'with-1', 'screen.png')));
+  assert.ok(fs.existsSync(path.join(outDir, 'inner-runs', 'T-01', 'with-1', 'screen.png')));
 });
 
 test('REQ-041 利用枠の上限で止まった実行があれば、残りの実行は始めずに skipped にし、全体を stopped にする', { skip: SKIP, timeout: 120_000 }, async () => {
@@ -206,4 +206,11 @@ test('REQ-041 コマンドライン：引数の誤りと、置き換えられな
   assert.equal(first.ok, false);
   assert.equal(first.error, 'usage');
   assert.equal(JSON.parse(printed[1]).ok, false);
+});
+
+test('REQ-041 始められなかった誤り：部品（npm のパッケージ）が入っていないときは、入れ方を示す', () => {
+  const missing = Object.assign(new Error("Cannot find package 'playwright' imported from /x/inner.mjs\n  at foo"), { code: 'ERR_MODULE_NOT_FOUND' });
+  assert.deepEqual(describeFailure(missing), { error: 'tools_missing', message: "必要な部品が入っていません。tests/dev-eval で npm install を実行してください（Cannot find package 'playwright' imported from /x/inner.mjs）。" });
+  assert.deepEqual(describeFailure(new InnerEvalError('sandbox_missing', '足りません')), { error: 'sandbox_missing', message: '足りません' });
+  assert.deepEqual(describeFailure(new Error('x')), { error: 'failed', message: 'x' });
 });

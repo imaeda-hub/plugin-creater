@@ -51,9 +51,14 @@ export function roleOf(body) {
   const system = JSON.stringify(body.system ?? '');
   if (system.includes('あなたが知っていること')) return 'user-role';
   if (system.includes('作業の成果物を採点する人です')) return 'judge';
-  if (system.includes('の統括エージェントで')) return 'orchestrator';
-  if (system.includes('の作業エージェントで')) return 'worker';
-  if (system.includes('の検証エージェントで')) return 'verifier';
+  // エージェントの役割は、本文の言い回しではなく、持っているツールで見分ける（定義の tools は、本文より変わりにくい決まり）
+  const tools = (body.tools ?? []).map((t) => t.name);
+  const has = (short) => tools.some((name) => name.startsWith('mcp__') && name.endsWith(`__${short}`));
+  // メインは全部のツールを持つ（スキルも使える）。統括・作業・検証は、定義の tools に skill を入れないので、スキルを持たない（設計書 4.7）
+  if (tools.includes('Skill')) return 'main';
+  if (has('verdict')) return 'verifier';
+  if (has('plan')) return 'orchestrator';
+  if (has('show')) return 'worker';
   return 'main';
 }
 

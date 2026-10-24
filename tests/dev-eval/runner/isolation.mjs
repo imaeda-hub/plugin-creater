@@ -115,6 +115,21 @@ export function allowedToolsFor({ mcpTools = [], extra = [] } = {}) {
   return ['Bash', 'Read', 'Write(./**)', 'Edit(./**)', 'Glob', 'Grep', 'Agent', 'TodoWrite', ...mcpTools, ...extra];
 }
 
+// ---- 利用枠の上限 ----------------------------------------------------------------------------------------
+
+/**
+ * 利用枠の上限の知らせの書き出し（Agent SDK が持つ一覧）。sdk が一覧を持っていなければ（{ query } だけを渡されたとき）、本物の Agent SDK から読む。
+ * 結果の文（result）がこれで始まっていたら、モデルの利用枠の上限に達したと見る。
+ */
+export async function usageLimitPrefixes(sdk) {
+  if (Array.isArray(sdk?.USAGE_LIMIT_ERROR_PREFIXES)) return sdk.USAGE_LIMIT_ERROR_PREFIXES;
+  try {
+    return (await import('@anthropic-ai/claude-agent-sdk')).USAGE_LIMIT_ERROR_PREFIXES ?? [];
+  } catch {
+    return [];
+  }
+}
+
 // ---- query() の options ---------------------------------------------------------------------------------
 
 /**

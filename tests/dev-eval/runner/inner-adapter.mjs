@@ -19,7 +19,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-import { makeQueryOptions } from './isolation.mjs';
+import { makeQueryOptions, usageLimitPrefixes } from './isolation.mjs';
 import { createToolServer, mcpToolName } from './mcp-tools.mjs';
 import { modelMapOf, readConversionReport, toClaudeModelId, toCopilotName, copilotModelList } from './model-map.mjs';
 
@@ -129,7 +129,7 @@ export async function createInnerAdapter(options) {
   const pendingModels = new Map(); // 始まりのフックより先にメッセージが届いたエージェントの、実際のモデル
   let overrides = null;
   let seq = 0;
-  const limitPrefixes = sdk.USAGE_LIMIT_ERROR_PREFIXES ?? [];
+  const limitPrefixes = await usageLimitPrefixes(sdk);
   const state = { limitHit: null };
 
   const emit = (event) => {
@@ -193,8 +193,9 @@ export async function createInnerAdapter(options) {
   const mcpTools = () => core.toolDefinitions.map((definition) => mcpToolName(serverName, definition.shortName));
 
   // ---- フック（統括の実行） ---------------------------------------------------------------------------
+  // Agent の呼び出しの subagent_type は、プラグインの名前を付けない書き方（worker）でも、始まりのフックの agent_type は <プラグイン>:<名前> になりうる
   function takePendingLaunch(agentType) {
-    const index = pendingLaunches.findIndex((p) => p.subagentType === agentType);
+    const index = pendingLaunches.findIndex((p) => p.subagentType === agentType || (typeof p.subagentType === 'string' && p.subagentType !== '' && agentType?.endsWith(`:${p.subagentType}`)));
     return index >= 0 ? pendingLaunches.splice(index, 1)[0] : null;
   }
 

@@ -107,3 +107,11 @@ test('testing.md 5章 query の options：設定は読ませず、本体は同�
   assert.deepEqual(sandboxed.plugins, []);
   assert.throws(() => makeQueryOptions({ cwd, home: '/tmp/h' }), /model/);
 });
+
+test('testing.md 6.2 利用枠の上限の書き出しは、sdk が持っていればそれを、なければ本物の Agent SDK から読む', async () => {
+  const { usageLimitPrefixes } = await import('./isolation.mjs');
+  assert.deepEqual(await usageLimitPrefixes({ USAGE_LIMIT_ERROR_PREFIXES: ['A'] }), ['A']);
+  const real = await usageLimitPrefixes({ query: () => {} });
+  assert.ok(real.includes("You've hit your"));
+  assert.ok(Array.isArray(await usageLimitPrefixes(undefined)));
+});

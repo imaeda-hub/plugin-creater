@@ -315,6 +315,7 @@ test('REQ-020 承認の前に組み立てのスクリプトが動いた会話は
   });
   const record = await runOuterOnce({ ...baseOptions(runRoot), loaded: loadedWeekly, query: sdk.query, maxExchanges: 1 });
   assert.equal(record.grading.grades.find((g) => g.id === 'no-generation-before-approval').ok, false);
+  assert.equal(record.stopped.reason, 'max_exchanges', 'scaffold を呼んだだけでは、生成プラグインはできない（この台本は、何も作らない）');
   fs.rmSync(runRoot, { recursive: true, force: true });
 });
 
@@ -327,5 +328,23 @@ test('REQ-015 プラグインなしの腕：何も読み込まず、エクステ
   assert.equal(o.mcpServers, undefined);
   assert.equal(record.creator.converted, null);
   assert.ok(!record.grading.grades.some((g) => g.id === 'all-items-heard'));
+  fs.rmSync(runRoot, { recursive: true, force: true });
+});
+
+test('REQ-015 インストラクション（rules）は、Claude Code では読み込まれないので、変換スクリプトが写した .eval/rules.md を、システムプロンプトに足す', async () => {
+  const runRoot = tmp('rules');
+  const convert = (src, out) => {
+    const r = fakeConvert(src, out);
+    fs.writeFileSync(path.join(out, '.eval', 'rules.md'), '日本語で答える。\n');
+    return r;
+  };
+  const sdk = createFakeSdk({ userRole: () => 'x', agent: async () => '終わり' });
+  await runOuterOnce({ ...baseOptions(runRoot), convert, loaded: loadedWeekly, query: sdk.query, maxExchanges: 1 });
+  const o = sdk.calls.find((c) => c.kind === 'agent').options;
+  assert.equal(o.systemPrompt.append, '日本語で答える。');
+  // rules がなければ、足さない
+  const sdk2 = createFakeSdk({ userRole: () => 'x', agent: async () => '終わり' });
+  await runOuterOnce({ ...baseOptions(runRoot), loaded: loadedWeekly, query: sdk2.query, maxExchanges: 1 });
+  assert.equal(sdk2.calls.find((c) => c.kind === 'agent').options.systemPrompt.append, undefined);
   fs.rmSync(runRoot, { recursive: true, force: true });
 });

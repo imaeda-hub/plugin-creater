@@ -101,3 +101,17 @@ test('REQ-041 モデルの判定を grade.mjs に渡すと、model の基準だ�
     },
   );
 });
+
+test('REQ-041 モデルの判定：誤りの印（is_error）が付いた結果は、読める JSON が入っていても判定として使わない', async () => {
+  const fakeSdk = {
+    query: () => (async function* generate() {
+      yield { type: 'result', subtype: 'success', is_error: true, result: '{"pass": true, "reason": "API の誤りの文に紛れた"}', total_cost_usd: 0 };
+    })(),
+  };
+  const judge = createAgentSdkJudge({ sdk: fakeSdk });
+  const out = await judge({ criterion, task, artifacts });
+  judge.close();
+  assert.equal(out.pass, false);
+  assert.equal(out.error, true);
+  assert.match(out.reason, /判定の呼び出しが誤りで終わりました/);
+});

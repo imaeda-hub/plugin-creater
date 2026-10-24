@@ -13,6 +13,7 @@
 //   サンドボックス（bubblewrap、socat）が既定で要る。ないときは始めずに断る。--no-sandbox で外せる（結果に警告が残る）。
 //   終了コード：0 最後まで動いた（点数が低くても 0）、1 途中で止まった（利用枠の上限、中断）、2 始められなかった。
 //   標準出力は結果の JSON、進み具合は標準エラー出力。結果は <結果のフォルダ>/inner-result.json に、実行が1つ終わるたびに書き直す。
+//   実行ごとの記録（result.json、events.jsonl、screen.png、作業フォルダ work/）は <結果のフォルダ>/inner-runs/<課題>/<with|without>-<回>/ にある。
 
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
@@ -135,7 +136,7 @@ export async function innerEval(o) {
             continue;
           }
           onProgress({ phase: 'start', task: task.id, arm, n });
-          const runDir = path.join(outDir, 'runs', task.id, `${arm}-${n}`);
+          const runDir = path.join(outDir, 'inner-runs', task.id, `${arm}-${n}`);
           const userRole = userRoleFor(task, arm, n);
           const run = await runInnerArm({
             arm, task, runDir, sdk, userRole, judge, screen, pluginRoot, convertedRoot, models, taskSettings, envExtra, sandbox, signal, model, timeoutMs, pollMs,
@@ -220,6 +221,14 @@ function convertPlugin(pluginRoot, convertedRoot) {
   if (run.status !== 0) throw new InnerEvalError('convert_failed', `置き換えに失敗しました（終了コード ${run.status}）：${(run.stdout || run.stderr).slice(-600)}`);
 }
 
+/** 始められなかった誤りを、{ error, message } にする。部品（npm のパッケージ）が入っていないときは、入れ方を示す */
+export function describeFailure(error) {
+  if (error?.code === 'ERR_MODULE_NOT_FOUND') {
+    return { error: 'tools_missing', message: `必要な部品が入っていません。tests/dev-eval で npm install を実行してください（${String(error.message).split('\n')[0]}）。` };
+  }
+  return { error: error?.code ?? 'failed', message: error?.message ?? String(error) };
+}
+
 export async function main(argv = process.argv.slice(2)) {
   let args;
   try {
@@ -258,7 +267,7 @@ export async function main(argv = process.argv.slice(2)) {
     console.log(JSON.stringify(record, null, 2));
     return record.status === 'stopped' ? 1 : 0;
   } catch (error) {
-    console.log(JSON.stringify({ ok: false, error: error.code ?? 'failed', message: error.message }));
+    console.log(JSON.stringify({ ok: false, ...describeFailure(error) }));
     return 2;
   }
 }

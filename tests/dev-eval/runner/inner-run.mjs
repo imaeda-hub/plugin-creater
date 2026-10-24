@@ -19,7 +19,7 @@ import { gradeRun } from '../../../skills/test-plugin/scripts/grade.mjs';
 import { findScreenUrl } from '../../../skills/test-plugin/scripts/screen.mjs';
 import { prepareWorkDir } from '../../../skills/test-plugin/scripts/tasks.mjs';
 import { createInnerAdapter, summarizeMessage } from './inner-adapter.mjs';
-import { makeQueryOptions } from './isolation.mjs';
+import { makeQueryOptions, usageLimitPrefixes } from './isolation.mjs';
 import { modelMapOf, readConversionReport, toClaudeModelId } from './model-map.mjs';
 
 export const DEFAULTS = Object.freeze({
@@ -167,7 +167,15 @@ export async function runInnerArm(o) {
     const answers = {};
     for (const q of questions) {
       const choices = (q.options ?? []).map((option) => option.label);
-      const answer = await userRole({ question: q.question, choices, history: [...history], multiSelect: Boolean(q.multiSelect) });
+      let answer;
+      try {
+        answer = await userRole({ question: q.question, choices, history: [...history], multiSelect: Boolean(q.multiSelect) });
+      } catch (error) {
+        // ユーザー役が答えられないまま続けると、モデルが答えなしで進んでしまう。この実行は止める
+        result.userRoleError = error;
+        abort.abort();
+        throw error;
+      }
       history.push({ via: 'AskUserQuestion', question: q.question, choices, answer });
       answers[q.question] = answer;
     }
@@ -236,8 +244,7 @@ export async function runInnerArm(o) {
         const failed = turn.resultMessage?.is_error === true || String(turn.resultMessage?.subtype ?? '').startsWith('error');
         if (failed) {
           result.mainError = String(turn.resultMessage?.result || (turn.resultMessage?.errors ?? []).join('、') || turn.resultMessage?.subtype);
-          const prefixes = sdk.USAGE_LIMIT_ERROR_PREFIXES ?? [];
-          if (prefixes.some((p) => result.mainError.startsWith(p))) result.limitHit = { message: result.mainError, where: 'main' };
+          if ((await usageLimitPrefixes(sdk)).some((p) => result.mainError.startsWith(p))) result.limitHit = { message: result.mainError, where: 'main' };
           return;
         }
         if (abort.signal.aborted) return;
@@ -325,22 +332,25 @@ export async function runInnerArm(o) {
   }
 
   // ---- 状態の決め方 ---------------------------------------------------------------------------------------
+  // ありでは、画面の URL が出た後のメインの実行の誤りは、画面の操作を妨げないので、状態を下げない（記録には残す）
+  const mainBlocked = arm !== 'with' || !result.url;
   if (signal?.aborted) {
     result.status = 'stopped';
     result.reason = '試験全体が止まったので、この実行も止めました。';
   } else if (result.limitHit) {
     result.status = 'stopped';
     result.reason = `モデルの利用枠の上限に達しました（${result.limitHit.message}）`;
-  } else if (result.mainException) {
+  } else if (result.userRoleError || (mainBlocked && result.mainException)) {
+    const error = result.userRoleError ?? result.mainException;
     result.status = 'error';
-    result.reason = `メインの実行が失敗しました：${result.mainException.message ?? result.mainException}`;
+    result.reason = result.userRoleError ? `ユーザー役の呼び出しに失敗しました：${error.message ?? error}` : `メインの実行が失敗しました：${error.message ?? error}`;
   } else if (arm === 'with' && result.mainInit && !result.mainInit.plugins.includes(reportInfo.plugin)) {
     result.status = 'error';
     result.reason = `プラグイン ${reportInfo.plugin} が読み込まれませんでした${result.mainInit.pluginErrors.length ? `（${result.mainInit.pluginErrors.map((e) => e.message).join('、')}）` : ''}。`;
   } else if (arm === 'with' && result.mainInit && result.mainInit.mcpServers.find((s) => s.name === adapter.serverName)?.status !== 'connected') {
     result.status = 'error';
     result.reason = `画面を開くツールの MCP サーバー（${adapter.serverName}）につながりませんでした（${JSON.stringify(result.mainInit.mcpServers)}）。`;
-  } else if (result.mainError) {
+  } else if (mainBlocked && result.mainError) {
     result.status = 'incomplete';
     result.reason = `メインの実行が誤りで終わりました（${result.mainError}）`;
   } else if (arm === 'with') {

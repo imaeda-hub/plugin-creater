@@ -170,10 +170,10 @@ export function knowledgeTrace({ persona, exchanges, scope }) {
     const m = k.markers ?? {};
     const asked = exchanges.some((e) => matchesAny(m.asked, questionTextOf(e)));
     const answered = exchanges.some((e) => matchesAny(m.answered, e.answer));
-    const leakPattern = m.leak ?? m.answered;
-    // 聞かれずに話した：隠すべきナレッジを、その話題でない質問に答えて話した（ユーザー役の誤り）
+    // 聞かれずに話した：隠すべきナレッジを、その話題でない質問に答えて話した（ユーザー役の誤り。FORMAT.md 5章）。
+    // markers.leak は大まかな質問への答えを見る言葉（ユーザー役の試験用）で、自分から話すほかのナレッジの文にも出うるので、ここでは使わない
     const unprompted = !k.volunteer && exchanges.some((e) => matchesAny(m.answered, e.answer) && !matchesAny(m.asked, questionTextOf(e)));
-    const leaked = !k.volunteer && exchanges.some((e) => matchesAny(leakPattern, e.answer) && !matchesAny(m.asked, questionTextOf(e)));
+    const leaked = unprompted;
     const embedded = toList(m.embedded).length ? matchesAll(m.embedded, scope.embedded) : null;
     const excludedHit = toList(m.excluded).length ? matchesAny(m.excluded, scope.excluded) : null;
     const taskIncluded = toList(m.task).length ? matchesAll(m.task, scope.task) : null;

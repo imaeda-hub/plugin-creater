@@ -1,0 +1,6 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "plugin-creator",
+  "version": "0.1.0",
+  "description": "対照のクリエイター（開発の試験のためだけに使う）。大まかな質問を3つだけして、生成プラグインを作る。外側の EVAL が、落ちるべきときに落ちるかを確かめる。"
+}

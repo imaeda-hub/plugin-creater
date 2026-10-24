@@ -295,3 +295,43 @@ test('REQ-005 画面を開くツールの返り値：URL と、ユーザーに�
   assert.equal(describeOpened({ url: 'http://127.0.0.1:1/?k=a', notices: [] }), 'Web管理画面の URL：http://127.0.0.1:1/?k=a');
   assert.equal(describeOpened({ url: 'u', notices: ['A', '', 'B'] }), 'Web管理画面の URL：u\n\nユーザーに伝えてください：\n- A\n- B');
 });
+
+test('REQ-008 Agent の呼び出しがプラグインの名前を付けない種類（worker）でも、親と説明を結び付ける', { skip: SKIP }, async (t) => {
+  const { adapter, queries, neutral } = await setup(t);
+  await startRun(adapter);
+  const q = queries[0];
+  await hookOf(q, 'PreToolUse')({ tool_name: 'Agent', tool_use_id: 'toolu_a1', tool_input: { description: '試行 1 の作業', subagent_type: 'worker', prompt: 'p', run_in_background: false } });
+  await hookOf(q, 'SubagentStart')({ agent_id: 'sub-1', agent_type: 'weekly-report:worker' });
+  const started = neutral().find((e) => e.type === 'agent.started' && e.agentId === 'sub-1');
+  assert.equal(started.description, '試行 1 の作業');
+  assert.equal(started.executionMode, 'sync');
+  assert.equal(started.parentAgentId, adapter.agents()[0].agentId);
+});
+
+test('REQ-008 作業が Agent でさらにエージェントを呼んだとき、親は呼んだエージェントになる（統括ではない）', { skip: SKIP }, async (t) => {
+  const { adapter, queries, neutral } = await setup(t);
+  await startRun(adapter);
+  const q = queries[0];
+  await hookOf(q, 'PreToolUse')({ tool_name: 'Agent', tool_use_id: 'toolu_a1', tool_input: { description: 'd', subagent_type: 'weekly-report:worker', prompt: 'p', run_in_background: false } });
+  await hookOf(q, 'SubagentStart')({ agent_id: 'sub-1', agent_type: 'weekly-report:worker' });
+  // 作業（sub-1）の中の呼び出しには agent_id が付く
+  await hookOf(q, 'PreToolUse')({ tool_name: 'Agent', tool_use_id: 'toolu_a2', agent_id: 'sub-1', tool_input: { description: '孫', subagent_type: 'weekly-report:verifier', prompt: 'p', run_in_background: false } });
+  await hookOf(q, 'SubagentStart')({ agent_id: 'sub-2', agent_type: 'weekly-report:verifier' });
+  assert.equal(neutral().find((e) => e.type === 'agent.started' && e.agentId === 'sub-2').parentAgentId, 'sub-1');
+  assert.deepEqual((await adapter.port.listTasks()).map((x) => [x.agentId === adapter.agents()[0].agentId ? 'root' : x.agentId, x.parentAgentId === adapter.agents()[0].agentId ? 'root' : x.parentAgentId]), [['root', null], ['sub-1', 'root'], ['sub-2', 'sub-1']]);
+});
+
+test('REQ-007 サブエージェントの assistant メッセージが、始まりのフックより先に届いても、実際のモデルを取りこぼさない', { skip: SKIP }, async (t) => {
+  const { adapter, queries, neutral } = await setup(t);
+  await startRun(adapter, { worker: 'gpt-6-luna' });
+  const q = queries[0];
+  await hookOf(q, 'PreToolUse')({ tool_name: 'Agent', tool_use_id: 'toolu_a1', tool_input: { description: 'd', subagent_type: 'weekly-report:worker', prompt: 'p', run_in_background: false } });
+  q.push({ type: 'assistant', agent_id: 'sub-1', message: { model: 'claude-haiku-5-5', content: [] } });
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  assert.equal(neutral().some((e) => e.type === 'agent.configured' && e.agentId === 'sub-1'), false, '始まりの前は、まだ中心の処理に届けない');
+  await hookOf(q, 'SubagentStart')({ agent_id: 'sub-1', agent_type: 'weekly-report:worker' });
+  const configured = neutral().find((e) => e.type === 'agent.configured' && e.agentId === 'sub-1');
+  assert.equal(configured.model, 'gpt-6-luna');
+  const order = neutral().filter((e) => e.agentId === 'sub-1').map((e) => e.type);
+  assert.deepEqual(order, ['agent.started', 'agent.configured']);
+});

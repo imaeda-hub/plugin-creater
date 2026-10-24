@@ -170,3 +170,84 @@ test('REQ-008 動きの確かめ：エージェントの定義が使うツール
   assert.match(run.reason, /ghost/);
   assert.equal(sdk.calls.length, 0);
 });
+
+test('REQ-041 ユーザー役が答えられないとき（チャットの返事）は、答えなしで進めず、error にして理由を示す', async () => {
+  const fixture = buildSamplePlugin();
+  const sdk = fakeSdk([[init(), say('どの週ですか？'), done('どの週ですか？')]]);
+  const run = await runInnerArm({
+    arm: 'without', task: fixture.task, runDir: tmpDir('userrole-chat'), sdk, userRole: async () => { throw new Error('ユーザー役の呼び出しに失敗しました（error_during_execution）'); }, judge,
+  });
+  assert.equal(run.status, 'error');
+  assert.match(run.reason, /ユーザー役の呼び出しに失敗しました/);
+  assert.equal(run.grading, null);
+});
+
+test('REQ-041 ユーザー役が答えられないとき（質問のツール）は、その実行を止めて error にして理由を示す', async () => {
+  const fixture = buildSamplePlugin();
+  const sdk = {
+    query: ({ options }) => (async function* generate() {
+      yield { type: 'system', subtype: 'init', session_id: 's', model: 'x', plugins: [], mcp_servers: [] };
+      await options.canUseTool('AskUserQuestion', { questions: [{ question: 'どの週？', options: [{ label: '今週' }, { label: '先週' }] }] });
+      yield { type: 'result', subtype: 'success', is_error: false, result: '続けた', total_cost_usd: 0, num_turns: 1, session_id: 's' };
+    })(),
+  };
+  const run = await runInnerArm({
+    arm: 'without', task: fixture.task, runDir: tmpDir('userrole-tool'), sdk, userRole: async () => { throw new Error('API が応答しません'); }, judge,
+  });
+  assert.equal(run.status, 'error');
+  assert.match(run.reason, /ユーザー役の呼び出しに失敗しました：API が応答しません/);
+});
+
+test('REQ-005 ありの実行：画面の URL が出たあとにメインの実行が誤りで終わっても、画面が最後まで動いていれば、状態を下げない', { skip: SKIP }, async () => {
+  const fixture = buildSamplePlugin();
+  const url = 'http://127.0.0.1:8731/?k=abc123';
+  const sdk = fakeSdk([[init(['weekly-report'], [{ name: 'weekly-report', status: 'connected' }]), say(`画面を開きました：${url}`), { type: 'result', subtype: 'success', is_error: true, result: 'API Error: 500', total_cost_usd: 0, num_turns: 1 }]]);
+  const operated = [];
+  const screen = {
+    operate: async (args) => {
+      operated.push(args);
+      return { finished: true, timedOut: false, endReason: { kind: 'all_passed' }, endReasonText: '評価基準をすべて満たした', summary: null, snapshots: [] };
+    },
+  };
+  const run = await runInnerArm({
+    arm: 'with', task: fixture.task, runDir: tmpDir('after-url'), sdk, userRole: async () => '', judge, screen, pluginRoot: fixture.pluginRoot, convertedRoot: fixture.convertedRoot,
+    models: { worker: 'gpt-6-luna' }, taskSettings: { week: '2026-W42' },
+  });
+  assert.equal(run.status, 'completed', run.reason);
+  assert.equal(run.mainError, 'API Error: 500');
+  assert.equal(operated.length, 1);
+  assert.equal(operated[0].url, url);
+  // 画面の欄に入れるもの：課題の上限の回数、画面で選ぶモデル、足した設定
+  assert.deepEqual(operated[0].settings, { maxIterations: 3, task: { 'model-worker': 'gpt-6-luna', week: '2026-W42' } });
+});
+
+test('REQ-005 ありの実行：画面の URL が出たあとは、メインの最後の文が返事を求めていても、ユーザー役は返事をしない（人は画面を操作する）', { skip: SKIP }, async () => {
+  const fixture = buildSamplePlugin();
+  const url = 'http://127.0.0.1:8731/?k=abc123';
+  const text = `画面を開きました：${url}\nほかに知りたいことを教えてください。`;
+  const sdk = fakeSdk([[init(['weekly-report'], [{ name: 'weekly-report', status: 'connected' }]), say(text), done(text)]]);
+  const answers = [];
+  const screen = { operate: async () => ({ finished: true, timedOut: false, endReason: { kind: 'all_passed' }, endReasonText: 'ok', summary: null, snapshots: [] }) };
+  const run = await runInnerArm({
+    arm: 'with', task: fixture.task, runDir: tmpDir('no-reply-after-url'), sdk, userRole: async ({ question }) => { answers.push(question); return 'x'; }, judge, screen,
+    pluginRoot: fixture.pluginRoot, convertedRoot: fixture.convertedRoot,
+  });
+  assert.equal(run.status, 'completed', run.reason);
+  assert.equal(run.replies, 0);
+  assert.deepEqual(answers, []);
+  assert.equal(sdk.calls.length, 1);
+});
+
+test('REQ-004 変換した版の .eval/rules.md（インストラクション）は、ありの実行のシステムプロンプトに足し、なしには足さない', { skip: SKIP }, async () => {
+  const fixture = buildSamplePlugin();
+  const fs = await import('node:fs');
+  const path = await import('node:path');
+  fs.writeFileSync(path.join(fixture.convertedRoot, '.eval', 'rules.md'), '返事は日本語で書く。\n');
+  const screen = { operate: async () => null };
+  const withSdk = fakeSdk([[init(['weekly-report'], [{ name: 'weekly-report', status: 'connected' }]), say('こんにちは'), done('こんにちは')]]);
+  await runInnerArm({ arm: 'with', task: fixture.task, runDir: tmpDir('rules-with'), sdk: withSdk, userRole: async () => '', judge, screen, pluginRoot: fixture.pluginRoot, convertedRoot: fixture.convertedRoot });
+  assert.equal(withSdk.calls[0].options.systemPrompt.append, '返事は日本語で書く。');
+  const withoutSdk = fakeSdk([[init(), say('こんにちは'), done('こんにちは')]]);
+  await runInnerArm({ arm: 'without', task: fixture.task, runDir: tmpDir('rules-without'), sdk: withoutSdk, userRole: async () => '', judge });
+  assert.equal(withoutSdk.calls[0].options.systemPrompt.append, undefined);
+});

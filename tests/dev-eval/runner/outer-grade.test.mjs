@@ -265,7 +265,7 @@ test('REQ-038 見る範囲：課題と基準のファイルは、tests/eval の 
   assert.match(s.task, /weekly_report\.md/);
   assert.ok(!s.embedded.includes('万円'));
   assert.ok(s.excluded.includes('万円'));
-  assert.ok(!s.embedded.includes('{"criteria"') || s.embedded.includes('task.json') === false);
+  assert.ok(!s.embedded.includes('weekly_report.md') || files.some((f) => f.rel === 'com.github.copilot/extensions/w/task.json'), '課題と基準のファイルの文字は、組み込みの範囲にも入る（knowledge.json だけが外れる）');
 });
 
 test('REQ-039 生成プラグインのファイルを読む：.git・tests/results・node_modules は読まない。バイナリは文字なし', () => {
@@ -310,12 +310,10 @@ const goodFiles = () => [
 test('REQ-015 全体の採点：すべての観点に合格する会話と生成物なら、思考力の高いモデルでも Haiku でも合格', () => {
   const s = passingRun();
   const files = goodFiles();
-  const csvHash = files[2].sha256;
   const personaFiles = weekly.files.map((f) => ({ src: f.src, place: f.place, role: f.role }));
   // 入力のファイルの写しは、元のファイルと同じ中身にする
   const inputSrc = weekly.files.find((f) => f.role === 'input').src;
   files[2] = file('tests/eval/T-01/inputs/先週の売上.csv', fs.readFileSync(inputSrc, 'utf8'));
-  assert.ok(csvHash);
   // 聞かれずに話すナレッジは、この会話では出ない。ここでは markers を絞った模擬ユーザーで見る
   const persona = JSON.parse(JSON.stringify(weekly.persona));
   persona.knowledge = persona.knowledge.filter((k) => k.id === 'output');

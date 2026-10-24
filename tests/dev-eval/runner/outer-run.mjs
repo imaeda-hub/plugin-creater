@@ -23,6 +23,8 @@ import { createUserRole, loadQuery } from './user-role.mjs';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const DEV_EVAL = path.resolve(HERE, '..');
 const CONVERT = path.join(DEV_EVAL, 'convert.py');
+/** 対照のクリエイター（control-creator/）が、本物の組み立てのスクリプトを呼ぶための場所（環境変数 CONTROL_SCAFFOLD で渡す） */
+const CONTROL_SCAFFOLD_PATH = path.join(REPO_ROOT, 'skills', 'make-plugin', 'scripts', 'scaffold.py');
 
 /** 外側の EVAL の既定。クリエイターのモデルは、思考力の高いモデルと Claude Haiku 5.5 の 2 つで回す（6.5） */
 export const DEFAULTS = Object.freeze({
@@ -273,6 +275,13 @@ export async function runOuterOnce(o) {
     })();
   }
   const report = converted ? readConversionReport(converted) : null;
+  // com.github.copilot/rules/ は、Claude Code では読み込まれない。変換スクリプトが .eval/rules.md に写すので、指示として足す（testing.md 4章）
+  let rules = '';
+  try {
+    if (converted) rules = fs.readFileSync(path.join(converted, '.eval', 'rules.md'), 'utf8').trim();
+  } catch {
+    rules = '';
+  }
   if (report && !conversion) conversion = { warnings: report.warnings ?? [], extensionTools: report.extension_tools ?? [] };
   const toolkit = arm === 'with'
     ? await createCreatorToolkit({
@@ -299,6 +308,7 @@ export async function runOuterOnce(o) {
     ...(userRoleModel ? { model: userRoleModel } : {}),
     home: dirs.userHome,
     cwd: dirs.userHome,
+    envExtra, // 模擬の API につなぐ試験では、ユーザー役も同じ接続先にする（渡さないと、ユーザー役だけ本物のモデルを呼ぶ）
   });
 
   // 質問のツール（AskUserQuestion）への答え。ユーザー役が答える
@@ -330,10 +340,11 @@ export async function runOuterOnce(o) {
       plugins: converted ? [converted] : [],
       ...(toolkit ? { mcpServers: { [toolkit.serverName]: toolkit.newServer() }, mcpTools: toolkit.mcpTools } : {}),
       sandbox,
+      ...(rules ? { systemPromptAppend: rules } : {}),
       onQuestion,
       refused,
       // 裏で動くサブエージェントではなく、前面で 1 体ずつ動かす（設計は task を同期で呼ぶ前提）
-      envExtra: { CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: '1', ...envExtra },
+      envExtra: { CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: '1', ...(arm === 'control' ? { CONTROL_SCAFFOLD: CONTROL_SCAFFOLD_PATH } : {}), ...envExtra },
       maxTurns,
       resume,
       abortController,
@@ -378,11 +389,10 @@ export async function runOuterOnce(o) {
   }
 
   const readState = () => (toolkit ? toolkit.readState() : null);
-  const isFinished = () => {
-    const plugins = findGeneratedPlugins(dirs.work);
-    if (plugins.length === 0) return false;
-    if (arm === 'with') return readState()?.stage === 'generate';
-    return true;
+  /** 生成プラグインができて手番が終わったら、会話は終わり。承認（段階「生成」）の記録がないまま作られたときは、その理由で終える（採点で落ちる） */
+  const finishedReason = () => {
+    if (findGeneratedPlugins(dirs.work).length === 0) return null;
+    return arm === 'with' && readState()?.stage !== 'generate' ? 'generated_without_approval' : 'generated';
   };
 
   recorder.add('user.request', { text: persona.request });
@@ -399,7 +409,8 @@ export async function runOuterOnce(o) {
         stopped = { reason: LIMIT_PATTERN.test(`${turn.result.result ?? ''}`) ? 'usage_limit' : turn.result.subtype ?? 'error', message: String(turn.result.result ?? '').slice(0, 300) };
         break;
       }
-      if (isFinished()) { stopped = { reason: 'generated' }; break; }
+      const finished = finishedReason();
+      if (finished) { stopped = { reason: finished }; break; }
       // 文章で質問して手番を終えたときも、ユーザー役の答えを次の発言として返す（6.1）
       const question = text || '（クリエイターの発言がありませんでした）';
       recorder.add('creator.question-text', { text: question, turn: turn.number });
