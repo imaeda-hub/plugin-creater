@@ -331,7 +331,7 @@ function validateUserRoleTests(persona, errors, context) {
   }
 }
 
-function validateStyles(persona, errors, { allStyles }) {
+function validateStyles(persona, errors, { allStyles }, context) {
   const s = persona.styles;
   if (!isObject(s)) {
     errors.push('styles がない');
@@ -351,6 +351,17 @@ function validateStyles(persona, errors, { allStyles }) {
     if (!isText(v.label)) errors.push(`${label}.label がない`);
     if (typeof v.instruction !== 'string') errors.push(`${label}.instruction は文字で書く（normal は空の文字）`);
     else if (key !== 'normal' && v.instruction.trim() === '') errors.push(`${label}.instruction がない`);
+    else {
+      // 話し方の指示は話し方だけを書く。ナレッジの言葉が入っていると、何を話してよいかが食い違う
+      for (const [id, k] of context.knowledgeById) {
+        for (const marker of ['answered', 'leak']) {
+          const re = isText(k.markers?.[marker]) ? regexOf(k.markers[marker]) : null;
+          if (re && re.test(`${v.instruction}\n${v.signal?.text ?? ''}`)) {
+            errors.push(`${label} の指示に、ナレッジ「${id}」の言葉（markers.${marker}）が入っている。話し方の指示は話し方だけを書く`);
+          }
+        }
+      }
+    }
     if ('reask' in v && typeof v.reask !== 'boolean') errors.push(`${label}.reask は true か false で書く`);
     if (REASK_STYLES.includes(key) && v.reask !== true) errors.push(`${label}.reask は true にする`);
     if (key === 'hurry') {
@@ -449,7 +460,7 @@ export async function validatePersona(dir, { allStyles = false } = {}) {
     validateUserRoleTests(persona, errors, context);
     await validateInner(persona, absDir, errors, context);
   }
-  validateStyles(persona, errors, { allStyles });
+  validateStyles(persona, errors, { allStyles }, context);
   return { ok: errors.length === 0, errors, warnings, persona };
 }
 

@@ -16,7 +16,8 @@
 - [x] 議事録 meeting-minutes/（示すファイル 2 つ〔docx、txt〕、ナレッジ 5 件、話し方は normal だけ、内側の EVAL の基準 5 件。試作にはなかった内側の EVAL を足した）
 - [x] 研修アンケート training-survey/（まだやったことのない作業。ファイルなし、ナレッジ 5 件、内側の EVAL の基準 5 件）
 - [x] docx・xlsx を作る make_files.py（weekly-report、meeting-minutes）。仮想環境は <スクラッチ>/d1b-venv（python-docx 1.2.0、openpyxl 3.1.5）
-- [x] 試験 validate.test.mjs：40 件通った（`PERSONA_PYTHON=<venv>/bin/python node --test "tests/dev-eval/personas/*.test.mjs"`。python-docx と openpyxl が入った Python がなければ make_files.py の 2 件は skip）
+- [x] 話し方の5種を議事録に足した（下の「話し方の5種を足した」。統括の頼み・ユーザーの答え26）。試験は 42 件になった
+- [x] 試験 validate.test.mjs：40 件通った（話し方を足した後は 42 件）（`PERSONA_PYTHON=<venv>/bin/python node --test "tests/dev-eval/personas/*.test.mjs"`。python-docx と openpyxl が入った Python がなければ make_files.py の 2 件は skip）
 
 ## 決めたこと
 
@@ -35,6 +36,18 @@
 - 示すファイルのうち role が input のものは、生成プラグインのリポジトリに入るかを外側の EVAL が見る（REQ-038。sha256 が同じ）。週報は先週の売上.csv、議事録は先週の文字起こし.txt。
 - 内側の EVAL の課題の settings は maxIterations: 2 だけ（試作の limit 2 と同じ）。課題の設定の名前は生成プラグインごとに違うので task は書かない。
 - 模擬ユーザーの名前・数・日付は架空。docx・xlsx の作成日時は固定（作るたびに中身が変わらないように）。
+
+## 話し方の5種を足した（議事録。ユーザーの答え26、X2-21）
+
+- meeting-minutes/persona.json の styles に、terse、vague、dont-know、nothing-special、hurry を足した（reask と signal は週報と同じ）。中身のナレッジ、ファイル、userRoleTests、inner は変えていない。
+- 週報の文を写し、議事録の中身と食い違わないかを 1 つずつ確かめて、次のとおり書いた。
+  - terse：週報の文に「いくつかのことを聞かれたときは、それぞれを一言で答える」を足した。議事録の「まとめて答える」の質問は 2 つのこと（文体と【決定】、宿題と【決定】）を聞くので、一言で 1 つしか答えないと合格の条件（両方の answered に当たる）を満たせなくなるため。「説明や例は付けない」は、宿題の例（田中・10/25まで）を落とすだけで、answered（期限）には響かない。例外（期限未定）、違う（である調）、たまたま（書いただけ）は一言で言える。
+  - vague：「普通の書き方です」を「普通の議事録です」に変えた。「特に変わったことはしていません」はそのまま。最初のあいまいな答えは、どのナレッジとも逆のことを言わない（「そうです」と認めない）。聞き直し（reask）で出る。
+  - dont-know：週報と同じ文。議事録の「いつもの癖」「当たり前すぎて思いつかない」ナレッジ（宿題、決まったこと）と合う。先週の議事録は佐藤さんが書いたもの、という作り話は指示に足していない（指示は話し方だけ）。
+  - nothing-special：週報と同じ文。「特に決まりはないです」は、いつもの癖（【決定】）に対する答えとして自然。聞き直しで出る。
+  - hurry：週報の文に「いくつかのことを聞かれたときは、それぞれを短く答える」を足した（terse と同じ理由）。signal は週報と同じ（6 回の後、同じ文）。議事録の作業と食い違う言葉はない。
+- validate.mjs に確かめを足した：話し方の指示と signal の文に、ナレッジの answered・leak に当たる言葉が入っていると不合格（話し方の指示は話し方だけ、という FORMAT.md の決まりを機械で見る）。試験 2 件（議事録の 6 つ、指示にナレッジの言葉が入ったときの不合格）。FORMAT.md の 2.4 に、議事録も 6 つ持つこと、この確かめを書いた。
+- 週報の話し方の文は変えていない（terse と hurry の「それぞれ」の一文は週報にはない。週報の「まとめて答える」の質問も 2 つのことを聞くので、ユーザー役の試験で terse と hurry の compound が落ちたら、同じ一文を足す）。
 
 ## 要確認
 

@@ -41,7 +41,7 @@ const knowledgeOf = (persona, id) => persona.knowledge.find((k) => k.id === id);
 
 for (const id of PERSONAS) {
   test(`REQ-017 模擬ユーザー ${id} が形の決まりに合う`, async () => {
-    const result = await validatePersona(dirOf(id), { allStyles: id === 'weekly-report' });
+    const result = await validatePersona(dirOf(id), { allStyles: id !== 'training-survey' });
     assert.deepEqual(result.errors, []);
     assert.equal(result.ok, true);
   });
@@ -64,11 +64,23 @@ test('REQ-017 決まりの確かめの 4 つの答えが、少なくとも 1 人
   assert.equal(CONFIRM_CHOICES.at(-1), 'このとおり');
 });
 
-test('REQ-015 週報の模擬ユーザーは、話し方の 6 つがそろい、急いでいるは合図を持つ', () => {
-  const styles = readPersona('weekly-report').styles;
-  assert.deepEqual(Object.keys(styles).sort(), [...STYLE_KEYS].sort());
-  assert.equal(styles.hurry.signal.afterAnswers >= 1, true);
-  for (const key of ['vague', 'dont-know', 'nothing-special']) assert.equal(styles[key].reask, true);
+for (const id of ['weekly-report', 'meeting-minutes']) {
+  test(`REQ-015 ${id} の模擬ユーザーは、話し方の 6 つがそろい、急いでいるは合図を持つ`, () => {
+    const styles = readPersona(id).styles;
+    assert.deepEqual(Object.keys(styles).sort(), [...STYLE_KEYS].sort());
+    assert.equal(styles.hurry.signal.afterAnswers >= 1, true);
+    for (const key of ['vague', 'dont-know', 'nothing-special']) assert.equal(styles[key].reask, true);
+    for (const key of STYLE_KEYS.filter((k) => k !== 'normal')) assert.ok(styles[key].instruction.length > 0, key);
+  });
+}
+
+test('REQ-015 話し方の指示にナレッジの言葉が入っていると不合格になる（議事録の話し方で）', async () => {
+  const r = await mutate('meeting-minutes', (p) => {
+    p.styles.terse.instruction += '決まったことには【決定】を付ける。';
+    p.styles.hurry.signal.text += '宿題の期限はいつですか？';
+  });
+  assert.ok(hasError(r, 'styles.terse の指示に、ナレッジ「decision-mark」'));
+  assert.ok(hasError(r, 'styles.hurry の指示に、ナレッジ「todo-owner」'));
 });
 
 test('REQ-016 まだやったことのない模擬ユーザーは、ファイルがなく、想定の 1 回のナレッジを持つ', () => {
