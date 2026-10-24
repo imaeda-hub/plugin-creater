@@ -223,6 +223,8 @@ def describe_schema_error(error: "jsonschema.ValidationError", prefix: Tuple[Any
         message = "%s 以上でなければならない（今は %s）" % (want, short(inst))
     elif v == "uniqueItems":
         message = "同じ要素が重なっている"
+    elif v == "not":
+        message = "%s は使えない（%s）" % (short(inst), error.schema.get("description", "決まりで除かれている値"))
     else:
         message = error.message
     return "%s: %s" % (where, message)

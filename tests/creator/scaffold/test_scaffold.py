@@ -193,6 +193,23 @@ class Gate(Base):
         self.assertMentions(self.refusal(), "形が違います")
 
 
+    def test_REQ_020_refuses_without_what_the_user_was_shown(self):
+        for value in (None, [], "x"):
+            with self.subTest(value=value):
+                self.edit_state(lambda s: s.update(confirmation=value))
+                self.assertMentions(self.refusal(), "confirmation", "生成前の確認")
+
+    def test_REQ_038_refuses_a_record_without_the_confirmed_eval_tasks(self):
+        for value in (None, [], "x"):
+            with self.subTest(value=value):
+                self.setUp()
+                self.edit_state(lambda s: s["confirmation"].update(evalTasks=value))
+                self.assertMentions(self.refusal(), "confirmation.evalTasks")
+        self.setUp()
+        self.edit_state(lambda s: s["confirmation"]["evalTasks"].append({"inputs": []}))
+        self.assertMentions(self.refusal(), "頼むときの言葉（prompt）がありません")
+
+
 class Place(Base):
     """作る場所（REQ-021）と、作り直しでも新しいフォルダ（REQ-036）。"""
 
@@ -471,6 +488,18 @@ class Values(Base):
     def test_the_generation_date_is_put_into_the_constitution(self):
         self.build()
         self.assertIn("| 1.0.0 | 2026-10-23 |", self.read("docs/constitution.md"))
+
+    def test_REQ_004_a_plugin_named_plugin_creator_is_refused(self):
+        self.edit_manifest(lambda m: m.update(plugin_name="plugin-creator"))
+        self.assertMentions(self.refusal(), "plugin_name", "plugin-creator", "plugin-creator_open", "別の名前")
+
+    def test_REQ_004_names_that_only_start_with_plugin_creator_are_accepted(self):
+        for name in ("plugin-creator-lite", "my-plugin-creator", "plugin-creators"):
+            with self.subTest(name=name):
+                self.setUp()
+                self.edit_manifest(lambda m: m.update(plugin_name=name))
+                self.build()
+                self.assertEqual(self.json("plugin.json")["name"], name)
 
     def test_the_manifest_must_follow_the_rules_of_names_and_descriptions(self):
         cases = [
@@ -874,6 +903,149 @@ class EvalInputs(Base):
     def test_without_eval_inputs_nothing_is_copied(self):
         result = self.build()
         self.assertEqual(result["eval_inputs"], [])
+
+
+class ConfirmedEvals(Base):
+    """作業エージェントが書いた eval.json が、ユーザーが生成前の確認で確かめた課題（confirmation.evalTasks）と同じか（REQ-038、X2-03）。"""
+
+    def add_task(self, prompt="別の課題の頼むときの言葉", directory="T-02", settings=None):
+        """第2の課題を、eval.json（parts/files）と確かめた課題の両方に足す。"""
+        shutil.copytree(self.part("files/tests/eval/T-01"), self.part("files/tests/eval/" + directory))
+
+        def change(e):
+            e.update(id=directory, prompt=prompt)
+            e.pop("settings", None)
+            if settings is not None:
+                e["settings"] = settings
+        self.edit_json(self.part("files/tests/eval/%s/eval.json" % directory), change)
+        self.edit_state(lambda s: s["confirmation"]["evalTasks"].append({
+            "prompt": prompt, "inputs": [{"path": "tests/eval/%s/inputs/memo.txt" % directory, "provisional": True}],
+            "criteria": ["K-01", "K-03"], "settings": settings or {}}))
+
+    def test_REQ_038_a_changed_prompt_is_refused_and_both_prompts_are_shown(self):
+        self.edit_eval(lambda e: e.update(prompt="今週の週報を書いてください"))
+        problems = self.refusal()
+        self.assertMentions(problems, "先週の記録をもとに", "に当たる EVAL の課題", "今週の週報を書いてください", "確かめた課題にありません")
+
+    def test_REQ_038_spaces_around_the_prompt_do_not_matter(self):
+        self.edit_eval(lambda e: e.update(prompt="  先週の記録をもとに、今週の週報を書いてください。\n"))
+        self.build()
+
+    def test_REQ_038_a_criterion_dropped_from_a_task_is_refused(self):
+        self.edit_eval(lambda e: e["criteria"].pop())   # K-03 を落とす（ほかの課題には入っていても、この課題の基準は確かめた組と同じにする）
+        self.assertMentions(self.refusal(), "tests/eval/T-01/eval.json", "criteria", "K-01、K-03", "eval.json：K-01")
+
+    def test_REQ_038_a_criterion_added_to_a_task_is_refused(self):
+        self.edit_confirmed(lambda t: t["criteria"].remove("K-03"))
+        self.assertMentions(self.refusal(), "criteria", "確かめた課題：K-01／eval.json：K-01、K-03")
+
+    def test_REQ_038_settings_must_be_the_confirmed_ones(self):
+        cases = {
+            "繰り返しの上限": lambda e: e["settings"].update(maxIterations=5),
+            "設定の値": lambda e: e["settings"]["task"].update(week="2026-W43"),
+            "設定の名前": lambda e: e["settings"]["task"].update(month="10"),
+            "settings がない": lambda e: e.pop("settings"),
+        }
+        for name, change in cases.items():
+            with self.subTest(change=name):
+                self.setUp()
+                self.edit_eval(change)
+                self.assertMentions(self.refusal(), "settings", "確かめた課題")
+
+    def test_REQ_038_a_task_without_settings_matches_a_confirmed_task_without_settings(self):
+        self.edit_eval(lambda e: e.pop("settings"))
+        self.edit_confirmed(lambda t: t.pop("settings"))
+        self.build()
+        self.setUp()
+        self.edit_eval(lambda e: e.update(settings={}))
+        self.edit_confirmed(lambda t: t.pop("settings"))
+        self.build()
+
+    def test_REQ_038_inputs_must_be_the_confirmed_ones(self):
+        self.edit_eval(lambda e: e["inputs"].append("inputs/other.txt"))
+        self.assertMentions(self.refusal(), "inputs", "確かめていない", "tests/eval/T-01/inputs/other.txt")
+        self.setUp()
+        self.edit_eval(lambda e: e.update(inputs=[]))
+        self.assertMentions(self.refusal(), "inputs", "確かめたのに入っていない", "tests/eval/T-01/inputs/memo.txt")
+
+    def test_REQ_038_an_input_file_that_was_not_confirmed_is_not_put_in_the_repository(self):
+        self.write(self.part("files/tests/eval/T-01/inputs/secret.txt"), "確かめていないファイル")
+        self.assertMentions(self.refusal(), "tests/eval/T-01/inputs/secret.txt", "確かめた入力にありません")
+
+    def test_REQ_038_a_task_with_no_input_matches_a_confirmed_task_with_no_input(self):
+        self.edit_eval(lambda e: e.update(inputs=[]))
+        self.edit_confirmed(lambda t: t.update(inputs=[]))
+        os.remove(self.part("files/tests/eval/T-01/inputs/memo.txt"))
+        self.build()
+
+    def test_REQ_038_the_way_of_writing_a_path_does_not_matter(self):
+        self.edit_eval(lambda e: e.update(inputs=["./inputs/memo.txt"]))
+        self.edit_confirmed(lambda t: t["inputs"][0].update(path="tests/eval//T-01/./inputs/memo.txt"))
+        self.build()
+
+    def test_REQ_038_the_folder_name_of_a_task_is_free(self):
+        shutil.move(self.part("files/tests/eval/T-01"), self.part("files/tests/eval/週報の課題"))
+        self.edit_confirmed(lambda t: t["inputs"][0].update(path="tests/eval/週報の課題/inputs/memo.txt"))
+        self.build()
+        self.assertTrue(os.path.isfile(self.at("tests/eval/週報の課題/eval.json")))
+
+    def test_REQ_038_two_confirmed_tasks_need_two_eval_files(self):
+        self.add_task()
+        self.build()
+        self.assertEqual(self.json("tests/eval/T-02/eval.json")["prompt"], "別の課題の頼むときの言葉")
+
+    def test_REQ_038_a_confirmed_task_without_an_eval_file_is_refused(self):
+        self.add_task()
+        shutil.rmtree(self.part("files/tests/eval/T-02"))
+        self.assertMentions(self.refusal(), "別の課題の頼むときの言葉", "に当たる EVAL の課題")
+
+    def test_REQ_038_no_eval_file_at_all_is_refused(self):
+        shutil.rmtree(self.part("files/tests/eval"))
+        self.assertMentions(self.refusal(), "先週の記録をもとに", "に当たる EVAL の課題")
+
+    def test_REQ_038_an_eval_file_for_a_task_the_user_did_not_confirm_is_refused(self):
+        self.add_task()
+        self.edit_state(lambda s: s["confirmation"]["evalTasks"].pop())
+        self.assertMentions(self.refusal(), "tests/eval/T-02/eval.json", "別の課題の頼むときの言葉", "確かめた課題にありません")
+
+    def test_REQ_038_tasks_with_the_same_prompt_are_matched_by_what_they_contain(self):
+        for swap in (False, True):
+            with self.subTest(swap=swap):
+                self.setUp()
+                self.add_task(prompt="先週の記録をもとに、今週の週報を書いてください。", settings={"maxIterations": 1})
+                if swap:   # 確かめた課題の並びを入れ替えても、中身で結びつく
+                    self.edit_state(lambda s: s["confirmation"]["evalTasks"].reverse())
+                self.build()
+
+    def test_REQ_038_tasks_with_the_same_prompt_still_have_to_match_one_by_one(self):
+        self.add_task(prompt="先週の記録をもとに、今週の週報を書いてください。", settings={"maxIterations": 1})
+        self.edit_eval(lambda e: e["settings"].update(maxIterations=2))
+        self.assertMentions(self.refusal(), "settings")
+
+    def test_REQ_038_a_real_file_that_was_confirmed_must_be_in_eval_inputs(self):
+        gone = os.path.join(self.root, "実物", "前回の週報.docx")
+        self.write(gone, "x")
+        self.edit_eval(lambda e: e["inputs"].append("inputs/前回の週報.docx"))
+        self.edit_confirmed(lambda t: t["inputs"].append({"path": gone, "provisional": False}))
+        self.assertMentions(self.refusal(), gone, "eval_inputs の from にありません")
+
+    def test_REQ_038_a_real_file_in_eval_inputs_that_was_not_confirmed_is_refused(self):
+        real = os.path.join(self.root, "実物", "秘密.txt")
+        self.write(real, "x")
+        self.edit_manifest(lambda m: m.update(eval_inputs=[{"from": real, "to": "tests/eval/T-01/inputs/秘密.txt"}]))
+        self.assertMentions(self.refusal(), "tests/eval/T-01/inputs/秘密.txt", "確かめた入力にありません")
+
+    def test_REQ_038_an_eval_file_that_cannot_be_read_gives_its_own_problem_only(self):
+        self.edit_eval(lambda e: e.pop("criteria"))
+        problems = self.refusal()
+        self.assertMentions(problems, "tests/eval/T-01/eval.json", "criteria")
+        self.assertNotIn("に当たる EVAL の課題", "\n".join(problems))
+
+    def test_REQ_038_eval_inputs_that_the_manifest_gets_wrong_give_their_own_problem_only(self):
+        self.edit_manifest(lambda m: m.update(eval_inputs="x"))
+        problems = self.refusal()
+        self.assertMentions(problems, "eval_inputs", "一覧")
+        self.assertNotIn("に当たる EVAL の課題", "\n".join(problems))
 
 
 class Knowledge(Base):
