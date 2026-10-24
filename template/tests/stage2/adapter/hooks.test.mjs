@@ -239,6 +239,9 @@ describe('統括エージェントが使ってよいツール（フック onPreT
       assert.equal(result.permissionDecision, 'deny', toolName);
       assert.ok(result.permissionDecisionReason.includes(`「${toolName}」`), `${toolName}：理由にツールの名前が入る`);
       assert.match(result.permissionDecisionReason, /作業エージェントに頼んでください/);
+      // 統括の定義（「してはいけないこと」）と同じ言葉と時機：試行の実行（2）で頼む。まとめ（5〜8）の間は頼まず、まとめを続ける
+      assert.match(result.permissionDecisionReason, /試行の実行（2）で/);
+      assert.match(result.permissionDecisionReason, /まとめ（5〜8）の間は頼まず、まとめを続けてください/);
       assert.doesNotMatch(result.permissionDecisionReason, /undefined|\[object|Error/);
       assert.equal(hook(asOrchestrator(toolName, 'orchestrator')).permissionDecision, 'deny', `${toolName}（種類が名前だけで届いたとき）`);
     }

@@ -376,7 +376,7 @@ export async function startAdapter({ joinSession }) {
     return (
       `統括エージェントは、ツール「${shown}」を使えません。使えるのは、ファイルを読む・探すツール、作業エージェントと検証エージェントを呼ぶツール（task など）、` +
       `記録のツール（${ORCHESTRATOR_RECORD_SHORT_NAMES.map((name) => `${pluginName}_${name}`).join('、')}）だけです。` +
-      '成果物を作る仕事やコマンドを動かす仕事は、task で作業エージェントに頼んでください。'
+      '成果物を作る・直す仕事は、試行の実行（2）で、task で作業エージェントに頼んでください。まとめ（5〜8）の間は頼まず、まとめを続けてください。'
     );
   }
 
