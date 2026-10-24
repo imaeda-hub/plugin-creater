@@ -100,6 +100,9 @@
 - C2：git の名前とメールが設定されていないときは、最初のコミットだけ plugin-creator <plugin-creator@localhost> を使う（設定ファイルは変えない）。生成の後の直しのコミットとタグ（plugin-creator-generated）は、同じやり方の git -c で行える。
 - B1：上位の文書で直すこと（tasks/B1.md）。generated-plugin-structure.md 3.4・7章、creator-structure.md 2章・4.1：土台に adapter.mjs が加わる。3.2 の「偽物のつなぎ口」は「偽物の SDK のセッションを adapter.mjs に渡す」形になった。BLUEPRINT 3.1・3.2：tool.completed の toolName は開始から補う、tool.started に arguments、parentAgentId は tasks.list にない、agent.started.agentType のそろえ方。4.14：許可の受け口に requestId は渡らない。6.2：open の返り値の形。
 - B1：実機でしか確かめられないこと：agentType・agentName の届き方、onSubagentStop が終わりのイベントより先に届くか、Auto の見分け（modelId が auto か）、model.list の要素の形、tool.started の arguments の全文が記録に残って大きくなりうること、Windows では SIGTERM を受けられないこと。
+- C3：上位の文書で直すこと（tasks/C3.md）。testing.md 10.4・generated-plugin-structure.md 11章 #1・R2 3.10〜3.11：SDK でエクステンションを読み込むには requestExtensions: true だけでは足りず、extensionSdkPath と CopilotClient の extensionLaunchProvider が要る（本物の SDK 1.0.25 とランタイム 1.0.102 に偽物のモデルをつないで確かめた）。この方式では、読み込みのときの確認が許可の求めとして出ないので、--allow-tool の代わりの案は要らない。ユーザーの ~/.copilot/extensions/ のエクステンションは起動を断って混ぜない。EVAL は COPILOT_CLI_PATH を使わない。testing.md 11.2 の道具に npm が入る（EVAL の道具は npm install --ignore-scripts で約190MB）。
+- C3：要確認（最終確認で人が見る）：assistant.usage の copilotUsage.totalNanoAiu と aiCreditsStatus、session_limits_exhausted.requested が届くか、サブエージェントの許可の求めが onPermissionRequest に届くか、COPILOT_PLUGIN_DIR_ONLY でほかのプラグインが混ざらないか、Node.js 20.19 での動き。extensionLaunchProvider は実験的な API なので SDK の版を固定した。EVAL の AI クレジットの目安は未測定（最初の EVAL で埋める）。
+- C3→A3：1段目で eval.json の check.type の4種類と、種類ごとの必須の項目まで検査できる（今は check.type があることまで）。
 - R2：`requestSandboxPermissive` を「サンドボックスの外で動かす」と示さない（generated-plugin-structure.md 6.3）。tasks.list には shell と client のタスクも入る。
 
 ## 後の仕事に渡すこと（作業のエージェントの報告から）
@@ -152,7 +155,7 @@
 | B3 を直す | ad474ab788e9b207f（指示は briefs/fix.md。メモは tasks/B3-fix.md） |
 | B1 | a7b491f44bb4b21eb（完了） |
 | C2 | ab07d1229ed5e8971（完了） |
-| C3 | ad65681a2d31da659（指示は briefs/C3.md） |
+| C3 | ad65681a2d31da659（完了） |
 
 ## 再開のしかた
 
