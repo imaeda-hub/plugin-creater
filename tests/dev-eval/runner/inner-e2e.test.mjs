@@ -2,6 +2,7 @@
 // 実際のモデルは使わない：Anthropic API の代わりに、ローカルの偽のサーバー（台本）につなぐ。
 // 動かし方：cd tests/dev-eval && node --test "runner/inner-e2e.test.mjs"（Python に PyYAML と jsonschema、Playwright のブラウザーが要る。なければ飛ばす）
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
@@ -151,8 +152,9 @@ test('REQ-009 止める：統括の実行だけが取り消され、10秒のう�
   const fixture = buildSamplePlugin();
   const requests = [];
   const api = await startFakeAnthropic(scriptedModel({ verifierDelayMs: 60_000, onRequest: (role) => requests.push(role) }));
+  const runDir = tmpDir('stop-run');
   const adapter = await createInnerAdapter({
-    sdk, pluginRoot: fixture.pluginRoot, convertedRoot: fixture.convertedRoot, workDir: tmpDir('stop-work'), runDir: tmpDir('stop-run'),
+    sdk, pluginRoot: fixture.pluginRoot, convertedRoot: fixture.convertedRoot, workDir: tmpDir('stop-work'), runDir,
     envExtra: { ...FAKE_ENV, ANTHROPIC_BASE_URL: api.url },
   });
   t.after(async () => {
@@ -180,4 +182,8 @@ test('REQ-009 止める：統括の実行だけが取り消され、10秒のう�
   const before = requests.length;
   await new Promise((resolve) => setTimeout(resolve, 2500));
   assert.equal(requests.length, before);
+  // 止めたあとに、Claude Code の本体のプロセスが残っていない
+  await adapter.shutdown();
+  const left = spawnSync('ps', ['-eo', 'args'], { encoding: 'utf8' }).stdout.split('\n').filter((line) => line.includes(runDir));
+  assert.deepEqual(left, []);
 });

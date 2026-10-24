@@ -1,0 +1,18 @@
+import * as sdk from '@anthropic-ai/claude-agent-sdk';
+import { spawnSync } from 'node:child_process';
+import { startFakeAnthropic } from '/home/user/plugin-creater/tests/dev-eval/runner/fake-anthropic.mjs';
+import { createInnerAdapter } from '/home/user/plugin-creater/tests/dev-eval/runner/inner-adapter.mjs';
+import { buildSamplePlugin, scriptedModel, tmpDir } from '/home/user/plugin-creater/tests/dev-eval/runner/inner-test-support.mjs';
+const fixture = buildSamplePlugin();
+const api = await startFakeAnthropic(scriptedModel({ verifierDelayMs: 60000 }));
+const runDir = tmpDir('pscheck');
+const adapter = await createInnerAdapter({ sdk, pluginRoot: fixture.pluginRoot, convertedRoot: fixture.convertedRoot, workDir: tmpDir('w'), runDir, envExtra: { ANTHROPIC_API_KEY: 'k', ANTHROPIC_BASE_URL: api.url, CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1' } });
+await adapter.core.open({ requestText: 'x' });
+await adapter.core.start({ models: {}, maxIterations: 1, task: { week: 'w' } });
+await new Promise((r) => setTimeout(r, 3000));
+const ps = () => spawnSync('ps', ['-eo', 'pid,args'], { encoding: 'utf8' }).stdout.split('\n').filter((l) => l.includes(runDir));
+console.log('during:', ps().length, ps().map((l) => l.slice(0, 150)));
+await adapter.shutdown();
+await new Promise((r) => setTimeout(r, 1000));
+console.log('after:', ps().length);
+await api.close();

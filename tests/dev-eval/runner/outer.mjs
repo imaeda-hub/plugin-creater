@@ -16,7 +16,6 @@
 //   標準出力は結果の要約の JSON、進み具合は標準エラー出力。結果は <out>/outer-report.json に、実行が 1 つ終わるたびに書き直す。
 
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
@@ -154,7 +153,7 @@ const redactGrade = (g, redact, order) => (redact ? { ...g, id: g.id.replace(/:(
 export function summarizeRecord(record, { heldout = false } = {}) {
   const order = record.grading.trace.map((t) => t.id);
   return {
-    persona: heldout ? `heldout-${record.persona.id.length}` : record.persona.id,
+    persona: heldout ? '(見ない模擬ユーザー)' : record.persona.id,
     heldout,
     style: record.style,
     arm: record.arm,
@@ -183,10 +182,13 @@ export function evaluateControl(records) {
   if (controls.length === 0) return null;
   const problems = [];
   for (const r of controls) {
+    const who = r.heldout ? '(見ない模擬ユーザー)' : r.persona.id;
+    const order = r.grading.trace.map((t) => t.id);
+    const name = (id) => (r.heldout ? `#${order.indexOf(id) + 1}` : id);
     for (const t of r.grading.trace) {
       if (t.volunteer || t.id === 'first-run') continue;
-      if (t.embedded === true) problems.push(`${r.persona.id}：対照のクリエイターが、聞かれないと話さないナレッジ ${t.id} を組み込んだ`);
-      if (t.leaked) problems.push(`${r.persona.id}：ユーザー役が、聞かれていないのにナレッジ ${t.id} を話した`);
+      if (t.embedded === true) problems.push(`${who}：対照のクリエイターが、聞かれないと話さないナレッジ ${name(t.id)} を組み込んだ`);
+      if (t.leaked) problems.push(`${who}：ユーザー役が、聞かれていないのにナレッジ ${name(t.id)} を話した`);
     }
   }
   return { ok: problems.length === 0, runs: controls.length, problems };
@@ -281,6 +283,7 @@ export async function main(argv = process.argv.slice(2)) {
   }
   const abort = new AbortController();
   process.once('SIGINT', () => abort.abort());
+  const timer = args.timeoutMs ? setTimeout(() => abort.abort(), args.timeoutMs) : null;
   try {
     const personas = await loadPersonas({ dirs: args.personas, heldout: args.heldout });
     const plan = planRuns({ personas, styles: args.styles, allStyles: args.allStyles, arms: args.arms, models: args.models, runs: args.runs, inner: args.inner });
@@ -315,6 +318,8 @@ export async function main(argv = process.argv.slice(2)) {
   } catch (error) {
     console.log(JSON.stringify({ ok: false, error: error.code ?? 'failed', message: error.message }));
     return 2;
+  } finally {
+    if (timer) clearTimeout(timer);
   }
 }
 
