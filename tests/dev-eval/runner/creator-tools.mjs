@@ -33,6 +33,28 @@ export async function loadCreatorModule(pluginRoot = REPO_ROOT) {
   return import(pathToFileURL(file).href);
 }
 
+/**
+ * エクステンションのツールの返り値を、MCP の結果の形に直す。
+ * Copilot CLI 用のツールは、断りも失敗も、例外ではなく `{ textResultForLlm: <理由の文>, resultType: 'failure' }` で返す
+ * （実機の Copilot CLI 1.0.102 は、例外を投げると理由の文を消すため。V1 の不具合 2）。MCP の公式の形は、
+ * `{ content: [{ type: 'text', text }], isError: true }`。理由の文はそのままモデルに届ける。成功の文字は、文字のまま返す。
+ * resultType が success 以外（failure・rejected・denied）なら失敗とみなす。
+ * @returns {string | object} 成功は文字列かそのままの返り値、失敗は `{ content, isError: true }`
+ */
+export function toMcpResult(raw) {
+  if (raw === null || typeof raw !== 'object' || typeof raw.textResultForLlm !== 'string') return raw;
+  if (raw.resultType === undefined || raw.resultType === 'success') return raw.textResultForLlm;
+  return { content: [{ type: 'text', text: raw.textResultForLlm }], isError: true };
+}
+
+/** MCP の結果（toMcpResult の返り値）から、記録に残す文と、失敗かどうかを取り出す */
+function describeResult(result) {
+  if (result !== null && typeof result === 'object' && Array.isArray(result.content)) {
+    return { isError: result.isError === true, text: result.content.map((c) => c?.text ?? '').join('\n') };
+  }
+  return { isError: false, text: String(result ?? '') };
+}
+
 /** 偽物の gh。引数と本文を残して、成功の返事を返す（gh issue create の返事に似せて、Issue の URL を 1 行返す） */
 export function createFakeGh(issues) {
   return async function fakeGh(args, input) {
@@ -88,7 +110,7 @@ export async function createCreatorToolkit({
     return e;
   };
 
-  /** MCP のツールの定義（名前の後ろの部分だけを名前にする）。handler は Refusal などを投げる */
+  /** MCP のツールの定義（名前の後ろの部分だけを名前にする）。handler は、成功なら文字、断りや失敗なら `{ content, isError: true }` を返す */
   const tools = creator.tools.map((tool) => {
     const name = tool.name.startsWith(TOOL_PREFIX) ? tool.name.slice(TOOL_PREFIX.length) : tool.name;
     return {
@@ -100,8 +122,9 @@ export async function createCreatorToolkit({
         const callId = callCounter;
         record({ type: 'tool.call', callId, tool: name, args, toolUseId: ctx.toolUseId, agentId: ctx.agentId });
         try {
-          const result = await tool.handler(args, ctx);
-          record({ type: 'tool.result', callId, tool: name, toolUseId: ctx.toolUseId, isError: false, result: String(result ?? '') });
+          const result = toMcpResult(await tool.handler(args, ctx));
+          const { isError, text } = describeResult(result);
+          record({ type: 'tool.result', callId, tool: name, toolUseId: ctx.toolUseId, isError, result: text });
           return result;
         } catch (error) {
           record({ type: 'tool.result', callId, tool: name, toolUseId: ctx.toolUseId, isError: true, result: error?.message ?? String(error) });
@@ -130,7 +153,7 @@ export async function createCreatorToolkit({
       return createToolServer({ name: CREATOR_SERVER_NAME, tools });
     },
 
-    /** ツールを直接呼ぶ（試験用。MCP を通さない） */
+    /** ツールを直接呼ぶ（試験用。MCP を通さない）。返り値は handler と同じ（成功は文字、断りや失敗は `{ content, isError: true }`） */
     callTool(name, args = {}, ctx = {}) {
       const tool = byName.get(name);
       if (!tool) throw new Error(`知らないツールです：${name}`);

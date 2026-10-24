@@ -14,15 +14,16 @@
 - [x] 読み込み（testing.md 1〜9章・11.1、ナレッジ3つ、R4、BLUEPRINT、B1 の adapter.mjs、A1 の core、C3 の screen.mjs・grade.mjs・tasks.mjs・judge.mjs、D1a の convert.py、D1b の FORMAT.md、D1c の user-role.mjs・outer-inner.mjs）
 - [x] 偽の API で、本物の Agent SDK 0.3.310 の Claude Code を動かして、つなぎ方を確かめた（分かったことは下の節）
 - [x] 共通の部品：package.json、model-map.mjs、isolation.mjs、mcp-tools.mjs、fake-anthropic.mjs と、それぞれの試験
-- [x] inner-adapter.mjs（内側のつなぎ口）と試験 inner-adapter.test.mjs（17 件）
+- [x] inner-adapter.mjs（内側のつなぎ口）と試験 inner-adapter.test.mjs（21 件）
 - [x] inner-run.mjs（実行1回。あり・なし）と試験 inner-run.test.mjs（19 件）
 - [x] inner-judge.mjs（モデルで判定する関数の Agent SDK 版）と試験 inner-judge.test.mjs（5 件）
 - [x] inner.mjs（入口。コマンドラインと innerEval）と試験 inner.test.mjs（10 件）
-- [x] inner-e2e.test.mjs（7 件）：本物の Agent SDK と Claude Code の本体、本物の生成プラグイン〔C2 の見本を組み立てて D1a の変換スクリプトで置き換えたもの〕の画面と Playwright を、偽の Anthropic API につないで、ありの実行・なしの実行・チャットの返事・質問のツール・止める・設定の欄をユーザー役が決めること（決められたとき、決められなかったとき）を通した
-- [x] 通しの確認：tests/dev-eval/runner/ の試験すべて（D1c の分を含む）172 件が通った。D1d の分は 87 件（共通の部品 21 件を含む）。D1d の分を続けて動かしても通った
+- [x] inner-e2e.test.mjs（10 件）：本物の Agent SDK と Claude Code の本体、本物の生成プラグイン〔C2 の見本を組み立てて D1a の変換スクリプトで置き換えたもの〕の画面と Playwright を、偽の Anthropic API につないで、ありの実行・なしの実行・チャットの返事・質問のツール・止める・設定の欄をユーザー役が決めること（決められたとき、決められなかったとき）を通した。あとの3件は V1 の直しへの合わせ（断りの文がモデルに届くこと）
+- [x] 通しの確認：tests/dev-eval/runner/ の試験すべて（D1c の分を含む）185 件が通った。D1d の分は 98 件（共通の部品 25 件を含む）。D1d の分を続けて動かしても通った
 - [x] 変異試験（わざと壊す検査）：下の「変異試験」
 - [x] 最後の返事（1回目）
 - [x] 続きの仕事（統括の決定）：画面の開始前の設定の欄を、ユーザー役が読んで決める（inner-settings.mjs）。下の「画面の設定の欄を決める」
+- [x] 追加の確かめ（V1 の直しへの合わせ）：記録のツールの断りの文が、内側の EVAL でモデルに届くこと。偽の API だけを使うための守り（guardSdk）。クリエイターの置き換え（creator-tools.mjs）の failure の結果への合わせ。下の「V1 の直しへの合わせ」
 
 動かし方（リポジトリの根から。事前に `cd tests/dev-eval && npm install`）：
 
@@ -47,13 +48,13 @@ node tests/dev-eval/runner/inner.mjs --plugin <生成プラグインのフォル
 | ファイル | 中身 |
 | --- | --- |
 | `package.json` | 版の固定（下の表） |
-| `runner/model-map.mjs`、`isolation.mjs`、`mcp-tools.mjs`、`fake-anthropic.mjs` | 共通の部品（下の表）。試験は `*.test.mjs`（model-map 5、isolation 10、mcp-tools 6） |
-| `runner/inner-adapter.mjs` | 内側のつなぎ口。`createInnerAdapter({ sdk, pluginRoot, convertedRoot, workDir, runDir, ... })`。中心の処理（core/）と画面（ui/）を生成プラグインの場所から読み込み、窓口 port と中立のイベントで動かす。`mainParts()`（メインの query に足す MCP サーバー）、`port`、`core`、`agents()`、`runs()`、`checkToolNames()`、`limitHit()`、`shutdown()` |
+| `runner/model-map.mjs`、`isolation.mjs`、`mcp-tools.mjs`、`fake-anthropic.mjs` | 共通の部品（下の表）。試験は `*.test.mjs`（model-map 5、isolation 10、mcp-tools 6、fake-anthropic 4） |
+| `runner/inner-adapter.mjs` | 内側のつなぎ口。断り・失敗は isError の結果で返す（`failureResult`、`OPEN_FAILED`、`RECORD_FAILED`）。`createInnerAdapter({ sdk, pluginRoot, convertedRoot, workDir, runDir, ... })`。中心の処理（core/）と画面（ui/）を生成プラグインの場所から読み込み、窓口 port と中立のイベントで動かす。`mainParts()`（メインの query に足す MCP サーバー）、`port`、`core`、`agents()`、`runs()`、`checkToolNames()`、`limitHit()`、`shutdown()` |
 | `runner/inner-run.mjs` | 実行1回 `runInnerArm({ arm, task, runDir, sdk, userRole, judge, screen, ... })`。流れは先頭のコメント。`asksForReply`（返事を求めているかの見分け）、`buildChecks`（動きの確かめ） |
 | `runner/inner-judge.mjs` | `createAgentSdkJudge({ sdk, model })`。grade.mjs の buildJudgePrompt と parseJudgeReply を使う |
-| `runner/inner.mjs` | `innerEval(...)`（課題 × 回数 × あり・なし。点数とその差。利用枠の上限で止まったら残りを skipped）、`main(argv)`、`parseArgs`、`scoresOf`、`summarizeRun` |
+| `runner/inner.mjs` | `innerEval(...)`（課題 × 回数 × あり・なし。点数とその差。利用枠の上限で止まったら残りを skipped）、`main(argv, deps)`〔deps.sdk・deps.chromium は試験用〕、`parseArgs`、`scoresOf`、`summarizeRun` |
 | `runner/inner-settings.mjs` | 画面の開始前の設定の欄を、ユーザー役が決める。`decideSettings`（値を決める順と記録）、`describeSetting`（ユーザー役に聞く文）、`normalizeSettingAnswer`（答えを欄の値にする）、`previewInputs`（渡したファイルの先頭）。試験は `inner-settings.test.mjs`（8 件） |
-| `runner/inner-test-support.mjs` | 試験の道具。`buildSamplePlugin()`（C2 の見本から組み立てて、D1a の convert.py で置き換える）、`scriptedModel(scenario)`（偽の API の台本。メイン・統括・作業・検証・ユーザー役・判定を見分けて、決まった順にツールを呼ぶ） |
+| `runner/inner-test-support.mjs` | 試験の道具。`buildSamplePlugin()`（C2 の見本から組み立てて、D1a の convert.py で置き換える）、`scriptedModel(scenario)`（偽の API の台本。メイン・統括・作業・検証・ユーザー役・判定を見分けて、決まった順にツールを呼ぶ。`badPlan` は、わざと間違った試行の番号で記録を呼ぶ） |
 
 ## 共通の部品（D1c と分け合うもの。置き場所と形）
 
@@ -65,7 +66,7 @@ D1c は、次の部品を使っている（isolation・mcp-tools・model-map・f
 | `model-map.mjs` | モデルの名前の対応。表は D1a の convert.py だけが持ち、変換レポート（`<置き換えた版>/.eval/conversion-report.json` の `model_map`）から読む。`readConversionReport(root)`、`modelMapOf(report)`、`toClaudeModelId(map, name)`（未知の名前は Error）、`toCopilotName(map, id)`、`copilotModelList(map)`（`[{ id, name }]`。画面の選択肢） |
 | `isolation.mjs` | Agent SDK の隔離（testing.md 5章）。`ENV_ALLOW`、`agentEnv({ home, extra })`、`sandboxStatus()`（Linux は bwrap・socat が PATH にあるか。`{ available, missing }`）、`makeSandboxOptions({ enabled })`、`isInsideDir(cwd, p)`、`makeCanUseTool({ cwd, onQuestion, refused })`（AskUserQuestion は `onQuestion(questions)` の `{ 質問の文: 答え }` で答える。作業フォルダの外への Write/Edit は断る）、`allowedToolsFor({ mcpTools })`、`usageLimitPrefixes(sdk)`（利用枠の上限の書き出し。sdk が持っていなければ本物から読む）、`makeQueryOptions({ cwd, home, model, plugins, mcpServers, mcpTools, hooks, agent, systemPromptAppend, sandbox, onQuestion, refused, envExtra, maxTurns, resume, abortController })`（上をまとめた `query()` の options。`settingSources: []`、システムプロンプトは `claude_code` のプリセット〔`agent` の本文を効かせるのに要る〕、本体は SDK 同梱のもの） |
 | `mcp-tools.mjs` | 同じプロセスの MCP サーバー。`createToolServer({ name, tools, onCall })` が `{ type: 'sdk', name, instance }` を返す（`mcpServers[name]` に渡す）。`tools` は `[{ name, description, inputSchema(JSON Schema そのまま), handler(args, ctx) }]`。`ctx` は `{ toolUseId, agentId, signal }`。`query()` 1回ごとに別のインスタンスを作ること。ツールは `anthropic/alwaysLoad` で、いつもプロンプトに載る。`mcpToolName(server, tool)` |
-| `fake-anthropic.mjs` | 偽の Anthropic API。`startFakeAnthropic(handler)`。本物の Agent SDK と Claude Code の本体を、実際のモデルなしで動かす試験に使う。`systemText`、`firstUserText`、`lastToolResults`、`lastUserMessage` |
+| `fake-anthropic.mjs` | 偽の Anthropic API。`startFakeAnthropic(handler)`。本物の Agent SDK と Claude Code の本体を、実際のモデルなしで動かす試験に使う。`systemText`、`firstUserText`、`lastToolResults`、`lastToolResultBlocks`（ツールの結果の文と `is_error`）、`lastUserMessage`。`guardSdk(sdk, api)`：偽の API に向いていない `query()` を投げて止める守り（本物のモデルを呼ばないため。本物の SDK を使う試験は必ず通す） |
 
 ## 確かめて分かったこと（本物の Agent SDK 0.3.310 の Claude Code を、偽の Anthropic API につないで確かめた）
 
@@ -90,7 +91,7 @@ D1c は、次の部品を使っている（isolation・mcp-tools・model-map・f
 5. **取り消されたか**：Agent SDK の側にはその情報がないので、試験の仕組みが止めたかどうかだけで決める（testing.md 4章の「取れないとき」）。止めると、統括の終わり（`cancelled: true`）だけを届け、下のエージェントは `listTasks` で `cancelled` にする。
 6. **サブエージェントの親**：Agent の呼び出し（PreToolUse）を覚えておき、サブエージェントの始まりのフックで、`subagent_type` が合う最も古い呼び出しと結び付ける。親は呼んだエージェント、説明は `description`、実行のしかたは `run_in_background === false` なら `sync`、それ以外は `background`。
 7. **ツール名**：中心の処理に届けるツール名は、Copilot CLI のときと同じ `<エクステンション>_<ツール>` に戻す（課題の洗い出しが、名前の終わりで記録のツールを見分けるため）。ほかのツールはそのまま。
-8. **画面を開くツールの返り値**：adapter.mjs の `describeOpened` と同じ形を、inner-adapter.mjs に写した（adapter.mjs は export していないので。上位の文書で直すこと）。
+8. **画面を開くツールの返り値と、失敗の文**：adapter.mjs の `describeOpened`、`OPEN_FAILED`、`RECORD_FAILED` と同じ内容を、inner-adapter.mjs に写した（adapter.mjs は export していないので。上位の文書で直すこと）。食い違わないように、試験が生成プラグインの adapter.mjs を読んで比べる（下の「V1 の直しへの合わせ」）。
 9. **偽の gh**：中心の処理に渡す `gh` を、いつも失敗する短いスクリプトにする（`runDir/bin/gh`）。起票できるかの確かめが、本物の GitHub に触れないようにする。EVAL は起票を承認しない。
 10. **画面の操作**：C3 の `screen.mjs`（`createScreen`、`findScreenUrl`）をそのまま使う。モデルの選択は、画面の欄 `#setting-model-<役割>` に入れる必要があるが、screen.mjs は設定の欄の `key` を `setting-<key>` に入れるので、`settings.task` に `model-<役割>` を足して渡す（`modelFields`）。screen.mjs は変えない。
 11. **チャットの返事**：メインのエージェントが手番を終えたとき、最後の文が返事を求めていたら（文の終わりが「？」か、「教えてください」などの依頼）、ユーザー役が答え、同じセッションに続ける（最大 8 回）。ありでは、画面の URL が出た後は返事をしない（人が画面を操作するため）。質問のツール（AskUserQuestion）の問いにも、ユーザー役が選択肢つきで答える（答えは質問の文をキーにした辞書）。
@@ -116,6 +117,38 @@ D1c は、次の部品を使っている（isolation・mcp-tools・model-map・f
 - **ユーザー役の関数の形**：`userRole({ question, choices, history, via, meta })`。設定の欄の質問は `via: 'setting'`、`meta: { setting: <鍵> }`。`inner.mjs` の入口は、これを D1c の `role.answer(question, choices, via, meta)` に渡す。D1c の `outer-inner.mjs` の関数は `via` と `meta` を渡していないので、そのままでも動くが、`via`・`meta` を渡すと、ユーザー役の記録に設定の質問と分かる印が付く（D1c への頼み、任意）。
 - **ユーザー役の答え方への注意**：D1c のユーザー役の決まりは「選択肢の言葉だけで済ませない」。選択の欄でも、答えの中に選択肢の言葉があれば拾う作りにした。本物のモデルで、値だけを答えるか（長い文で答えて値を取り損なわないか）は、最初の EVAL の記録（`settings` の `answer` と `value`）で確かめる。
 
+## V1 の直しへの合わせ（記録のツールの断りの文がモデルに届くか）
+
+背景：本物の Copilot CLI 1.0.102 は、ツールの処理が例外を投げると、モデルに「Tool execution failed」だけを返し、理由の文を捨てる（V1 の報告 5節 不具合 2）。B1 が、ひな形の adapter.mjs の `callTool` を、例外ではなく `{ textResultForLlm: <理由>, resultType: 'failure' }` を返す形に直した（448e24e）。中心の処理（`core.handleTool`）は今までどおり `RecordRefusal` を投げる。内側の EVAL のつなぎ口（inner-adapter.mjs）は Copilot CLI を通らず、Agent SDK の MCP サーバーとして記録のツールを出すので、同じことがモデルに届くかを確かめた。
+
+**確かめたこと**（本物の Agent SDK 0.3.310 と Claude Code の本体を、偽の API につないだ。inner-e2e.test.mjs の3件）
+- 断り（`RecordRefusal`）：MCP の結果は `{ content: [{ type: 'text', text: <理由> }], isError: true }`。モデルへの `tool_result` は `is_error: true` で、理由の文がそのまま届く（試行の番号の誤りなら、使える番号と「（やり直しは、あと 3 回までです）」まで）。統括は、断られても実行を続けられ、最後は `all_passed` で終わる。
+- 「作業を終えてください」：メインのエージェントが、実行のないときに記録のツールを呼ぶと、`DISCONNECTED_MESSAGE`（「画面とのつながりが切れたので、作業を終えてください。」）が `is_error` の結果で届く。止められた実行の `STOPPED_MESSAGE` も同じ形（inner-adapter.test.mjs が、MCP のクライアントでつないで確かめる）。
+- 予期しない例外：モデルには固定の短い文（`RECORD_FAILED`、画面を開くツールは `OPEN_FAILED`）だけが届く。くわしい内容（文、スタック）は標準エラーと、実行の記録 `events.jsonl` の `tool_error` にだけ残す。断りは `tool_refused` で残す。
+
+**公式の形の根拠**：Agent SDK の custom-tools の説明は、ハンドラーが例外を投げると SDK が生の例外の文を結果にする、モデルが読む文を決めたいときはハンドラーが `isError: true` と `content` の文を返す、としている。MCP の仕様も、ツールの失敗は結果の `isError` で返すとしている。mcp-tools.mjs の `createToolServer` は、ハンドラーが `{ content, isError }` を返せばそのまま通し、Error を投げれば message をそのまま `isError` にする（生の文）。inner-adapter.mjs は後者に頼らず、自分で `failureResult(<文>)` を返す。
+
+**adapter.mjs との合わせ**
+- `OPEN_FAILED`、`RECORD_FAILED` の文を、adapter.mjs と同じにした（inner-adapter.mjs が export）。試験 `V1 の直しへの合わせ`（inner-adapter.test.mjs）が、C2 の見本から作った生成プラグインの adapter.mjs を読み、2つの文、`RecordRefusal` の理由をそのまま失敗にする行、`describeOpened` の返り値（同じ入力で同じ文）を比べる。adapter.mjs がまだ直っていなければ、その旨を示して飛ばす。448e24e の adapter.mjs で通っている。
+- 食い違い方：adapter.mjs は Copilot の形（`{ textResultForLlm, resultType: 'failure' }`）、inner-adapter.mjs は MCP の形（`{ content, isError: true }`）。形は違うが、モデルに届く文と、失敗として扱われることは同じ。
+- B1 が統括の定義の `tools:` を消す直しを作業中（統括の別の依頼。その合わせは別に頼まれる）。作業中のひな形（`tools:` なしの統括）で内側の試験を動かすと、inner-e2e など 8 件が落ちる（コミットされたひな形〔448e24e と 78644fb を含む〕では 185 件がすべて通る）。確かめた原因：変換した統括の定義（`orchestrator.md`）に `tools:` の行がなくなり、統括が全部のツール（`Skill` を含む）を持つ。試験の台本（`inner-test-support.mjs` の `roleOf`）は「`Skill` を持つ→メイン」と見分けるので、統括をメインと取り違える。実際の動きの側では、統括が使えるツールを絞るのは、エクステンションの PreToolUse（設計書 4.4）の役目になる。内側のつなぎ口がそれを Agent SDK のフックで再現するかは、別の依頼のときに決める。
+
+**偽の API だけを使う守り**（前の D1c の件：本物のモデルが一度だけ呼ばれた）
+- `guardSdk(sdk, api)`（fake-anthropic.mjs）：`options.env.ANTHROPIC_BASE_URL` が偽の API の URL でない `query()` は、呼ぶ前に例外で止める。本物の SDK を使う試験（inner-e2e、inner、inner-judge）は、すべてこれを通した SDK を使う。守り自体の試験は fake-anthropic.test.mjs（4 件：偽の API の URL と違う接続先は止める、試験の仕組みの options が偽の API の URL を渡さなければ止める、本物の Agent SDK でも守りを通すと偽のサーバーの応答だけが返る、補助の関数）。
+- `inner.mjs` の `main(argv, deps = {})`：試験が `deps.sdk`（守りを通した SDK）と `deps.chromium` を渡して、入口まで通して動かせる。
+
+**クリエイターの置き換え（creator-tools.mjs。D1c の部品。統括の依頼）**
+- C1 が、クリエイターのエクステンションの `guard` を、断りも失敗も `{ textResultForLlm, resultType: 'failure' }` で返す形に直した（78644fb）。creator-tools.mjs は断りを例外で受けていたので、2件の試験が落ち、また直さないと、`mcp-tools.mjs` の `toContent` が失敗の結果を JSON の文字にして、成功として返してしまう（モデルに `{"textResultForLlm":…}` が見え、記録の `isError` も false になり、外側の採点の「成功した呼び出し」の判定が狂う）。
+- 直し：`toMcpResult(raw)`（creator-tools.mjs が export）を足した。`textResultForLlm` を持つ返り値で、`resultType` が success 以外（failure・rejected・denied）なら `{ content: [{ type: 'text', text: <理由> }], isError: true }`、success か未指定なら文字に直す。それ以外の返り値は触らない。ツールの記録（`tool.result` の `isError`、`result`）は、この変換した結果から取る。例外は今までどおり（`isError` で記録し、投げ直す）。`toolkit.callTool` の返り値は、成功は文字、断りや失敗は `{ content, isError: true }`。
+- 試験（creator-tools.test.mjs、10 件）：断りの試験を直し、`doc_text` の失敗の試験と `toMcpResult` の試験を足した。MCP サーバーを通す試験は、理由の文だけが届き、JSON が混ざらないことを足した。
+
+**上位や他の担当への提案**
+- adapter.mjs が `describeOpened`、`OPEN_FAILED`、`RECORD_FAILED` を export する（または core/tools.mjs に移す）と、内側の EVAL のつなぎ口は写さずに済む。今は二重管理で、食い違いを試験で見張っている（上の「上位の文書で直すこと」3）。
+- D1c の outer-e2e.test.mjs は、同じ守りを自前の `if` で書いている。`guardSdk` に差し替えると 1 か所になる（任意）。
+- 外側の EVAL のモデルに断りの文が届くかは、本物の SDK では確かめていない（creator-tools.test.mjs は MCP のクライアントとサーバーを通す。Claude Code の本体を通す試験は、内側の e2e の3件が同じ MCP の経路を確かめている）。
+
+**変異試験**：この分の13か所を1つずつ壊して、どれも試験が見つけた。内側のつなぎ口と守り（8か所：失敗の結果の `isError`、断りの判定、断りの理由の文、予期しない例外の文を内部の文にすること、画面を開くツールの失敗の文の使い分け、`tool_error` の記録、`tool_refused` の記録、守りの判定）と、クリエイターの置き換え（5か所：`toMcpResult` の成功・失敗の分け、記録の `isError`、変換を通さないこと、JSON を理由にすること、resultType 未指定の扱い）。
+
 ## 要確認（本物のモデル・手元の環境でしか確かめられないこと）
 
 1. **本物のモデルでの動き**：入口のスキルが `mcp__<名前>__open` を呼ぶか、URL をチャットに書くか、統括が `run_in_background: false` で作業・検証を呼ぶか、モデルが `Skill` を呼ぶときの名前。この試験は偽のモデルなので見ていない。最初の EVAL（統括がユーザーの承認をとってから）で確かめる。
@@ -137,7 +170,7 @@ D1c は、次の部品を使っている（isolation・mcp-tools・model-map・f
    - 「統括のエージェントの定義（指示とモデル）で、Agent SDK の別の実行を始める」の補足として、`agent: '<プラグイン>:orchestrator'` と、システムプロンプトを `claude_code` のプリセットにすることが要る（既定の最小のシステムプロンプトでは本文が効かない）。
    - `Agent` は既定で裏で動く。統括の本文が `run_in_background: false` を指定することが、設計書 4.8 の「sync で1体ずつ」に当たる。4章の表（カスタムエージェントの行）か、task の引数の扱いの段落に書く。
 2. **BLUEPRINT 3.1 / generated-plugin-structure.md 3.2 の中立のイベント**：`agent.started` の `model` は、Agent SDK では始まりの時点で分からない（実際のモデルは最初の assistant メッセージで分かる）ので、始まりに `model` を付けず、`agent.configured` で届ける。Copilot CLI の `subagent.started` には `model` が付く。core は `model` がなくても動く（確かめた）が、設計書に「始まりの `model` は省かれることがある」と書く。
-3. **生成プラグインの adapter.mjs**：`describeOpened`（画面を開くツールの返り値の文）を export するか、core/tools.mjs に移すと、内側の EVAL のつなぎ口が写さずに済む（今は inner-adapter.mjs に同じ形を写した。二重管理になる）。
+3. **生成プラグインの adapter.mjs**：`describeOpened`（画面を開くツールの返り値の文）と、失敗のときの文 `OPEN_FAILED`・`RECORD_FAILED` を export するか、core/tools.mjs に移すと、内側の EVAL のつなぎ口が写さずに済む（今は inner-adapter.mjs に同じ内容を写した。二重管理になる。食い違いは inner-adapter.test.mjs が見張る）。
 4. **C3 の screen.mjs（A2 の画面の欄の id の決まりも）**：画面で選ぶモデルの欄（`#setting-model-<役割>`）を操作する窓口が screen.mjs にない。今は `settings.task` に `model-<役割>` を足して渡している（欄の id の規則に頼る）。`operate({ settings: { models } })` を足すと、規則に頼らずに済む。
 5. **D1b の FORMAT.md 3章 / testing.md 7章**：統括の決定で、作業ごとの設定の欄はユーザー役が決めることにした（上の「画面の設定の欄を決める」）。FORMAT.md 3章に「`inner/eval.json` の `settings.task` は、生成プラグインの設定の欄の鍵と合うときだけ使う。ふつうは書かない。欄の値はユーザー役が、頼みの文と入力のファイルとナレッジから決める」と足す。testing.md 7章にも、設定の値をユーザー役が決めることを足す。
 6. **creator-structure.md 2章の部品の表**：R4 が挙げたとおり、開発の試験の部品（変換スクリプト、EVAL の実行の仕組み〔内側：tests/dev-eval/runner/inner*.mjs と共通の部品〕、模擬ユーザー、ユーザー役の試験）の行がない。追跡のため足す。

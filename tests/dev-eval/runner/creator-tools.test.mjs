@@ -10,7 +10,7 @@ import { fileURLToPath } from 'node:url';
 
 import { ITEMS } from '../../../com.github.copilot/extensions/plugin-creator/names.mjs';
 import { loadPersona } from '../personas/validate.mjs';
-import { CREATOR_SERVER_NAME, createCreatorToolkit, createFakeGh } from './creator-tools.mjs';
+import { CREATOR_SERVER_NAME, createCreatorToolkit, createFakeGh, toMcpResult } from './creator-tools.mjs';
 import { createFakeSdk } from './outer-fake-sdk.mjs';
 import { placePersonaFiles } from './outer-run.mjs';
 
@@ -72,13 +72,45 @@ test('REQ-021 記録のツールは、COPILOT_HOME の下に state.json を作�
   });
 });
 
-test('REQ-015 断られた呼び出し（抜き書きなし）は、isError の結果として残り、記録は変わらない', async () => {
+test('REQ-015 断られた呼び出し（抜き書きなし）は、エクステンションが返す failure の結果を、isError の結果として残し、理由の文を取る。記録は変わらない', async () => {
   await withToolkit(async ({ toolkit, events }) => {
-    await assert.rejects(() => toolkit.callTool('progress', { items: [{ item: '成果物', status: '聞いた', quote: '' }] }), /抜き書き/);
+    const out = await toolkit.callTool('progress', { items: [{ item: '成果物', status: '聞いた', quote: '' }] });
+    // MCP の公式の形（isError と content の文）。理由の文がそのまま入り、{ textResultForLlm, resultType } の JSON にならない
+    assert.equal(out.isError, true);
+    assert.equal(out.content.length, 1);
+    assert.equal(out.content[0].type, 'text');
+    assert.match(out.content[0].text, /抜き書き/);
+    assert.doesNotMatch(out.content[0].text, /textResultForLlm|resultType/);
     const result = events.find((e) => e.type === 'tool.result');
     assert.equal(result.isError, true);
+    assert.equal(result.result, out.content[0].text);
     assert.equal(toolkit.readState(), null);
   });
+});
+
+test('REQ-015 画面の文書をテキストにできない失敗も、理由の文のまま isError の結果になる（例外は投げない）', async () => {
+  await withToolkit(async ({ toolkit, events }) => {
+    const out = await toolkit.callTool('doc_text', { path: '資料/ない文書.docx' });
+    assert.equal(out.isError, true);
+    assert.ok(out.content[0].text.length > 0);
+    assert.doesNotMatch(out.content[0].text, /textResultForLlm|resultType/);
+    assert.equal(events.find((e) => e.type === 'tool.result').isError, true);
+  });
+});
+
+test('REQ-015 toMcpResult：成功の文字はそのまま、failure・rejected・denied は isError の結果、ToolResultObject でないものは触らない', () => {
+  assert.equal(toMcpResult('記録しました'), '記録しました');
+  assert.equal(toMcpResult({ textResultForLlm: '記録しました', resultType: 'success' }), '記録しました');
+  assert.equal(toMcpResult({ textResultForLlm: '記録しました' }), '記録しました');
+  for (const resultType of ['failure', 'rejected', 'denied']) {
+    assert.deepEqual(toMcpResult({ textResultForLlm: '理由の文', resultType }), { content: [{ type: 'text', text: '理由の文' }], isError: true }, resultType);
+  }
+  const mcp = { content: [{ type: 'text', text: 'x' }], isError: true };
+  assert.equal(toMcpResult(mcp), mcp);
+  assert.equal(toMcpResult(undefined), undefined);
+  assert.equal(toMcpResult(null), null);
+  const other = { a: 1 };
+  assert.equal(toMcpResult(other), other);
 });
 
 test('REQ-049 問答の記録（qa.jsonl）：ヒアリングの最中だけ、問いと答えと打った発言を同じ形で残す', async () => {
@@ -146,6 +178,11 @@ test('REQ-015 MCP サーバーを通しても動く：同じプロセスのサ�
     assert.match(seen[0].text, /記録しました/);
     assert.equal(seen[1].isError, true);
     assert.match(seen[1].text, /抜き書き/);
+    assert.doesNotMatch(seen[1].text, /textResultForLlm|resultType/); // 理由の文だけがモデルに届く
+    // 記録の側も、同じ理由の文を失敗として残す
+    const refused = events.filter((e) => e.type === 'tool.result' && e.isError);
+    assert.equal(refused.length, 1);
+    assert.match(refused[0].result, /抜き書き/);
     assert.equal(seen[2].isError, false);
     assert.match(seen[2].text, /聞く/);
     assert.equal(messages.at(-1).result, '終わり');
