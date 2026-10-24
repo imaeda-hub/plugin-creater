@@ -4,7 +4,7 @@
   - 手元の Chrome か Edge を見つけて、画面の試験に環境変数 PLUGIN_TEST_BROWSER_CHANNEL で渡す
   - 足りない道具の入れ方の文が、tests/.venv と tests/node_modules を指している
 
-入口そのものの試験は、ひな形の tests/stage1/selftest/test_run.py（A3）にある。ここでは、C3 が変えた部分だけを確かめる。
+入口そのものの試験は、tests/creator/stage1/test_run.py（A3）にある。ここでは、C3 が変えた部分だけを確かめる。
 動かし方（リポジトリの根で）:  python3 -m unittest discover -s tests/creator/test-plugin -p "test_*.py"
 確かめる要件：REQ-048（試験に要る道具を調べ、足りなければ入れ方と入れる場所を示す。ブラウザーは Chrome か Edge を使う）。
 """

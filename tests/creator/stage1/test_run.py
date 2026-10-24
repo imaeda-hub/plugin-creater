@@ -239,6 +239,7 @@ class Entry(Plugin):
         self.assertIn("2段目 部品の試験: 不合格", text)
         self.assertIn("REQ-007 落ちる", text)
         self.assertIn("わざと", text)
+        self.assertIn("場所: tests/stage2/core/bad.test.mjs:2", text)   # 落ちた node の試験は、ファイルと行を示す
         self.assertIn("test_req_008_bad", text)
         self.assertIn("1 != 2", text)
         self.assertIn("RuntimeError: 壊れた", text)
