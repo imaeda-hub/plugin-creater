@@ -116,6 +116,9 @@
 - C1（言葉）：生成プラグインの Web管理画面の文（ページの題「Web管理画面」、「評価基準をすべて満たした」「ユーザーと確かめた基準」など）は、言葉の置き換えの表の範囲（ユーザーの答え22はクリエイターの返り値と画面）の外で、変えていない。REQ-025（説明のない専門用語を使わない）に照らして、生成プラグインの画面の言葉を見直すかは判断が要る。
 - D1a：上位の文書で直すこと（tasks/D1a.md の末尾）。testing.md 4章：task の引数の扱い（task→Agent、agent_type→subagent_type、mode "sync"→run_in_background false）、変数の置き換えは設定ファイルだけ、写さないもの（docs/、tests/、examples/、wip/、heldout）、エクステンションのツール名の規則（<ext>_<tool> → mcp__<ext>__<tool>）、skill→Skill は公式の表にない補い、.eval/ の中身、claude -p の init で読み込みを確かめられること。testing.md 6.3・6.6：見ない模擬ユーザーを置き換えた版に入れない（変換スクリプトが tests/ を写さないことで守る）。creator-structure.md 2章：変換スクリプトの行がない。
 - D1a：要確認。Agent を run_in_background: false で呼ぶと結果が同じ手番に返るか。記録の tool_use の名前が Agent か Task か（両方を受ける）。同じプロセスの MCP サーバーのツールをサブエージェントの tools で絞れるか。.mcp.json の cwd が効くか。試験の claude は 2.1.310、SDK 同梱は 2.1.307。
+- D1d：上位の文書で直すこと（tasks/D1d.md）。testing.md 4章：記録のツールを呼んだエージェントの結び付けは、フックの tool_use_id と MCP の _meta の claudecode/toolUseId で結べる（要確認が解けた）。取り消されたかは取れない（試験の仕組みが止めたかで決める）。MCP のツールに alwaysLoad、agent: に claude_code のプリセットが要る、Agent は既定で裏で動く。agent.started の model は Agent SDK では始まりの時点で分からない。adapter.mjs の describeOpened を共有する（今は写し）。screen.mjs にモデル選択の窓口を足す。creator-structure.md 2章に開発の試験の部品の行がない。Agent SDK を 0.3.310 に上げた。
+- D1d（統括の決定）：内側の EVAL で、生成プラグインの作業ごとの設定（作るときに決まるので、模擬ユーザーの eval.json の値と鍵が合わない）は、ユーザー役が画面の設定の欄（見出しと説明）を読んで、模擬ユーザーのナレッジから値を決めて入れる（testing.md 7章の「人と同じ流れ」）。testing.md 7章に書く必要がある。
+- D1d：この環境にサンドボックスの道具（bubblewrap、socat）がない（testing.md 11.1）。EVAL を回す前にユーザーに確認する。
 - R2：`requestSandboxPermissive` を「サンドボックスの外で動かす」と示さない（generated-plugin-structure.md 6.3）。tasks.list には shell と client のタスクも入る。
 
 ## 後の仕事に渡すこと（作業のエージェントの報告から）
@@ -166,7 +169,7 @@
 | B2 を直す | aacc17a8675d68a69（完了。42件中36件を直した） |
 | D1a 変換 | a94162dfbb0aaf6aa（完了） |
 | D1b 模擬ユーザー | a28af96a1b11b7fea（完了。週報・議事録・研修のアンケートの集計の3人） |
-| D1d 内側の EVAL | afe3eb2243185d726 |
+| D1d 内側の EVAL | afe3eb2243185d726（完了。続きとして、設定の欄をユーザー役が埋める作りを頼んだ） |
 | D1c 外側の EVAL | af526bb1af09f9618 |
 | V1 Copilot CLI の読み込みの確かめ | a2958fd3e81866605（指示は briefs/V1.md。報告は research/V1-copilot-cli-smoke.md） |
 | H1 見ない模擬ユーザー | ac4ca894931c3fb3d（完了。形の確かめに通った。tests/dev-eval/heldout/h1/ に作る。統括はこのフォルダの中身を読まない。git の出力も `grep -v heldout` で外して見る） |
