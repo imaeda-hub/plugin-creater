@@ -277,11 +277,11 @@ generated-plugin-structure.md 9章の表に名前を付けたもの。説明の�
     files/<生成プラグインの中のパス>   そのまま足すファイル（scripts/、mcp.json、tests/stage2/task/、tests/eval/<課題>/ など）。作業エージェントが書く
 ```
 
-- `manifest.json`：`{ "plugin_name", "plugin_description", "entry_skill": { "name", "description" }, "workers": [{ "agent", "label", "extra_tools": [] }], "verifier": { "extra_tools": [] }, "orchestrator": { "extra_tools": [] } }`。`extra_tools` は作業ごとの MCP のツール（`サーバー名/ツール名`）など。
+- `manifest.json`：`{ "plugin_name", "plugin_description", "entry_skill": { "name", "description" }, "workers": [{ "agent", "label", "extra_tools": [] }], "verifier": { "extra_tools": [] } }`。統括の項目は要らない（統括の定義に tools はない。答え24。あっても `extra_tools` が空のときだけ受ける）。`extra_tools` は作業ごとの MCP のツール（`サーバー名/ツール名`）など。
 - 差し込み口の名前（ひな形が使う）：
   - 入口のスキル：`entry-task`（作業の説明。作業エージェント）。description は `manifest.json` の `entry_skill.description`（メインのエージェント）。
   - 統括：`orchestrator-task`。作業：`worker-task.<agent>`（作業エージェントごと）。検証：`verifier-task`。
-  - 文書：`task-requirements`、`task-design`、`task-trace`（A4）。README：`readme-task`。
+  - 文書：`task-requirements`、`task-design`、`task-trace`（A4）。README には差し込み口を置かない（仕様 REQ-004・REQ-005 が README に求めるのは準備と、任せたいツールの許可のしかただけで、作業ごとの使い方は求めていないため。X1-17）。
 - ナレッジ（`tests/knowledge.json`）と合否の基準（task.json の criteria）と EVAL の課題の基準の写しは、組み立てのスクリプトがヒアリングの記録から書く（ユーザーの答え4）。作業エージェントは、合否の決め方以外のナレッジを入れた箇所に、その番号（`K-01` など）を書く。
 
 ## 9. スクリプトの呼び方（スキルの手順と、スクリプトの担当で合わせる）

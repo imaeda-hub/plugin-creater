@@ -131,6 +131,8 @@
 - D1c：上位の文書で直すこと（tasks/D1c.md）。testing.md 6.2：合格の割合が決まっていない（決めた：漏らさない・指示のことを話さないは0件、ほかは90%以上）。決まりの確かめ（confirm）が7観点にない。6.5：抜き書きの出どころ（最初の依頼の文を含めない）、組み込みの範囲、承認の前の書き込みの見方（Bash で書いたファイルは見分けられない）。6.3：対照のクリエイターの作り方と判定、急いでいる話し方で選ぶもの。6.6：見ない模擬ユーザーの記録の伏せ方。4章：qa.jsonl と AskUserQuestion の結果の文の形。
 - D1c：要確認。生成プラグインの tests/run.py が Playwright 不足で止まり、クリエイターが道具の用意を提案する（EVAL の中の扱いは最初の実行で決める）。週報の模擬ユーザーの headings.asked が一般の問いに当たる、headings.leak の「来週の予定」が成果物の fact にも出る（偽陽性が出たら絞る）。
 - D1c→統括：会話例を置いたら、README の「置きます」を「あります」に直す。EVAL の前に `node tests/dev-eval/runner/outer.mjs --persona … --dry-run` で回数と費用の見込みを出せる。
+- X2-05（X3 が V1 の生データで確かめた）：Copilot CLI 1.0.102 のシェルのツール `bash` は `initial_wait`（30〜600秒）を持ち、それまでに終わらないコマンドは途中の出力を返して動き続け、終わると知らせが来る。test-plugin の EVAL のように数十分かかるコマンドの扱いに効く（R2 と testing.md に書く）。
+- X1-17：BLUEPRINT 8章の README の差し込み口 `readme-task` は消した（ひな形の README に差し込み口はない。仕様は README に作業ごとの使い方を求めていない）。
 - R2：`requestSandboxPermissive` を「サンドボックスの外で動かす」と示さない（generated-plugin-structure.md 6.3）。tasks.list には shell と client のタスクも入る。
 - V1（本物の Copilot CLI 1.0.102 と偽物のモデル。報告は research/V1-copilot-cli-smoke.md）：
   - 不具合1【重大】サブエージェントのツールは、親（統括エージェント）の `tools` の範囲に絞られる（更新履歴 1.0.67・1.0.68）。今の統括の `tools` では、検証エージェントが `<名前>_verdict` を、作業エージェントが `edit`・`execute` を使えず、実行が `all_passed` にならない。統括の `tools` に足しても、統括が Claude の族・作業が GPT の族（既定の組み合わせ）だと作業は `apply_patch` を受け取れない。統括の `tools:` を書かない形（全ツール）なら、族を混ぜても通る。直し方はユーザーに確認中。設計書 4.4・4.7・4.8、testing.md の1段目、R2 に効く。
@@ -172,7 +174,7 @@
 
 1. （済み）V1 の追加の確かめ：クリエイターの直下の `template/` に移しても、中のスキル・エージェント・エクステンション・MCP・plugin.json は読み込まれない。Related files は97件→16件。試験的機能の案内は `copilot --experimental`（一度付ければ settings.json に残る。起動した後なら `/settings experimental on`：自動で再起動し、エクステンションの確認が2回出る）。報告の7節。
 2. ひな形を移す（答え25。Sonnet。指示は briefs/M1.md）。2026-10-24 に M1 を立てた。あわせて X3 の段1の束（C1：X2-02・12・18・10、C3：X2-10・X1-16〔答え27〕、D1c：X2-08・X2-09(1)、D1b：X2-21〔答え26〕）を頼んだ。統括の分（BLUEPRINT 8章の readme-task を消す X1-17、X2-05 の bash の事実を報告に残す）は M1 の後にする。SKILL.md・references（confirm.md、generate.md）・scaffold.py・check_creator.py・test_scaffold.py・test_convert.py の置き場所の参照を直す。あわせて generate.md 27〜28行目の manifest の `"orchestrator": { "extra_tools": [] }` を消す（B1 の報告）。
-3. M1 の後に X3 の段2の束（B3〔Opus〕、C2、A1、A2、A3、A4、B1）と、試験的機能の案内の直し（答え29。B3：README・setup.md、A4：ひな形の README・requirements.md・design.md 2.3、B2：ひな形の入口の SKILL.md）を立てる。A4 にはひな形の design.md の統括の表（答え24）も入れる。答え28（作り直しの流れの最終確認）は最終確認の一覧に入れる。
+3. （2026-10-24 に立てた。共通の指示は briefs/X-fix.md）M1 の後に X3 の段2の束（B3〔Opus〕、C2、A1、A2、A3、A4、B1）と、試験的機能の案内の直し（答え29。B3：README・setup.md、A4：ひな形の README・requirements.md・design.md 2.3、B2：ひな形の入口の SKILL.md）を立てる。A4 にはひな形の design.md の統括の表（答え24）も入れる。答え28（作り直しの流れの最終確認）は最終確認の一覧に入れる。
 3b. 会話例の冒頭の「クリエイターの版：」を、画面の文（X2-18 で「plugin-creator の版」にそろえた）に合わせて「plugin-creator の版：」にする（統括の判断。エンドユーザーに見える文なので。D1c：examples-build.mjs と試験、check_creator.py の REQ-037 の確かめ。B3：improve.md）。仕様 REQ-037 の「クリエイターの版」は開発者の用語なので、そのままでよい。
 4. 直しが全部入ったら、V1 に本物の Copilot CLI で確かめ直してもらう（統括の許す一覧で通るか、GPT の族の統括が受け取るツールの全部、apply_patch のフックの toolName、update_todo を拒んで困らないか、断りの文、担当の欄）。
 5. T1 の通しをもう一度。
@@ -214,7 +216,7 @@
 | X2 突き合わせ（クリエイターの側） | a015be8b3c3f5b5f0（完了。22件〔high 0〕。reviews/X2.md） |
 | T1 すべての試験の通し | a7e9349258395fe6a（完了。約1,500件が通り、落ちたのは会話例がないこと〔REQ-037。EVAL の後に作る〕だけ。組み立てた生成プラグインの tests/run.py も、Playwright を入れた後に合格） |
 | V1 Copilot CLI の読み込みの確かめ | a2958fd3e81866605（不具合3件と追加の確かめ2つを報告〔7001605〕。道具は scratchpad/v1/。直しが全部入った後に確かめ直しを頼む） |
-| M1 ひな形を移す | adf071c830ffd5da8（指示は briefs/M1.md） |
+| M1 ひな形を移す | adf071c830ffd5da8（完了。template/ に移した。Related files は16件になる見込み。上位の文書：hearing.md 587行目、generated-plugin-structure.md 712行目、creator-structure.md 3.4） |
 | X3 突き合わせの指摘の仕分け | a806235c922ce2476（完了。40行：A 5、B 33、D 2〔答え26〜28〕。担当ごとの束は reviews/X3-triage.md の2章） |
 | H1 見ない模擬ユーザー | ac4ca894931c3fb3d（完了。形の確かめに通った。tests/dev-eval/heldout/h1/ に作る。統括はこのフォルダの中身を読まない。git の出力も `grep -v heldout` で外して見る） |
 | B3 の点検 | 4つとも完了（design 19件〔high 2〕、format 7件、models 24件〔high 1〕、language 34件） |
