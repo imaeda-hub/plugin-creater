@@ -126,7 +126,7 @@ describe('進み具合（plugin-creator_progress）', () => {
     await withRun(async (run) => {
       const r = await run.callSafe('progress', { items: [{ item: '候補の確かめ', status: '聞いた', quote: 'はい' }] });
       assert.equal(r.ok, false);
-      assert.match(r.error, /「候補の確かめ」の状態は、確かめていない候補があるかどうかで自動で決まります/);
+      assert.match(r.error, /「候補の確かめ」の状態は、確かめたいこと（仕事のやり方や決まりのうち、状態が「候補」のもの）があるかどうかで自動で決まります/);
     });
   });
 
@@ -251,7 +251,7 @@ describe('決まったこと（plugin-creator_record）', () => {
         assert.deepEqual(internalSymbolsIn(r.error), []);
         return r.error;
       };
-      await refuse({ quote: 'x' }, /新しいナレッジに足りない欄：種類、聞くこと、文、出どころ、状態/);
+      await refuse({ quote: 'x' }, /新しい仕事のやり方や決まりに足りない欄：種類、聞くこと、文、出どころ、状態/);
       await refuse(knowledge({ quote: undefined }), /ユーザーの言葉の抜き書き（quote）を添えてください/);
       await refuse(knowledge({ quote: '  ' }), /ユーザーの言葉の抜き書き（quote）を添えてください/);
       assert.ok((await refuse(knowledge({ kind: '基準' }), /種類が違います：「基準」/)).includes('合否の決め方、それ以外'));
@@ -259,7 +259,7 @@ describe('決まったこと（plugin-creator_record）', () => {
       assert.ok(itemError.includes('作業の目的') && itemError.includes('いつもと違うとき') && !itemError.includes('候補の確かめ'));
       assert.ok((await refuse(knowledge({ source: '推測' }), /出どころが違います：「推測」/)).includes('AI の判断（ユーザーが任せた）'));
       assert.ok((await refuse(knowledge({ status: '済み' }), /状態が違います：「済み」/)).includes('候補、決まった、外した'));
-      await refuse(knowledge({ text: '   ' }), /新しいナレッジに足りない欄：文/);
+      await refuse(knowledge({ text: '   ' }), /新しい仕事のやり方や決まりに足りない欄：文/);
       assert.equal(fs.existsSync(run.statePath()), false, '断ったときは記録を作らない');
     });
   });
@@ -267,7 +267,7 @@ describe('決まったこと（plugin-creator_record）', () => {
   test('REQ-049 番号 K-01 は記録の順に付き、使い回さない（外したナレッジの番号も残る）', async () => {
     await withRun(async (run) => {
       const first = await run.call('record', { knowledge: [knowledge({ text: 'A' }), knowledge({ text: 'B' })] });
-      assert.match(first, /ナレッジ K-01、K-02 を追加/);
+      assert.match(first, /仕事のやり方や決まり K-01、K-02 を追加/);
       await run.call('record', { knowledge: [{ id: 'K-01', status: '外した', quote: 'やっぱり違う' }] });
       await run.call('record', { knowledge: [knowledge({ text: 'C' })] });
       const rows = run.readState().knowledge;
@@ -307,7 +307,7 @@ describe('決まったこと（plugin-creator_record）', () => {
       const before = run.readState().knowledge[0];
       run.clock.advance(5000);
       const text = await run.call('record', { knowledge: [{ id: 'K-01', text: '直した文', status: '決まった', quote: 'そのとおり', example: '例です', exception: '祝日のときは翌営業日' }] });
-      assert.match(text, /ナレッジ K-01 を更新/);
+      assert.match(text, /仕事のやり方や決まり K-01 を更新/);
       const after = run.readState().knowledge[0];
       assert.equal(after.text, '直した文');
       assert.equal(after.status, 'decided');
@@ -325,11 +325,11 @@ describe('決まったこと（plugin-creator_record）', () => {
 
       const back = await run.callSafe('record', { knowledge: [{ id: 'K-01', status: '候補', quote: 'x' }] });
       assert.equal(back.ok, false);
-      assert.match(back.error, /ナレッジ K-01 を「候補」には戻せません/);
+      assert.match(back.error, /仕事のやり方や決まり K-01 を「候補」には戻せません/);
 
       const unknown = await run.callSafe('record', { knowledge: [{ id: 'K-09', text: 'x', quote: 'x' }] });
       assert.equal(unknown.ok, false);
-      assert.match(unknown.error, /ナレッジ K-09 は見つかりません。今ある番号：K-01/);
+      assert.match(unknown.error, /仕事のやり方や決まり K-09 は見つかりません。今ある番号：K-01/);
 
       const noQuote = await run.callSafe('record', { knowledge: [{ id: 'K-01', text: 'x' }] });
       assert.equal(noQuote.ok, false);
@@ -343,17 +343,17 @@ describe('決まったこと（plugin-creator_record）', () => {
       assert.match(await run.call('progress', { stage: '決まりの確かめ' }), /まだ聞いていないことはありません/);
 
       const added = await run.call('record', { knowledge: [knowledge({ status: '候補', source: 'ファイルから読んで確かめた', quote: '週報.docx の1ページ' })] });
-      assert.match(added, /確かめていない候補：1件/);
+      assert.match(added, /確かめたいこと：1件/);
       assert.match(await run.call('progress', { stage: '決まりの確かめ' }), /まだ聞いていないこと：候補の確かめ/);
-      assert.match(await run.call('state'), /候補の確かめ：未着手（確かめていない候補 1件）/);
+      assert.match(await run.call('state'), /候補の確かめ：未着手（確かめたいこと 1件）/);
 
       const refused = await run.callSafe('confirm', confirmArgs());
       assert.equal(refused.ok, false);
-      assert.match(refused.error, /まだ聞いていないことがあるので、生成前の確認はできません：候補の確かめ/);
+      assert.match(refused.error, /まだ聞いていないことがあるので、作る前の確認はできません：候補の確かめ/);
 
       // 「外した」でも、確かめたことになる
       const checked = await run.call('record', { knowledge: [{ id: 'K-01', status: '外した', quote: '決まりではなく、たまたま' }] });
-      assert.match(checked, /確かめていない候補はありません/);
+      assert.match(checked, /確かめたいことはありません/);
       assert.match(await run.call('progress', { stage: '項目の点検' }), /まだ聞いていないことはありません/);
       assert.match(await run.call('state'), /候補の確かめ：聞いた/);
     });
@@ -385,7 +385,7 @@ describe('決まったこと（plugin-creator_record）', () => {
       const text = await run.call('record', { knowledge: [knowledge(), knowledge({ status: '候補' })] });
       assert.ok(!text.includes('\n'));
       assert.deepEqual(internalSymbolsIn(text), []);
-      assert.equal(text, '記録しました（ナレッジ K-01、K-02 を追加）。確かめていない候補：1件');
+      assert.equal(text, '記録しました（仕事のやり方や決まり K-01、K-02 を追加）。確かめたいこと：1件');
     });
   });
 });
@@ -396,7 +396,7 @@ describe('生成前の確認（plugin-creator_confirm）と、段階「生成」
       await run.call('progress', answers(SETTABLE_ITEMS.filter((n) => !['成果物', '合否の決め方'].includes(n))));
       const r = await run.callSafe('confirm', confirmArgs());
       assert.equal(r.ok, false);
-      assert.equal(r.error, 'まだ聞いていないことがあるので、生成前の確認はできません：成果物、合否の決め方。聞いてから、もう一度知らせてください。');
+      assert.equal(r.error, 'まだ聞いていないことがあるので、作る前の確認はできません：成果物、合否の決め方。聞いてから、もう一度知らせてください。');
       assert.deepEqual(internalSymbolsIn(r.error), []);
       assert.equal(run.readState().confirmation, null);
     });
@@ -406,7 +406,7 @@ describe('生成前の確認（plugin-creator_confirm）と、段階「生成」
     await withRun(async (run) => {
       const r = await run.callSafe('confirm', confirmArgs());
       assert.equal(r.ok, false);
-      assert.match(r.error, /まだ聞いていないことがあるので、生成前の確認はできません：作業の目的、頼む場面と言い方/);
+      assert.match(r.error, /まだ聞いていないことがあるので、作る前の確認はできません：作業の目的、頼む場面と言い方/);
     });
   });
 
@@ -415,7 +415,7 @@ describe('生成前の確認（plugin-creator_confirm）と、段階「生成」
       await readyToConfirm(run);
       const r = await run.callSafe('progress', { stage: '生成', approvalQuote: '作ってください' });
       assert.equal(r.ok, false);
-      assert.match(r.error, /段階を「生成」に進める前に、生成前の確認で示すものを plugin-creator_confirm で知らせて/);
+      assert.match(r.error, /段階を「生成」に進める前に、作る前の確認で示すものを plugin-creator_confirm で知らせて/);
       assert.equal(run.readState().stage, 'start');
       assert.equal(run.readState().approvedAt, null);
     });
@@ -439,7 +439,7 @@ describe('生成前の確認（plugin-creator_confirm）と、段階「生成」
     await withRun(async (run) => {
       await readyToConfirm(run);
       const accepted = await run.call('confirm', confirmArgs());
-      assert.match(accepted, /^生成前の確認で示すものを受け付けました。画面で見られます。Web管理画面の見本：http:\/\/127\.0\.0\.1:\d+\/\?k=/);
+      assert.match(accepted, /^作る前の確認で示すものを受け付けました。画面で見られます。作業の画面の見本：http:\/\/127\.0\.0\.1:\d+\/\?k=/);
       const confirmation = run.readState().confirmation;
       assert.deepEqual(confirmation.knowledgeIds, ['K-01', 'K-02']);
       assert.equal(confirmation.at, '2026-10-22T09:00:00.000Z');
@@ -469,7 +469,7 @@ describe('生成前の確認（plugin-creator_confirm）と、段階「生成」
       ]) {
         const r = await run.callSafe(tool, args);
         assert.equal(r.ok, false, tool);
-        assert.match(r.error, /ヒアリングは終わっています（段階は「生成」）。やり直すときは、\/clear してから頼み直してください。/);
+        assert.match(r.error, /お話を聞くことは終わっています（段階は「生成」）。やり直すときは、\/clear してから頼み直してください。/);
       }
       assert.equal(fs.readFileSync(run.statePath(), 'utf8'), before);
     });
@@ -481,9 +481,9 @@ describe('生成前の確認（plugin-creator_confirm）と、段階「生成」
       await run.call('record', { knowledge: [knowledge({ text: '外すもの' })] });
       await run.call('record', { knowledge: [{ id: 'K-03', status: '外した', quote: '違う' }] });
       const missing = await run.callSafe('confirm', confirmArgs({ knowledgeIds: ['K-01', 'K-09'] }));
-      assert.match(missing.error, /ナレッジの番号が見つかりません：K-09/);
+      assert.match(missing.error, /仕事のやり方や決まりの番号が見つかりません：K-09/);
       const dropped = await run.callSafe('confirm', confirmArgs({ knowledgeIds: ['K-01', 'K-03'] }));
-      assert.match(dropped.error, /外したナレッジは示せません：K-03/);
+      assert.match(dropped.error, /外した仕事のやり方や決まりは示せません：K-03/);
     });
   });
 
@@ -491,11 +491,11 @@ describe('生成前の確認（plugin-creator_confirm）と、段階「生成」
     await withRun(async (run) => {
       await readyToConfirm(run);
       const cases = [
-        [{ knowledgeIds: [] }, /ナレッジの番号の一覧（knowledgeIds）/],
+        [{ knowledgeIds: [] }, /仕事のやり方や決まりの番号の一覧（knowledgeIds）/],
         [{ behavior: ' ' }, /振る舞いの案（behavior）/],
-        [{ taskPath: '' }, /作業の定義の案のパス（taskPath）/],
-        [{ evalTasks: [] }, /EVAL の課題の案（evalTasks）を、1つ以上/],
-        [{ evalTasks: [{ prompt: '' }] }, /EVAL の課題 1 に、頼むときの言葉（prompt）がありません/],
+        [{ taskPath: '' }, /画面と合格の条件の設定の案のパス（taskPath）/],
+        [{ evalTasks: [] }, /試しに動かして採点する試験の課題の案（evalTasks）を、1つ以上/],
+        [{ evalTasks: [{ prompt: '' }] }, /試しに動かして採点する試験の課題 1 に、頼むときの言葉（prompt）がありません/],
       ];
       for (const [override, pattern] of cases) {
         const r = await run.callSafe('confirm', confirmArgs(override));
@@ -509,9 +509,9 @@ describe('生成前の確認（plugin-creator_confirm）と、段階「生成」
     await withRun(async (run) => {
       await readyToConfirm(run);
       const notCriterion = await run.callSafe('confirm', confirmArgs({ evalTasks: [{ prompt: 'x', criteria: ['K-01'] }] }));
-      assert.match(notCriterion.error, /ナレッジ K-01 は「合否の決め方」ではないので、EVAL の課題の基準にできません/);
+      assert.match(notCriterion.error, /仕事のやり方や決まり K-01 は種類が「合否の決め方」ではないので、試しに動かして採点する試験の課題の合格の条件にできません/);
       const notListed = await run.callSafe('confirm', confirmArgs({ knowledgeIds: ['K-02'], evalTasks: [{ prompt: 'x', criteria: ['K-01'] }] }));
-      assert.match(notListed.error, /ナレッジ K-01 が、示すナレッジの一覧（knowledgeIds）にありません/);
+      assert.match(notListed.error, /仕事のやり方や決まり K-01 が、示す一覧（knowledgeIds）にありません/);
     });
   });
 
@@ -519,16 +519,16 @@ describe('生成前の確認（plugin-creator_confirm）と、段階「生成」
     await withRun(async (run) => {
       await readyToConfirm(run);
       const wrongPlace = await run.callSafe('confirm', confirmArgs({ taskPath: 'task.json' }));
-      assert.match(wrongPlace.error, /作業の定義の案は、作業フォルダの \.plugin-creator-work\/draft\/task\.json に置いてください/);
+      assert.match(wrongPlace.error, /画面と合格の条件の設定の案は、作業フォルダの \.plugin-creator-work\/draft\/task\.json に置いてください/);
 
       fs.rmSync(path.join(run.cwd, '.plugin-creator-work'), { recursive: true });
       const missing = await run.callSafe('confirm', confirmArgs());
-      assert.match(missing.error, /作業の定義の案が見つかりません/);
+      assert.match(missing.error, /画面と合格の条件の設定の案が見つかりません/);
 
       const file = writeDraft(run.cwd);
       fs.writeFileSync(file, '{ これは JSON ではない', 'utf8');
       const broken = await run.callSafe('confirm', confirmArgs());
-      assert.match(broken.error, /作業の定義の案が JSON として読めません/);
+      assert.match(broken.error, /画面と合格の条件の設定の案が JSON として読めません/);
       assert.equal(run.readState().confirmation, null);
     });
   });
@@ -545,7 +545,7 @@ describe('生成前の確認（plugin-creator_confirm）と、段階「生成」
       });
       const r = await run.callSafe('confirm', confirmArgs());
       assert.equal(r.ok, false);
-      assert.match(r.error, /作業の定義の案が決まりに合いません/);
+      assert.match(r.error, /画面と合格の条件の設定の案が決まりに合いません/);
       assert.match(r.error, /task\.json\.name：空にできません/);
       assert.match(r.error, /task\.json\.maxIterationsDefault：1 以上にしてください/);
       assert.match(r.error, /task\.json\.settings\[0\]\.key：書き方が決まりに合いません/);
@@ -563,7 +563,7 @@ describe('生成前の確認（plugin-creator_confirm）と、段階「生成」
       writeDraft(run.cwd);
       const r = await run.callSafe('confirm', confirmArgs({ knowledgeIds: ['K-01'], evalTasks: [{ prompt: 'x' }] }));
       assert.equal(r.ok, false);
-      assert.match(r.error, /「合否の決め方」のナレッジがありません/);
+      assert.match(r.error, /種類が「合否の決め方」の仕事のやり方や決まりがありません/);
     });
   });
 
@@ -605,7 +605,7 @@ describe('生成前の確認（plugin-creator_confirm）と、段階「生成」
       await run.call('record', { knowledge: [knowledge({ text: '3つ目の決まり' }), knowledge({ text: '4つ目の決まり' })] });
       const refused = await run.callSafe('confirm', confirmArgs({ knowledgeIds: ['K-01', 'K-02'] }));
       assert.equal(refused.ok, false);
-      assert.match(refused.error, /決まったナレッジのすべてを、示すナレッジの一覧（knowledgeIds）に入れてください。入っていないもの：K-03、K-04/);
+      assert.match(refused.error, /決まった仕事のやり方や決まりのすべてを、示す一覧（knowledgeIds）に入れてください。入っていないもの：K-03、K-04/);
       assert.equal(run.readState().confirmation, null);
       // 外したものは、入れなくてよい
       await run.call('record', { knowledge: [{ id: 'K-04', status: '外した', quote: '違った' }] });
@@ -625,7 +625,7 @@ describe('生成前の確認（plugin-creator_confirm）と、段階「生成」
       await run.call('record', { knowledge: [knowledge({ text: '確認のあとで足した決まり', source: '生成前の確認で足した' })] });
       let r = await approve();
       assert.equal(r.ok, false);
-      assert.match(r.error, /生成前の確認で示したナレッジの一覧と、今の「決まった」ナレッジが違います（示していない：K-03）。plugin-creator_confirm で示し直して、ユーザーによいと答えてもらってください。/);
+      assert.match(r.error, /作る前の確認で示した仕事のやり方や決まりの一覧と、今の「決まった」ものが違います（示していない：K-03）。plugin-creator_confirm で示し直して、ユーザーによいと答えてもらってください。/);
       assert.deepEqual(internalSymbolsIn(r.error), []);
       assert.equal(run.readState().stage, 'start');
       await reconfirm(['K-01', 'K-02', 'K-03']);

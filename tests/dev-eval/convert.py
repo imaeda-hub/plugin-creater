@@ -70,7 +70,7 @@ RUNTIME_TOOLS = {
     "bash": "Bash", "powershell": "Bash", "view": "Read", "create": "Write", "edit": "Edit",
     "str_replace_editor": "Edit", "apply_patch": "Edit", "grep": "Grep", "rg": "Grep", "glob": "Glob",
     "web_fetch": "WebFetch", "web_search": "WebSearch", "ask_user": "AskUserQuestion",
-    "update_todo": "TodoWrite", "task": "Agent", "skill": "Skill",
+    "update_todo": "TodoWrite", "task": "Agent", 
 }
 # カスタムエージェントの tools の別名（小文字で引く）。1つの別名が複数の Claude Code のツールになる。
 AGENT_ALIASES = {
@@ -680,7 +680,7 @@ def main(argv: list[str] | None = None) -> int:
     if check.get("ran") and not check.get("ok"):
         summary["validate_output"] = check.get("output", "")
     print(json.dumps(summary, ensure_ascii=False, indent=2))
-    return 0
+    return 0 if ok else 1
 
 
 if __name__ == "__main__":

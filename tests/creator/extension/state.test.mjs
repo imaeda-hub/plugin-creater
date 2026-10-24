@@ -16,10 +16,10 @@ describe('状態取得ツール（plugin-creator_state）', () => {
   test('REQ-015 記録がないときも呼べて、段階と画面の URL、セッションの番号、記録の場所、make-plugin の読み直しを返す', async () => {
     await withRun(async (run) => {
       const text = await run.call('state');
-      assert.match(text, /^段階：（ヒアリングの記録はまだありません）/m);
+      assert.match(text, /^段階：（お話を聞くことの記録はまだありません）/m);
       assert.ok(urlOf(text), '画面の URL がない');
       assert.match(text, new RegExp(`セッションの番号：${run.sessionId}`));
-      assert.ok(text.includes(`ヒアリングの記録（state.json）：${run.statePath()}`), '組み立てのスクリプトに渡す state.json のパス');
+      assert.ok(text.includes(`お話を聞くことの記録（state.json）：${run.statePath()}`), '組み立てのスクリプトに渡す state.json のパス');
       assert.match(text, /SKILL\.md の本文がコンテキストになければ、skill ツールで make-plugin を読み直してください。/);
       assert.equal(fs.existsSync(run.statePath()), false, '状態を見るだけでは、記録を作らない');
     });
@@ -47,12 +47,12 @@ describe('状態取得ツール（plugin-creator_state）', () => {
       assert.match(text, /^ {2}成果物：保留$/m);
       assert.match(text, /^ {2}いつもと違うとき：決まりなし$/m);
       assert.match(text, /^ {2}頼む場面と言い方：未着手$/m);
-      assert.match(text, /^ {2}候補の確かめ：未着手（確かめていない候補 1件）$/m);
+      assert.match(text, /^ {2}候補の確かめ：未着手（確かめたいこと 1件）$/m);
       assert.match(text, /^まだ聞いていないこと：頼む場面と言い方、受け取るもの、進め方/m);
-      assert.match(text, /確かめていない候補：\n {2}K-01（聞くこと：進め方、出どころ：ファイルから読んで確かめた）：提出前に上長が確認する/);
+      assert.match(text, /確かめたいこと（仕事のやり方や決まりのうち、状態が「候補」のもの）：\n {2}K-01（聞くこと：進め方、出どころ：ファイルから読んで確かめた）：提出前に上長が確認する/);
       assert.match(text, /保留：\n {2}成果物（知っている人：経理の田中さん）/);
       assert.match(text, /AI の判断（ユーザーが任せたこと）：\n {2}K-02（守らないと困ること）：数値は税抜きで書く/);
-      assert.match(text, /ナレッジ：候補1件、決まった1件、外した0件/);
+      assert.match(text, /仕事のやり方や決まり：確かめたいこと1件、決まった1件、外した0件/);
       assert.deepEqual(internalSymbolsIn(text), []);
       assert.ok(Buffer.byteLength(text, 'utf8') < 4096, `数 KB 以内にする：${Buffer.byteLength(text, 'utf8')}バイト`);
     });
@@ -110,7 +110,7 @@ describe('状態取得ツール（plugin-creator_state）', () => {
       await run.call('record', { knowledge: [knowledge({ item: '進め方', source: 'ユーザーが自分から話した', text: '聞いた後に出てきた', quote: 'あ、それと' })] });
 
       const text = await run.call('state', { include: '振り返りの材料' });
-      assert.match(text, /質問の改善案の対象のナレッジ（ヒアリングで引き出せなかったもの）：\n {2}K-02（聞くこと：進め方）：そのことを聞いた後に、ユーザーが自分から話した/);
+      assert.match(text, /質問の改善案の対象の仕事のやり方や決まり（お話を聞くことで引き出せなかったもの）：\n {2}K-02（聞くこと：進め方）：そのことを聞いた後に、ユーザーが自分から話した/);
       assert.ok(!/K-01（聞くこと/.test(text), '未着手のときに話したものは対象にならない');
       assert.match(text, /問答の記録のすべて（8件。1行が1件の JSON）：/);
       for (let i = 1; i <= 8; i += 1) assert.ok(text.includes(`"message":"問い${i}"`), `問い${i}が材料にない`);
@@ -134,10 +134,10 @@ describe('状態取得ツール（plugin-creator_state）', () => {
       });
       const targets = run.creator.hearing.retrospectiveTargets();
       assert.deepEqual(targets.map((t) => t.id), ['K-02', 'K-03']);
-      assert.deepEqual(targets.map((t) => t.reason), ['そのことを聞いた後に、ユーザーが自分から話した', '生成前の確認で足した']);
+      assert.deepEqual(targets.map((t) => t.reason), ['そのことを聞いた後に、ユーザーが自分から話した', '作る前の確認で足した']);
       const text = await run.call('state', { include: '振り返りの材料' });
       // 対象の一覧の部分だけを見る（確かめていない候補の行にも「K-06（項目：…」が出る）
-      const targetSection = text.split('質問の改善案の対象のナレッジ')[1].split('問答の記録のすべて')[0];
+      const targetSection = text.split('質問の改善案の対象の仕事のやり方や決まり')[1].split('問答の記録のすべて')[0];
       assert.match(targetSection, /K-02（聞くこと：成果物）/);
       assert.match(targetSection, /K-03（聞くこと：進め方）/);
       assert.ok(!/K-0[14567]（聞くこと/.test(targetSection));
@@ -227,7 +227,7 @@ describe('再開と、記録の置き場所', () => {
       assert.match(text, /^段階：項目の点検$/m);
       assert.match(text, /^ {2}作業の目的：聞いた$/m);
       assert.match(text, /^ {2}成果物：聞いた$/m);
-      assert.match(text, /ナレッジ：候補0件、決まった1件、外した0件/);
+      assert.match(text, /仕事のやり方や決まり：確かめたいこと0件、決まった1件、外した0件/);
       assert.match(text, /ユーザーの発言：ここでやめます/);
       // 続きから進める：番号は続き、問答の記録は追記される
       await second.call('record', { knowledge: [knowledge({ text: '続きの決まり' })] });
@@ -253,7 +253,7 @@ describe('再開と、記録の置き場所', () => {
 
       const second = await startForTest({ sessionId: 'session-new', home, cwd });
       const text = await second.call('state');
-      assert.match(text, /^段階：（ヒアリングの記録はまだありません）/m);
+      assert.match(text, /^段階：（お話を聞くことの記録はまだありません）/m);
       assert.match(text, /ヒアリングの記録（state\.json）：.*session-new/);
       assert.equal(second.creator.hearing.exists, false);
       // 新しい記録は、新しい番号のフォルダにできる。前の記録は消えず、変わらない
