@@ -106,7 +106,7 @@ describe('状態取得ツール（plugin-creator_state）', () => {
       await run.call('progress', { stage: '始まり' });
       for (let i = 1; i <= 8; i += 1) await run.fake.askUser({ message: `問い${i}`, answer: `User responded: 答え${i}` });
       await run.call('record', { knowledge: [knowledge({ item: '進め方', source: 'ユーザーが自分から話した', text: '頼みの文にあった', quote: '頼みの文' })] });
-      await run.call('progress', { items: [{ item: '進め方', status: '聞いた', quote: '説明した' }] });
+      await run.call('progress', { items: [{ item: '進め方', status: '聞いた', quote: '答え3' }] }); // 抜き書きは、それより前の答えの中にある
       await run.call('record', { knowledge: [knowledge({ item: '進め方', source: 'ユーザーが自分から話した', text: '聞いた後に出てきた', quote: 'あ、それと' })] });
 
       const text = await run.call('state', { include: '振り返りの材料' });

@@ -95,8 +95,8 @@ export function createFakeSession({ sessionId = 'session-test-0001', cwd = proce
     },
 
     /** ask_user の1回（前のフックと後のフック）を流す。後のフックの返り値を返す */
-    async askUser({ message, answer, resultType = 'success', agentId }) {
-      const toolArgs = { message, requestedSchema: { type: 'object', properties: { answer: { type: 'string' } }, required: ['answer'] } };
+    async askUser({ message, answer, resultType = 'success', agentId, choices }) {
+      const toolArgs = { message, requestedSchema: { type: 'object', properties: { answer: { type: 'string', ...(choices ? { enum: choices } : {}) } }, required: ['answer'] } };
       await fake.hook('onPreToolUse', { toolName: 'ask_user', toolArgs, ...(agentId ? { agentId } : {}) });
       return fake.hook('onPostToolUse', {
         toolName: 'ask_user',

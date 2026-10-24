@@ -13,6 +13,8 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 
+import { isOnlyChosenOption, quoteFound, userWords } from './quote.mjs';
+
 import {
   ASSET_STATUSES,
   ITEMS,
@@ -198,6 +200,12 @@ export function createHearing({ store, sessionId, clock }) {
         if (!has(e.quote)) {
           throw new Refusal(`「${item.name}」の状態を変えるには、ユーザーの言葉の抜き書き（quote）を添えてください。`);
         }
+        // 未着手から変えるときの抜き書きは、それより前のユーザーの言葉のどれか1つの中にある（採点と同じ決め方。要約や言い換えは断る）
+        if (statusOf(next, item.key) === 'todo' && !quoteInUserWords(e.quote)) {
+          throw new Refusal(
+            `「${item.name}」の抜き書き（quote）が、ユーザーの答えの中に見つかりません。1つの答えの言葉を、そのまま写してください（要約しない。間を省くときは「…」でつなぐ）。`,
+          );
+        }
         next.items[item.key] = {
           status: status.key,
           quote: text(e.quote),
@@ -270,6 +278,16 @@ export function createHearing({ store, sessionId, clock }) {
     return out;
   }
 
+  /**
+   * 抜き書きが、問答の記録のユーザーの言葉のどれか1つの中にあるか。
+   * 問答の記録にユーザーの言葉が1件もないときは、確かめずに通す：問答の記録のフックの形は、本物の Copilot CLI でまだ確かめていない
+   * （tasks/C1.md の実機の要確認 2）ので、記録が取れていないだけのときに、すべての記録を断って止めないため。
+   */
+  function quoteInUserWords(quote) {
+    const words = userWords(store.readQa());
+    return words.length === 0 || quoteFound(quote, words);
+  }
+
   function applyKnowledge(next, e, added, updated) {
     if (!isObject(e)) throw new Refusal('仕事のやり方や決まり（knowledge）は、欄を持つものの一覧で渡してください。');
     if (!has(e.quote)) {
@@ -295,6 +313,11 @@ export function createHearing({ store, sessionId, clock }) {
       throw new Refusal(`新しい仕事のやり方や決まりに足りない欄：${missing.map((f) => KNOWLEDGE_FIELDS_JA[f]).join('、')}`);
     }
     const fields = checkKnowledgeFields(e, '新しい仕事のやり方や決まりの');
+    if (fields.source === 'added_at_confirmation' && isOnlyChosenOption(text(e.quote), store.readQa())) {
+      throw new Refusal(
+        '作る前の確認で足すのは、ユーザーが答えの中で自分の言葉で述べた決まりだけです。抜き書き（quote）に、その決まりを述べたユーザーの言葉を入れてください。示したものに「違うところはない」と答えただけなら、記録しないでください。',
+      );
+    }
     next.knowledgeCounter += 1;
     const id = knowledgeNumber(next.knowledgeCounter);
     next.knowledge.push({

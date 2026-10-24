@@ -938,3 +938,100 @@ describe('確認で示した作業の定義の案が変わったら、示し直�
   });
 });
 
+
+describe('抜き書きは、ユーザーの言葉の中にある（plugin-creator_progress と record。外側の EVAL の1回目で落ちた2観点への守り）', () => {
+  const ANSWER = '1. 売上データの sales.csv（日付・担当・金額）をもらいます。2. 売上集計表.xlsx に貼り付けて、万円にして切り捨てます。';
+  const progressOf = (run, item, quote, status = '聞いた') => run.callSafe('progress', { items: [{ item, status, quote }] });
+
+  test('REQ-015 未着手の項目を変えるときの抜き書きが、それより前の答えのどれにも見つからないときは、断る。何も記録しない', async () => {
+    await withRun(async (run) => {
+      await run.call('progress', { stage: '始まり' });
+      await run.fake.askUser({ message: '前回はどうやりましたか？', answer: `User responded: ${ANSWER}` });
+      // 手順を「→」でつないだ要約（EVAL 1回目の誤り）
+      const summary = await progressOf(run, '前回の1回', 'sales.csv をもらう→売上集計表.xlsx に貼り付け→万円にして切り捨て');
+      assert.equal(summary.ok, false);
+      assert.equal(summary.error, '「前回の1回」の抜き書き（quote）が、ユーザーの答えの中に見つかりません。1つの答えの言葉を、そのまま写してください（要約しない。間を省くときは「…」でつなぐ）。');
+      assert.deepEqual(leftWordsIn(summary.error), []);
+      assert.deepEqual(internalSymbolsIn(summary.error), []);
+      assert.equal(run.readState().items['last_case'], undefined, '何も記録しない');
+      // 答えの言葉をそのまま写せば通る。間を省くときは「…」
+      assert.equal((await progressOf(run, '前回の1回', '売上データの sales.csv（日付・担当・金額）をもらいます')).ok, true);
+      assert.equal(run.readState().items.last_case.status, 'asked');
+      assert.equal((await progressOf(run, '進め方', 'sales.csv（日付・担当・金額）をもらいます…万円にして切り捨てます')).ok, true);
+    });
+  });
+
+  test('REQ-015 打った発言（質問のツールを使わずに答えたとき）も、ユーザーの言葉として数える。別々の答えをつなぎ合わせたものは断る', async () => {
+    await withRun(async (run) => {
+      await run.call('progress', { stage: '始まり' });
+      await run.fake.askUser({ message: '納期は？', answer: 'User responded: 毎週金曜日の17時まで' });
+      await run.hook('onUserPromptSubmitted', { prompt: '提出先は部長です。紙では出しません。' });
+      assert.equal((await progressOf(run, '成果物', '提出先は部長です')).ok, true, '打った発言');
+      assert.equal((await progressOf(run, '受け取るもの', '毎週金曜日の17時まで')).ok, true, '質問のツールへの答え');
+      const joined = await progressOf(run, '進め方', '毎週金曜日の17時まで…紙では出しません');
+      assert.equal(joined.ok, false, '「…」の断片は、同じ答えの中になければならない');
+      assert.match(joined.error, /^「進め方」の抜き書き（quote）が、ユーザーの答えの中に見つかりません。/);
+    });
+  });
+
+  test('REQ-015 確かめるのは、未着手から変えるときだけ。聞いた・決まりなし・保留どうしの変更と、同じ呼び出しの2つ目以降は確かめない。1つでも見つからなければ、全部記録しない', async () => {
+    await withRun(async (run) => {
+      await run.call('progress', { stage: '始まり' });
+      await run.fake.askUser({ message: '目的は？', answer: 'User responded: 週報を楽にしたいです' });
+      assert.equal((await progressOf(run, '作業の目的', '週報を楽にしたい')).ok, true);
+      // 聞いた → 保留：抜き書きは、答えの中になくてよい（未着手から変えるときだけ確かめる）
+      assert.equal((await progressOf(run, '作業の目的', 'あとで考えます', '保留')).ok, true);
+      // 1つの呼び出しの中で、1つが見つからないと、ほかも記録しない
+      const mixed = await run.callSafe('progress', {
+        items: [
+          { item: '進め方', status: '聞いた', quote: '週報を楽にしたい' },
+          { item: '成果物', status: '聞いた', quote: 'どこにもない言葉' },
+        ],
+      });
+      assert.equal(mixed.ok, false);
+      assert.match(mixed.error, /^「成果物」の抜き書き/);
+      assert.equal(run.readState().items.procedure, undefined);
+    });
+  });
+
+  test('REQ-015 問答の記録にユーザーの言葉が1件もないときは、確かめずに通す（問答の記録のフックの形は、本物の Copilot CLI でまだ確かめていないため）。取り消しと断りだけのときも同じ', async () => {
+    await withRun(async (run) => {
+      assert.equal((await progressOf(run, '作業の目的', 'まだ何も記録がないときの言葉')).ok, true);
+      await run.fake.askUser({ message: '問い', answer: 'User cancelled the request.' });
+      assert.equal((await progressOf(run, '成果物', '取り消しだけのとき')).ok, true);
+      // 答えが1件でもあれば、確かめる
+      await run.fake.askUser({ message: '問い', answer: 'User responded: はい' });
+      assert.equal((await progressOf(run, '進め方', '記録のない言葉')).ok, false);
+    });
+  });
+
+  test('REQ-020 REQ-049 作る前の確認で足したナレッジの抜き書きが、選んだ選択肢の文だけなら断る（「違うところはない」を選んだだけで、AI の案を足した決まりとして記録しない）', async () => {
+    await withRun(async (run) => {
+      await run.call('progress', { stage: '始まり' });
+      const choice = '違うところはない（この一覧と案で合っている）';
+      await run.fake.askUser({ message: '足りないことや違うところはありますか？', choices: [choice, '直したい'], answer: `User responded: ${choice}` });
+      const added = (quoteText, over = {}) => run.callSafe('record', { knowledge: [knowledge({ source: '生成前の確認で足した', quote: quoteText, text: 'AI の案の決まり', ...over })] });
+
+      const refused = await added(choice);
+      assert.equal(refused.ok, false);
+      assert.equal(
+        refused.error,
+        '作る前の確認で足すのは、ユーザーが答えの中で自分の言葉で述べた決まりだけです。抜き書き（quote）に、その決まりを述べたユーザーの言葉を入れてください。示したものに「違うところはない」と答えただけなら、記録しないでください。',
+      );
+      assert.deepEqual(leftWordsIn(refused.error), []);
+      assert.equal(run.readState().knowledge.length, 0, '何も記録しない');
+      // かぎ括弧と句読点の違いは同じ
+      assert.equal((await added(`「${choice}」。`)).ok, false);
+
+      // ユーザーが自分の言葉で述べた決まりなら通る
+      await run.hook('onUserPromptSubmitted', { prompt: '祝日の週は、月曜の17時までにしてください' });
+      assert.equal((await added('祝日の週は、月曜の17時までにしてください')).ok, true);
+      // 選ばれていない選択肢の文は、選んだ選択肢の文ではない
+      assert.equal((await added('直したい')).ok, true);
+      // 出どころが「生成前の確認で足した」でなければ、確かめない
+      assert.equal((await run.callSafe('record', { knowledge: [knowledge({ source: 'ヒアリングの答え', quote: choice, text: '別の決まり' })] })).ok, true);
+      // 番号を付けた更新は、確かめない（新しいナレッジだけ）
+      assert.equal((await run.callSafe('record', { knowledge: [{ id: 'K-01', text: '直した文', quote: choice }] })).ok, true);
+    });
+  });
+});

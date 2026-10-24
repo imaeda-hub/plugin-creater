@@ -9,7 +9,7 @@ import path from 'node:path';
 import { describe, test } from 'node:test';
 import { pathToFileURL } from 'node:url';
 
-import { EXTENSION_DIR, answerEverything, answers, confirmArgs, knowledge, readyToConfirm, withRun, writeDraft } from './helpers.mjs';
+import { EXTENSION_DIR, answerEverything, answers, confirmArgs, internalSymbolsIn, knowledge, readyToConfirm, withRun, writeDraft } from './helpers.mjs';
 import { LEFT_WORDS, leftWordsIn, withoutComments } from './words.mjs';
 
 describe('言葉の見張り（words.mjs）が、言い換え忘れを見つける', () => {
@@ -182,6 +182,23 @@ describe('ツールの返り値と断る文（REQ-024）', () => {
     });
   });
 
+  test('REQ-024 抜き書きの確かめ（ユーザーの答えの中にない、選んだ選択肢の文だけ）の断る文にも、表の左の言葉が出ない', async () => {
+    await withRun(async (run) => {
+      await run.call('progress', { stage: '始まり' });
+      const choice = '違うところはない（この一覧と案で合っている）';
+      await run.fake.askUser({ message: '足りないことや違うところはありますか？', choices: [choice], answer: `User responded: ${choice}` });
+      const notFound = await run.callSafe('progress', { items: [{ item: '成果物', status: '聞いた', quote: '要約した言葉' }] });
+      const onlyChoice = await run.callSafe('record', { knowledge: [knowledge({ source: '生成前の確認で足した', quote: choice })] });
+      for (const refused of [notFound, onlyChoice]) {
+        assert.equal(refused.ok, false);
+        assert.deepEqual(leftWordsIn(refused.error), [], refused.error);
+        assert.deepEqual(internalSymbolsIn(refused.error), []);
+      }
+      assert.match(notFound.error, /ユーザーの答えの中に見つかりません/);
+      assert.match(onlyChoice.error, /自分の言葉で述べた決まりだけです/);
+    });
+  });
+
   test('REQ-024 会話の自動の要約のあとの差し込みの文にも、表の左の言葉が出ない', async () => {
     const { COMPACTION_NOTICE } = await import(pathToFileURL(path.join(EXTENSION_DIR, 'hooks.mjs')).href);
     assert.deepEqual(leftWordsIn(COMPACTION_NOTICE), []);
@@ -234,6 +251,7 @@ describe('ソースの文（ユーザーに見える文を持つファイルの�
     'issue.mjs',
     'doc-text.mjs',
     'eval-settings.mjs',
+    'quote.mjs',
     'zip.mjs',
     'schema-check.mjs',
     'extension.mjs',
