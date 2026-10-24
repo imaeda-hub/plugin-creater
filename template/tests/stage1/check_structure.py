@@ -224,7 +224,7 @@ def describe_schema_error(error: "jsonschema.ValidationError", prefix: Tuple[Any
     elif v == "uniqueItems":
         message = "同じ要素が重なっている"
     elif v == "not":
-        message = "%s は使えない（%s）" % (short(inst), error.schema.get("description", "決まりで除かれている値"))
+        message = "%s は使えない（%s）" % (short(inst), want.get("description", "決まりで除かれている値") if isinstance(want, dict) else "決まりで除かれている値")
     else:
         message = error.message
     return "%s: %s" % (where, message)

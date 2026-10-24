@@ -500,7 +500,7 @@ class Task(Sandbox):
     def test_REQ_011_setting_key_may_not_be_maxIterations(self):
         # 画面の「繰り返しの上限」の欄が同じ id（setting-maxIterations）になり、EVAL の画面の操作が失敗するため
         self.edit_json(self.TASK, lambda d: d["settings"][0].update({"key": "maxIterations"}))
-        self.assertFailsWith("task", "settings/0/key", "maxIterations は使えない", "繰り返しの上限")
+        self.assertFailsWith("task", "settings/0/key", "'maxIterations' は使えない", "繰り返しの上限")
         self.edit_json(self.TASK, lambda d: d["settings"][0].update({"key": "maxIteration"}))
         self.assertPasses("task")
         self.edit_json(self.TASK, lambda d: d["settings"][0].update({"key": "maxiterations"}))

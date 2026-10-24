@@ -56,8 +56,8 @@
           "key": {
             "type": "string",
             "pattern": "^[A-Za-z][A-Za-z0-9_]*$",
-            "not": { "enum": ["maxIterations"] },
-            "description": "設定の番号（英数字と _）。maxIterations は画面の「繰り返しの上限」の欄の番号なので使えない（同じ id の欄が2つになる）"
+            "not": { "enum": ["maxIterations"], "description": "画面の「繰り返しの上限」の欄の番号なので使えない。使うと同じ id の欄が2つになる" },
+            "description": "設定の番号（英数字と _）"
           },
           "label": { "type": "string", "minLength": 1, "description": "画面の見出し" },
           "type": { "enum": ["text", "number", "select", "checkbox", "path"], "description": "部品の種類" },
