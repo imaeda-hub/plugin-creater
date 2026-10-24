@@ -119,6 +119,10 @@
 - D1d：上位の文書で直すこと（tasks/D1d.md）。testing.md 4章：記録のツールを呼んだエージェントの結び付けは、フックの tool_use_id と MCP の _meta の claudecode/toolUseId で結べる（要確認が解けた）。取り消されたかは取れない（試験の仕組みが止めたかで決める）。MCP のツールに alwaysLoad、agent: に claude_code のプリセットが要る、Agent は既定で裏で動く。agent.started の model は Agent SDK では始まりの時点で分からない。adapter.mjs の describeOpened を共有する（今は写し）。screen.mjs にモデル選択の窓口を足す。creator-structure.md 2章に開発の試験の部品の行がない。Agent SDK を 0.3.310 に上げた。
 - D1d（統括の決定）：内側の EVAL で、生成プラグインの作業ごとの設定（作るときに決まるので、模擬ユーザーの eval.json の値と鍵が合わない）は、ユーザー役が画面の設定の欄（見出しと説明）を読んで、模擬ユーザーのナレッジから値を決めて入れる（testing.md 7章の「人と同じ流れ」）。testing.md 7章に書く必要がある。
 - D1d：この環境にサンドボックスの道具（bubblewrap、socat）がない（testing.md 11.1）。EVAL を回す前にユーザーに確認する。
+- D1c：開発中に一度、承認の前に本物のモデルを少し使った（本物の SDK と偽物の API で通す実験で、ユーザー役の呼び出しだけが本物に届いた。Sonnet、短い約17回）。原因を直し、偽物の API につながっていない query を断る守りを試験に足した。ユーザーに報告する。
+- D1c：上位の文書で直すこと（tasks/D1c.md）。testing.md 6.2：合格の割合が決まっていない（決めた：漏らさない・指示のことを話さないは0件、ほかは90%以上）。決まりの確かめ（confirm）が7観点にない。6.5：抜き書きの出どころ（最初の依頼の文を含めない）、組み込みの範囲、承認の前の書き込みの見方（Bash で書いたファイルは見分けられない）。6.3：対照のクリエイターの作り方と判定、急いでいる話し方で選ぶもの。6.6：見ない模擬ユーザーの記録の伏せ方。4章：qa.jsonl と AskUserQuestion の結果の文の形。
+- D1c：要確認。生成プラグインの tests/run.py が Playwright 不足で止まり、クリエイターが道具の用意を提案する（EVAL の中の扱いは最初の実行で決める）。週報の模擬ユーザーの headings.asked が一般の問いに当たる、headings.leak の「来週の予定」が成果物の fact にも出る（偽陽性が出たら絞る）。
+- D1c→統括：会話例を置いたら、README の「置きます」を「あります」に直す。EVAL の前に `node tests/dev-eval/runner/outer.mjs --persona … --dry-run` で回数と費用の見込みを出せる。
 - R2：`requestSandboxPermissive` を「サンドボックスの外で動かす」と示さない（generated-plugin-structure.md 6.3）。tasks.list には shell と client のタスクも入る。
 
 ## 後の仕事に渡すこと（作業のエージェントの報告から）
@@ -170,7 +174,7 @@
 | D1a 変換 | a94162dfbb0aaf6aa（完了） |
 | D1b 模擬ユーザー | a28af96a1b11b7fea（完了。週報・議事録・研修のアンケートの集計の3人） |
 | D1d 内側の EVAL | afe3eb2243185d726（完了。続きとして、設定の欄をユーザー役が埋める作りを頼んだ） |
-| D1c 外側の EVAL | af526bb1af09f9618 |
+| D1c 外側の EVAL | af526bb1af09f9618（完了） |
 | V1 Copilot CLI の読み込みの確かめ | a2958fd3e81866605（指示は briefs/V1.md。報告は research/V1-copilot-cli-smoke.md） |
 | H1 見ない模擬ユーザー | ac4ca894931c3fb3d（完了。形の確かめに通った。tests/dev-eval/heldout/h1/ に作る。統括はこのフォルダの中身を読まない。git の出力も `grep -v heldout` で外して見る） |
 | B3 の点検 | 4つとも完了（design 19件〔high 2〕、format 7件、models 24件〔high 1〕、language 34件） |
