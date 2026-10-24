@@ -183,12 +183,87 @@ describe('記録のツールの呼び出し（REQ-005、REQ-010）', () => {
     assert.equal(seen.at(-1)[2], undefined, 'メインのエージェントからの呼び出しには、番号がない');
   });
 
-  test('REQ-005 中心の処理が断った呼び出しは、モデルに返る失敗の文（平易な日本語）になる', async () => {
+  test('REQ-005 中心の処理が断った呼び出しは、例外を投げず、理由の文（平易な日本語）を入れた失敗の結果（resultType が failure）で返す', async () => {
     const p = await startPlugin();
-    const result = await p.fake.callTool(`${PLUGIN}_plan`, { iteration: 1, criteria: [{ id: 'C-01', text: 'x' }], plan: 'x' }, { agentId: 'ag-1' });
+    const args = { iteration: 1, criteria: [{ id: 'C-01', text: 'x' }], plan: 'x' };
+    // Copilot CLI 1.0.102 は、ツールの処理が例外を投げると「Tool execution failed」だけをモデルに返し、理由の文が消える（V1 の不具合 2）
+    const tool = p.fake.config.tools.find((t) => t.name === `${PLUGIN}_plan`);
+    const raw = await tool.handler(args, { sessionId: 's', toolCallId: 'tc-1', toolName: tool.name, arguments: args, agentId: 'ag-1' });
+    assert.deepEqual(Object.keys(raw).sort(), ['resultType', 'textResultForLlm']);
+    assert.equal(raw.resultType, 'failure', 'denied は「拒まれた」、rejected は手番が止まる。failure を使う');
+    assert.match(raw.textResultForLlm, /[ぁ-ん]/, '日本語の文');
+    assert.doesNotMatch(raw.textResultForLlm, /RecordRefusal|Error:|at .*\.mjs/, '内部の名前や追跡を出さない');
+    const result = await p.fake.callTool(`${PLUGIN}_plan`, args, { agentId: 'ag-1' });
     assert.equal(result.ok, false);
-    assert.match(result.error, /[ぁ-ん]/, '日本語の文');
-    assert.doesNotMatch(result.error, /RecordRefusal|Error:|at .*\.mjs/, '内部の名前や追跡を出さない');
+    assert.equal(result.thrown, undefined);
+    assert.equal(result.text, raw.textResultForLlm);
+  });
+
+  test('REQ-005 止められた後の記録のツールの「作業を終えてください」は、理由の文として、失敗の結果で届く', async () => {
+    const p = await startPlugin();
+    const root = await beginRun(p);
+    const tool = p.fake.config.tools.find((t) => t.name === `${PLUGIN}_show`);
+    const call = (agentId) => tool.handler({ key: 'draft', value: 'x' }, { sessionId: 's', toolCallId: 'tc-1', toolName: tool.name, arguments: {}, agentId });
+    const stopping = p.core.stop(); // 止めるを押した直後（停止中）
+    const whileStopping = await call(root);
+    assert.deepEqual(whileStopping, { textResultForLlm: CONSTANTS.STOPPED_MESSAGE, resultType: 'failure' });
+    assert.match(whileStopping.textResultForLlm, /作業を終えてください/);
+    await stopping;
+    await p.core.whenIdle(); // 終わった後
+    assert.deepEqual(await call(root), { textResultForLlm: CONSTANTS.DISCONNECTED_MESSAGE, resultType: 'failure' });
+    assert.match(CONSTANTS.DISCONNECTED_MESSAGE, /作業を終えてください/);
+  });
+
+  test('REQ-005 成功した記録のツールの結果は、今までどおり文字列のまま返る', async () => {
+    const p = await startPlugin();
+    const root = await beginRun(p);
+    const tool = p.fake.config.tools.find((t) => t.name === `${PLUGIN}_plan`);
+    const args = { iteration: 1, criteria: TASK.criteria.map(({ id, text }) => ({ id, text })), plan: '計画' };
+    const raw = await tool.handler(args, { sessionId: 's', toolCallId: 'tc-1', toolName: tool.name, arguments: args, agentId: root });
+    assert.equal(typeof raw, 'string');
+    assert.match(raw, /計画を記録しました/);
+  });
+
+  test('REQ-005 予期しない例外は、内部の情報を出さない平易な日本語の失敗の結果にし、くわしくは標準エラーに残す', async () => {
+    const p = await startPlugin();
+    const secret = '/home/secret/path/core.mjs:42 TypeError: undefined is not a function';
+    p.core.handleTool = async () => {
+      throw new Error(secret);
+    };
+    const lines = [];
+    const original = console.error;
+    console.error = (...args) => lines.push(args.map(String).join(' '));
+    let result;
+    try {
+      result = await p.fake.callTool(`${PLUGIN}_review`, {}, { agentId: 'ag-1' });
+    } finally {
+      console.error = original;
+    }
+    assert.equal(result.thrown, undefined, '例外を投げない');
+    assert.equal(result.resultType, 'failure');
+    assert.match(result.text, /[ぁ-ん]/);
+    assert.doesNotMatch(result.text, /secret|TypeError|\.mjs/, '内部の情報を出さない');
+    assert.equal(lines.length, 1);
+    assert.ok(lines[0].includes(`${PLUGIN}_review`) && lines[0].includes(secret), '標準エラーには、ツールの名前とくわしい内容を残す');
+  });
+
+  test('REQ-005 画面を開けなかったとき（予期しない例外）も、失敗の結果で返る。内部の情報は出さない', async () => {
+    const p = await startPlugin();
+    p.core.open = async () => {
+      throw new Error('listen EADDRINUSE: /home/secret');
+    };
+    const original = console.error;
+    console.error = () => {};
+    let result;
+    try {
+      result = await p.fake.callTool(`${PLUGIN}_open`, { requestText: '週報を作る' });
+    } finally {
+      console.error = original;
+    }
+    assert.equal(result.thrown, undefined);
+    assert.equal(result.resultType, 'failure');
+    assert.match(result.text, /Web管理画面を開けませんでした/);
+    assert.doesNotMatch(result.text, /EADDRINUSE|secret/);
   });
 
   test('REQ-010 合否の記録は、呼んだエージェントの番号で確かめられる（検証エージェント以外は断られる）', async () => {
@@ -204,6 +279,7 @@ describe('記録のツールの呼び出し（REQ-005、REQ-010）', () => {
 
     const byWorker = await p.fake.callTool(`${PLUGIN}_verdict`, verdict, { agentId: 'ag-w' });
     assert.equal(byWorker.ok, false);
+    assert.equal(byWorker.resultType, 'failure');
     assert.match(byWorker.error, /検証エージェントだけ/);
     const byMain = await p.fake.callTool(`${PLUGIN}_verdict`, verdict);
     assert.equal(byMain.ok, false, '番号がない呼び出し（メインのエージェント）も断る');
@@ -227,7 +303,7 @@ describe('セッションに加わった直後の動き（REQ-005）', () => {
     assert.match(result.text, /Web管理画面の URL：http:\/\/127\.0\.0\.1:/);
   });
 
-  test('REQ-005 中心の処理を作れなかったとき（作業の定義が壊れている）は、起動が失敗し、待っていた呼び出しも失敗する', async () => {
+  test('REQ-005 中心の処理を作れなかったとき（作業の定義が壊れている）は、起動が失敗し、待っていた呼び出しも失敗の結果で返る（内部の情報は出さず、標準エラーに残す）', async () => {
     const { prepared, release } = await holdAfterJoin();
     writeFileSync(join(prepared.plugin.extensionDir, 'task.json'), '{ 壊れている');
     const before = process.listenerCount('SIGTERM');
@@ -235,11 +311,23 @@ describe('セッションに加わった直後の動き（REQ-005）', () => {
     const failed = assert.rejects(starting, /作業の定義/);
     await until(() => prepared.fake.config !== null);
     const call = prepared.fake.callTool(`${PLUGIN}_open`, { requestText: '週報を作る' });
-    release();
-    await failed;
-    const result = await call;
+    const lines = [];
+    const original = console.error;
+    console.error = (...args) => lines.push(args.map(String).join(' '));
+    let result;
+    try {
+      release();
+      await failed;
+      result = await call;
+    } finally {
+      console.error = original;
+    }
     assert.equal(result.ok, false);
-    assert.match(result.error, /作業の定義/);
+    assert.equal(result.thrown, undefined);
+    assert.equal(result.resultType, 'failure');
+    assert.match(result.text, /Web管理画面を開けませんでした/);
+    assert.doesNotMatch(result.text, /task\.json|作業の定義|adapter-plugin/, 'ファイルの場所などを出さない');
+    assert.ok(lines.some((line) => line.includes('作業の定義')), '原因は標準エラーに残す');
     assert.equal(process.listenerCount('SIGTERM'), before, '失敗したときに終了の合図の受け口を残さない');
   });
 });

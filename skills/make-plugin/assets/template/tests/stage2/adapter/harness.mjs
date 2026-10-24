@@ -234,12 +234,28 @@ export async function fetchApi(p, path, init) {
   return fetch(`${url.origin}${path}${path.includes('?') ? '&' : '?'}k=${url.searchParams.get('k')}`, init);
 }
 
-/** 統括の下のエージェントを、一覧に載せて、開始のイベントを流す。 */
-export async function startChild(p, { agentId, parentAgentId, agent, executionMode = 'sync', model = 'm', description }) {
+/**
+ * 統括の下のエージェントを、一覧に載せて、開始のイベントを流す。
+ * 実機（Copilot CLI 1.0.102）と同じ順に、統括の task の呼び出し（description つき）の開始 → サブエージェントの開始を流す。
+ * サブエージェントの開始の agentDisplayName は、実機では呼び出しの説明ではなく短い名前（worker など）。
+ */
+export async function startChild(p, { agentId, parentAgentId, agent, executionMode = 'sync', model = 'm', description = `${agent} の作業` }) {
   const agentType = `${p.name}:${agent}`;
+  const toolCallId = `tc-task-${agentId}`;
   p.fake.spawn({ agentId, parentAgentId, agentType, executionMode });
-  // task ツールで起動したサブエージェントは、agentDisplayName に task の description が入る
-  p.fake.emit(sdkEvent.subagentStarted(agentId, { agentType, executionMode, parentId: parentAgentId, model, agentDisplayName: description ?? `${agent} の作業`, agentDescription: `${agent} の定義の説明` }));
+  p.fake.emit(sdkEvent.toolStart(parentAgentId, toolCallId, 'task', { description, agent_type: agentType, prompt: '頼む内容', mode: executionMode }));
+  p.fake.emit(
+    sdkEvent.subagentStarted(agentId, {
+      agentType,
+      agentName: agentType,
+      agentDisplayName: agent,
+      agentDescription: `${agent} の定義の説明`,
+      toolCallId,
+      executionMode,
+      parentId: parentAgentId,
+      model,
+    }),
+  );
   await p.core.whenIdle();
 }
 

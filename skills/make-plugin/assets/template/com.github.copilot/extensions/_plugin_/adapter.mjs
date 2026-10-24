@@ -13,11 +13,17 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { createCore } from './core/index.mjs';
+import { RecordRefusal } from './core/records.mjs';
 import { buildToolDefinitions } from './core/tools.mjs';
 import { startApp } from './ui/app.mjs';
 
 const AGENT_FILE_SUFFIX = '.agent.md';
 const UNKNOWN_TOOL = '不明なツール';
+const TASK_TOOL = 'task'; // 統括が作業・検証を呼ぶ Copilot CLI のツール。引数の description が「担当」の元になる
+
+// 予期しない失敗のときにモデルへ返す文。内部の情報（エラーの文、場所、スタック）は出さない。くわしくは標準エラーに残す。
+const OPEN_FAILED = 'Web管理画面を開けませんでした。ユーザーに、開けなかったことを伝えてください。';
+const RECORD_FAILED = '記録のツールの処理で、予期しない失敗が起きました。もう一度呼んでも同じなら、作業を終えてください。';
 
 // ---- プラグインの名前と根 --------------------------------------------------------------------------------
 
@@ -104,11 +110,13 @@ function timeOf(event) {
   return Number.isFinite(at) ? at : Date.now();
 }
 
-// 画面の枠の「担当」。task ツールで起動したサブエージェントは、agentDisplayName に、呼び出しの説明（task の description）が入る
-// （session-events.d.ts の説明）。agentDescription はエージェントの定義の説明なので、agentDisplayName がないときだけ使う。
+// 画面の枠の「担当」。統括が task ツールを呼んだときの説明（引数の description）を使う。サブエージェントの開始のイベントには、
+// その呼び出しの toolCallId がつくので、開始より前の task の呼び出しのイベントで description を覚えて、toolCallId で引く。
+// 見つからないときは、agentDisplayName、agentDescription（エージェントの定義の説明）の順に使う。
+// 実機（Copilot CLI 1.0.102）の agentDisplayName は、呼び出しの説明ではなく短い名前（worker など）だった（V1）。
 // 親のないもの（統括。tasks.startAgent で起動する）には付けない。統括の担当は、中心の処理が頼まれた作業の要約を持っている。
-function taskDescriptionOf(data) {
-  for (const text of [data.agentDisplayName, data.agentDescription]) if (typeof text === 'string' && text.trim() !== '') return text;
+function taskDescriptionOf(data, called) {
+  for (const text of [called, data.agentDisplayName, data.agentDescription]) if (typeof text === 'string' && text.trim() !== '') return text;
   return undefined;
 }
 
@@ -119,6 +127,7 @@ function createEventConverter({ pluginName, ownAgentNames }) {
   const parents = new Map(); // エージェントの番号 → 親の番号（tasks.list に親の番号がないため、開始のイベントから覚える）
   const toolNames = new Map(); // ツールの呼び出しの番号 → ツールの名前（終わりのイベントに名前がないため、開始から覚える）
   const lastReplies = new Map(); // エージェントの番号 → 最後の返事（フック onSubagentStop で届き、終わりのイベントで使う）
+  const calledTasks = new Map(); // ツールの呼び出しの番号 → task の description（開始のイベントで使うか、呼び出しが終わったら消す）
 
   // このプラグインのエージェントの名前は、'<プラグイン>:<エージェント>' の形にそろえる。ほかのエージェントはそのまま。
   const qualify = (raw) => {
@@ -140,6 +149,8 @@ function createEventConverter({ pluginName, ownAgentNames }) {
         if (!agentId) return null;
         const parentAgentId = typeof data.parentId === 'string' && data.parentId !== '' ? data.parentId : undefined;
         if (parentAgentId) parents.set(agentId, parentAgentId);
+        const called = calledTasks.get(data.toolCallId);
+        calledTasks.delete(data.toolCallId);
         return {
           type: 'agent.started',
           at,
@@ -148,7 +159,7 @@ function createEventConverter({ pluginName, ownAgentNames }) {
           agentType: agentTypeOf(data),
           model: data.model,
           executionMode: data.executionMode,
-          description: parentAgentId ? taskDescriptionOf(data) : undefined,
+          description: parentAgentId ? taskDescriptionOf(data, called) : undefined,
         };
       }
       case 'subagent.configured':
@@ -167,11 +178,15 @@ function createEventConverter({ pluginName, ownAgentNames }) {
           : null;
 
       case 'tool.execution_start':
-        if (typeof data.toolCallId === 'string') toolNames.set(data.toolCallId, data.toolName);
+        if (typeof data.toolCallId === 'string') {
+          toolNames.set(data.toolCallId, data.toolName);
+          if (data.toolName === TASK_TOOL && typeof data.arguments?.description === 'string') calledTasks.set(data.toolCallId, data.arguments.description);
+        }
         return { type: 'tool.started', at, agentId, toolCallId: data.toolCallId, toolName: data.toolName, arguments: data.arguments };
       case 'tool.execution_complete': {
         const toolName = toolNames.get(data.toolCallId) ?? UNKNOWN_TOOL;
         toolNames.delete(data.toolCallId);
+        calledTasks.delete(data.toolCallId);
         const error = typeof data.error === 'string' ? data.error : data.error?.message;
         return { type: 'tool.completed', at, agentId, toolCallId: data.toolCallId, toolName, success: data.success, error };
       }
@@ -304,10 +319,19 @@ export async function startAdapter({ joinSession }) {
   });
   ready.catch(() => {}); // 待つ呼び出しがなくても、未処理の拒否にしない
 
+  // 断るときは、例外を投げず、理由の文を入れた失敗の結果を返す。ツールの処理が例外を投げると、Copilot CLI 1.0.102 は
+  // モデルに「Tool execution failed」だけを返し、理由の文が消えるため（V1 の不具合 2）。resultType は failure
+  // （denied は「拒まれた」の意味になる。rejected は手番が止まる）。
   async function callTool(shortName, args, invocation) {
-    const readyCore = await ready;
-    if (shortName === 'open') return describeOpened(await readyCore.open({ requestText: args?.requestText }));
-    return readyCore.handleTool(shortName, args, { agentId: invocation?.agentId });
+    try {
+      const readyCore = await ready;
+      if (shortName === 'open') return describeOpened(await readyCore.open({ requestText: args?.requestText }));
+      return await readyCore.handleTool(shortName, args, { agentId: invocation?.agentId });
+    } catch (error) {
+      if (error instanceof RecordRefusal) return { textResultForLlm: error.message, resultType: 'failure' };
+      console.error(`[つなぎ口] ツール「${pluginName}_${shortName}」の処理で予期しない失敗が起きました：`, error);
+      return { textResultForLlm: shortName === 'open' ? OPEN_FAILED : RECORD_FAILED, resultType: 'failure' };
+    }
   }
 
   // ツールを使ってよいかの問い合わせ。同期で答え、例外を投げない（投げると拒まずに進む。設計書 4.4）。

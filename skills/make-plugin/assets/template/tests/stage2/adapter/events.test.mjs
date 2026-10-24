@@ -47,18 +47,51 @@ describe('エージェントのイベント（REQ-008）', () => {
     ]);
   });
 
-  test('REQ-008 「担当」は、task を呼んだときの説明（agentDisplayName）を使う。なければエージェントの定義の説明。親のない統括には付けない', async () => {
+  test('REQ-008 「担当」は、統括が task を呼んだときの説明（引数の description）を、toolCallId で結んで使う。使ったら覚えを消す', async () => {
     const { p, seen } = await spy();
-    const started = (agentId, data) => p.fake.emit(sdkEvent.subagentStarted(agentId, { agentType: 'worker', ...data }));
-    started('ag-1', { parentId: 'ag-0', agentDisplayName: '先週の記録を3行にまとめる', agentDescription: '定義の説明' });
-    started('ag-2', { parentId: 'ag-0', agentDisplayName: '  ', agentDescription: '定義の説明' }); // 空の表示名は使わない
-    started('ag-3', { parentId: 'ag-0', agentDisplayName: undefined, agentDescription: '定義の説明' });
-    started('ag-4', { parentId: 'ag-0', agentDisplayName: undefined, agentDescription: undefined });
-    started('ag-5', { agentDisplayName: `統括 20261022-abc`, agentDescription: '定義の説明', agentType: 'orchestrator' }); // tasks.startAgent で起動した統括（親がない）
+    const task = (agentId, toolCallId, description, toolName = 'task') => p.fake.emit(sdkEvent.toolStart(agentId, toolCallId, toolName, { description, agent_type: 'worker', prompt: '頼む' }));
+    const started = (agentId, toolCallId, data = {}) => p.fake.emit(sdkEvent.subagentStarted(agentId, { agentType: 'worker', agentDisplayName: 'worker', toolCallId, parentId: 'ag-0', ...data }));
+    task('ag-0', 'tc-a', '先週の記録を3行にまとめる');
+    task('ag-0', 'tc-b', '来週の予定を書く');
+    started('ag-1', 'tc-b'); // 開始の順は、呼んだ順でなくてよい。toolCallId で結ぶ
+    started('ag-2', 'tc-a');
+    started('ag-3', 'tc-a'); // 使った覚えは消える。同じ番号がもう一度来ても、今までどおり agentDisplayName
     assert.deepEqual(
-      seen.map((e) => e.description),
-      ['先週の記録を3行にまとめる', '定義の説明', '定義の説明', undefined, undefined],
+      seen.filter((e) => e.type === 'agent.started').map((e) => [e.agentId, e.description]),
+      [
+        ['ag-1', '来週の予定を書く'],
+        ['ag-2', '先週の記録を3行にまとめる'],
+        ['ag-3', 'worker'],
+      ],
     );
+  });
+
+  test('REQ-008 task の説明が見つからないときは、agentDisplayName、なければエージェントの定義の説明を使う。task 以外のツールの description は使わない。親のない統括には付けない', async () => {
+    const { p, seen } = await spy();
+    p.fake.emit(sdkEvent.toolStart('ag-0', 'tc-bash', 'bash', { description: 'シェルの説明' })); // task ではない
+    p.fake.emit(sdkEvent.toolStart('ag-0', 'tc-blank', 'task', { description: '   ' })); // 空の説明は使わない
+    p.fake.emit(sdkEvent.toolStart('ag-0', 'tc-none', 'task', { prompt: '説明なし' }));
+    p.fake.emit(sdkEvent.toolStart('ag-0', 'tc-text', 'task', 'これは文字列の引数')); // 形が違う
+    const started = (agentId, data) => p.fake.emit(sdkEvent.subagentStarted(agentId, { agentType: 'worker', parentId: 'ag-0', ...data }));
+    started('ag-1', { toolCallId: 'tc-bash', agentDisplayName: '表示名', agentDescription: '定義の説明' });
+    started('ag-2', { toolCallId: 'tc-blank', agentDisplayName: '  ', agentDescription: '定義の説明' });
+    started('ag-3', { toolCallId: 'tc-none', agentDisplayName: undefined, agentDescription: '定義の説明' });
+    started('ag-4', { toolCallId: 'tc-text', agentDisplayName: undefined, agentDescription: undefined });
+    started('ag-5', { toolCallId: 'tc-unknown', agentDisplayName: undefined, agentDescription: undefined });
+    p.fake.emit(sdkEvent.toolStart('ag-0', 'tc-root', 'task', { description: '統括の説明' }));
+    p.fake.emit(sdkEvent.subagentStarted('ag-6', { agentType: 'orchestrator', toolCallId: 'tc-root', agentDisplayName: '統括 20261022-abc', agentDescription: '定義の説明' })); // 親がない（tasks.startAgent で起動した統括）
+    assert.deepEqual(
+      seen.filter((e) => e.type === 'agent.started').map((e) => e.description),
+      ['表示名', '定義の説明', '定義の説明', undefined, undefined, undefined],
+    );
+  });
+
+  test('REQ-008 task の呼び出しが終わったら（サブエージェントが始まらなかった場合も）、覚えを消す', async () => {
+    const { p, seen } = await spy();
+    p.fake.emit(sdkEvent.toolStart('ag-0', 'tc-a', 'task', { description: '消える説明' }));
+    p.fake.emit(sdkEvent.toolComplete('ag-0', 'tc-a'));
+    p.fake.emit(sdkEvent.subagentStarted('ag-1', { agentType: 'worker', agentDisplayName: 'worker', toolCallId: 'tc-a', parentId: 'ag-0' }));
+    assert.equal(seen.find((e) => e.type === 'agent.started').description, 'worker');
   });
 
   test('REQ-008 agentType は <プラグイン>:<エージェント> の形にそろえる（このプラグインのエージェントだけ。ほかはそのまま）', async () => {

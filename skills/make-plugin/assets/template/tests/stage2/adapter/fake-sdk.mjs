@@ -11,7 +11,7 @@
 //   fake.behave('workspaces.getWorkspace', { gate })   gate（Promise）が解けるまで、呼び出しを返さない
 //   fake.tasks                           tasks.list に載るタスク（spawn で足す）
 //   fake.emit(event)                     イベントを流す（permission.requested は、本物と同じく許可の求めの受け口にも届く）
-//   fake.callTool(name, args, { agentId })       ツールの呼び出し。{ ok, text } か { ok: false, error }（例外は文になる）
+//   fake.callTool(name, args, { agentId })       ツールの呼び出し。{ ok, text }、失敗の結果は { ok: false, error: 理由の文, resultType, raw }。例外を投げたら { ok: false, thrown: true, error }
 //   fake.callHook('onPreToolUse', input)         フックの呼び出し。例外は undefined になる（本物と同じく、拒まずに進む）
 //   fake.answers                         本物の SDK が Copilot CLI に返す、許可の求めへの答え（答えない no-result は入らない）
 
@@ -128,9 +128,16 @@ export function createFakeSdk({ sessionId = 'session-fake-1', cwd = process.cwd(
       if (!tool) throw new Error(`ツール ${name} は登録されていません`);
       try {
         const raw = await tool.handler(args, { sessionId, toolCallId, toolName: name, arguments: args, agentId });
+        // 本物の SDK（isToolResultObject）：textResultForLlm と resultType があるオブジェクトは、そのまま結果になる
+        if (raw !== null && typeof raw === 'object' && typeof raw.textResultForLlm === 'string' && typeof raw.resultType === 'string') {
+          const failed = raw.resultType !== 'success';
+          return { ok: !failed, text: raw.textResultForLlm, resultType: raw.resultType, raw, ...(failed ? { error: raw.textResultForLlm } : {}) };
+        }
         return { ok: true, text: raw == null ? '' : typeof raw === 'string' ? raw : JSON.stringify(raw) };
       } catch (error) {
-        return { ok: false, error: error instanceof Error ? error.message : String(error) };
+        // 例外の文は、本物の SDK は error として Copilot CLI に渡すが、Copilot CLI 1.0.102 はモデルに文を届けない（V1 の不具合 2）。
+        // つなぎ口は例外を投げない作りなので、ここに来るのは作りの誤り。試験で見つけられるよう、エラーの印をつける。
+        return { ok: false, thrown: true, error: error instanceof Error ? error.message : String(error) };
       }
     },
 
