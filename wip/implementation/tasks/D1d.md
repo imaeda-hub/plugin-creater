@@ -14,15 +14,16 @@
 - [x] 読み込み（testing.md 1〜9章・11.1、ナレッジ3つ、R4、BLUEPRINT、B1 の adapter.mjs、A1 の core、C3 の screen.mjs・grade.mjs・tasks.mjs・judge.mjs、D1a の convert.py、D1b の FORMAT.md、D1c の user-role.mjs・outer-inner.mjs）
 - [x] 偽の API で、本物の Agent SDK 0.3.310 の Claude Code を動かして、つなぎ方を確かめた（分かったことは下の節）
 - [x] 共通の部品：package.json、model-map.mjs、isolation.mjs、mcp-tools.mjs、fake-anthropic.mjs と、それぞれの試験
-- [x] inner-adapter.mjs（内側のつなぎ口）と試験 inner-adapter.test.mjs（21 件）
+- [x] inner-adapter.mjs（内側のつなぎ口）と試験 inner-adapter.test.mjs（25 件）
 - [x] inner-run.mjs（実行1回。あり・なし）と試験 inner-run.test.mjs（19 件）
 - [x] inner-judge.mjs（モデルで判定する関数の Agent SDK 版）と試験 inner-judge.test.mjs（5 件）
 - [x] inner.mjs（入口。コマンドラインと innerEval）と試験 inner.test.mjs（10 件）
-- [x] inner-e2e.test.mjs（10 件）：本物の Agent SDK と Claude Code の本体、本物の生成プラグイン〔C2 の見本を組み立てて D1a の変換スクリプトで置き換えたもの〕の画面と Playwright を、偽の Anthropic API につないで、ありの実行・なしの実行・チャットの返事・質問のツール・止める・設定の欄をユーザー役が決めること（決められたとき、決められなかったとき）を通した。あとの3件は V1 の直しへの合わせ（断りの文がモデルに届くこと）
-- [x] 通しの確認：tests/dev-eval/runner/ の試験すべて（D1c の分を含む）185 件が通った。D1d の分は 98 件（共通の部品 25 件を含む）。D1d の分を続けて動かしても通った
+- [x] inner-e2e.test.mjs（11 件）：本物の Agent SDK と Claude Code の本体、本物の生成プラグイン〔C2 の見本を組み立てて D1a の変換スクリプトで置き換えたもの〕の画面と Playwright を、偽の Anthropic API につないで、ありの実行・なしの実行・チャットの返事・質問のツール・止める・設定の欄をユーザー役が決めること（決められたとき、決められなかったとき）を通した。あとの4件は V1 の直しへの合わせ（断りの文がモデルに届くこと）と、統括の tools をなくしたことへの合わせ（統括が使えるツール）
+- [x] 通しの確認：tests/dev-eval/runner/ の試験すべて（D1c の分を含む）190 件が通った。D1d の分は 103 件（共通の部品 25 件を含む）。変換の試験（test_convert.py）77 件、模擬ユーザーの検査（personas）40 件も通った。D1d の分を続けて動かしても通った
 - [x] 変異試験（わざと壊す検査）：下の「変異試験」
 - [x] 最後の返事（1回目）
 - [x] 続きの仕事（統括の決定）：画面の開始前の設定の欄を、ユーザー役が読んで決める（inner-settings.mjs）。下の「画面の設定の欄を決める」
+- [x] 追加の仕事（統括の tools をなくしたことへの合わせ）：内側の EVAL の統括にも、使ってよいツールだけを効かせる（inner-adapter.mjs）。test_convert.py の落ちていた2件を直した。下の「統括の tools をなくしたことへの合わせ」
 - [x] 追加の確かめ（V1 の直しへの合わせ）：記録のツールの断りの文が、内側の EVAL でモデルに届くこと。偽の API だけを使うための守り（guardSdk）。クリエイターの置き換え（creator-tools.mjs）の failure の結果への合わせ。下の「V1 の直しへの合わせ」
 
 動かし方（リポジトリの根から。事前に `cd tests/dev-eval && npm install`）：
@@ -49,7 +50,7 @@ node tests/dev-eval/runner/inner.mjs --plugin <生成プラグインのフォル
 | --- | --- |
 | `package.json` | 版の固定（下の表） |
 | `runner/model-map.mjs`、`isolation.mjs`、`mcp-tools.mjs`、`fake-anthropic.mjs` | 共通の部品（下の表）。試験は `*.test.mjs`（model-map 5、isolation 10、mcp-tools 6、fake-anthropic 4） |
-| `runner/inner-adapter.mjs` | 内側のつなぎ口。断り・失敗は isError の結果で返す（`failureResult`、`OPEN_FAILED`、`RECORD_FAILED`）。`createInnerAdapter({ sdk, pluginRoot, convertedRoot, workDir, runDir, ... })`。中心の処理（core/）と画面（ui/）を生成プラグインの場所から読み込み、窓口 port と中立のイベントで動かす。`mainParts()`（メインの query に足す MCP サーバー）、`port`、`core`、`agents()`、`runs()`、`checkToolNames()`、`limitHit()`、`shutdown()` |
+| `runner/inner-adapter.mjs` | 内側のつなぎ口。断り・失敗は isError の結果で返す（`failureResult`、`OPEN_FAILED`、`RECORD_FAILED`）。実行用のコピーの統括の定義に、使ってよいツールだけを tools に書く（`ORCHESTRATOR_BUILTIN_TOOLS`、`addTools`）。`createInnerAdapter({ sdk, pluginRoot, convertedRoot, workDir, runDir, ... })`。中心の処理（core/）と画面（ui/）を生成プラグインの場所から読み込み、窓口 port と中立のイベントで動かす。`mainParts()`（メインの query に足す MCP サーバー）、`port`、`core`、`agents()`、`runs()`、`checkToolNames()`、`limitHit()`、`shutdown()` |
 | `runner/inner-run.mjs` | 実行1回 `runInnerArm({ arm, task, runDir, sdk, userRole, judge, screen, ... })`。流れは先頭のコメント。`asksForReply`（返事を求めているかの見分け）、`buildChecks`（動きの確かめ） |
 | `runner/inner-judge.mjs` | `createAgentSdkJudge({ sdk, model })`。grade.mjs の buildJudgePrompt と parseJudgeReply を使う |
 | `runner/inner.mjs` | `innerEval(...)`（課題 × 回数 × あり・なし。点数とその差。利用枠の上限で止まったら残りを skipped）、`main(argv, deps)`〔deps.sdk・deps.chromium は試験用〕、`parseArgs`、`scoresOf`、`summarizeRun` |
@@ -131,7 +132,7 @@ D1c は、次の部品を使っている（isolation・mcp-tools・model-map・f
 **adapter.mjs との合わせ**
 - `OPEN_FAILED`、`RECORD_FAILED` の文を、adapter.mjs と同じにした（inner-adapter.mjs が export）。試験 `V1 の直しへの合わせ`（inner-adapter.test.mjs）が、C2 の見本から作った生成プラグインの adapter.mjs を読み、2つの文、`RecordRefusal` の理由をそのまま失敗にする行、`describeOpened` の返り値（同じ入力で同じ文）を比べる。adapter.mjs がまだ直っていなければ、その旨を示して飛ばす。448e24e の adapter.mjs で通っている。
 - 食い違い方：adapter.mjs は Copilot の形（`{ textResultForLlm, resultType: 'failure' }`）、inner-adapter.mjs は MCP の形（`{ content, isError: true }`）。形は違うが、モデルに届く文と、失敗として扱われることは同じ。
-- B1 が統括の定義の `tools:` を消す直しを作業中（統括の別の依頼。その合わせは別に頼まれる）。作業中のひな形（`tools:` なしの統括）で内側の試験を動かすと、inner-e2e など 8 件が落ちる（コミットされたひな形〔448e24e と 78644fb を含む〕では 185 件がすべて通る）。確かめた原因：変換した統括の定義（`orchestrator.md`）に `tools:` の行がなくなり、統括が全部のツール（`Skill` を含む）を持つ。試験の台本（`inner-test-support.mjs` の `roleOf`）は「`Skill` を持つ→メイン」と見分けるので、統括をメインと取り違える。実際の動きの側では、統括が使えるツールを絞るのは、エクステンションの PreToolUse（設計書 4.4）の役目になる。内側のつなぎ口がそれを Agent SDK のフックで再現するかは、別の依頼のときに決める。
+- B1 の統括の `tools:` を消す直し（6a281b3・6201eb4）への合わせは、下の「統括の tools をなくしたことへの合わせ」。
 
 **偽の API だけを使う守り**（前の D1c の件：本物のモデルが一度だけ呼ばれた）
 - `guardSdk(sdk, api)`（fake-anthropic.mjs）：`options.env.ANTHROPIC_BASE_URL` が偽の API の URL でない `query()` は、呼ぶ前に例外で止める。本物の SDK を使う試験（inner-e2e、inner、inner-judge）は、すべてこれを通した SDK を使う。守り自体の試験は fake-anthropic.test.mjs（4 件：偽の API の URL と違う接続先は止める、試験の仕組みの options が偽の API の URL を渡さなければ止める、本物の Agent SDK でも守りを通すと偽のサーバーの応答だけが返る、補助の関数）。
@@ -148,6 +149,38 @@ D1c は、次の部品を使っている（isolation・mcp-tools・model-map・f
 - 外側の EVAL のモデルに断りの文が届くかは、本物の SDK では確かめていない（creator-tools.test.mjs は MCP のクライアントとサーバーを通す。Claude Code の本体を通す試験は、内側の e2e の3件が同じ MCP の経路を確かめている）。
 
 **変異試験**：この分の13か所を1つずつ壊して、どれも試験が見つけた。内側のつなぎ口と守り（8か所：失敗の結果の `isError`、断りの判定、断りの理由の文、予期しない例外の文を内部の文にすること、画面を開くツールの失敗の文の使い分け、`tool_error` の記録、`tool_refused` の記録、守りの判定）と、クリエイターの置き換え（5か所：`toMcpResult` の成功・失敗の分け、記録の `isError`、変換を通さないこと、JSON を理由にすること、resultType 未指定の扱い）。
+
+## 統括の tools をなくしたことへの合わせ（B1 の 6a281b3・6201eb4）
+
+背景：生成プラグインの統括の定義（`orchestrator.agent.md`）から `tools:` が消えた。Copilot CLI では、統括は全ツールを持ち、使ってよいツールの一覧（view、grep・glob・rg、task・read_agent・list_agents・write_agent、統括の記録のツール plan・review・issue・finish・show）にないものを、adapter.mjs の `onPreToolUse` が拒む。内側の EVAL ではこのフックは動かない。変換（convert.py）は `tools` のないエージェントに `tools` を足さないので、そのままだと内側の統括は Edit・Write・Bash・Skill なども持ち、試験の台本は「Skill を持つ→メイン」で統括をメインと取り違えて、内側の試験が 8 件落ちた。
+
+**選んだやり方**：(a) の仲間。統括の定義に Claude Code の名前の許す一覧を `tools` として書く。ただし書く場所は `convert.py` ではなく、内側のつなぎ口（inner-adapter.mjs）が作る実行用のコピーの統括の定義にした。(b)（内側のつなぎ口の PreToolUse で拒む）は選ばなかった。
+
+**確かめたこと**（本物の Agent SDK 0.3.310 と Claude Code の本体を、偽の API につないで。最初の呼び出しで届いたツールの名前を、役割ごとに記録した）
+- 統括に `tools` を書くと、統括のツールは書いた範囲だけになる（Agent、Read、Grep、Glob、plan、show、review、issue、finish。ほかに Claude Code 内部の `DeferredToolPlaceholder` が付く）。Write・Edit・Bash・Skill・AskUserQuestion・Web・open・verdict は渡らない。
+- 子のツールは、親の tools に絞られない。作業は Read、Edit、Write、Bash、Grep、Glob、show を、検証は Read、Grep、Glob、verdict を、統括が Write を持たなくても受け取る（前の版で作業エージェントが Write で成果物を作れたことと同じ。Copilot CLI は逆に、親の tools に絞る〔更新履歴 1.0.67・1.0.68〕ので、統括に tools を書けなくなった。内側の EVAL は Claude Code の仕様のまま）。
+- メイン（`agent` なしの実行）は、全ツールと全部の記録のツールを持つ（Skill、open、verdict を含む）。
+
+**(a) を選び、書く場所を実行用のコピーにした根拠**
+1. KISS：(a) は定義に tools を書くだけで、Claude Code が絞る。(b) は拒むフックと拒む文、フックの入力の読み分け（統括自身かどうか）が要り、統括のツールが全部見えるので試験の台本の役割の見分けも作り直しになる。(a) は台本を変えずに済んだ。
+2. 範囲が同じになる：Copilot CLI の統括が使えるのは、一覧にあるツールだけ。Claude Code でも、`tools` にあるものだけ。使えないツールは、拒まれるか、見えないかの違いだけで、書き込み・コマンド・スキルを統括が使えない点は同じ。
+3. 記録のツールの一覧を写さずに済む：adapter.mjs と同じく、`core/tools.mjs` の `TOOL_DEFS` で `caller` に `orchestrator` を持つものから作る（`convert.py` は Python で、`TOOL_DEFS` を読めない。ここに名前を書くと二重管理になる）。組み込みの4つ（Agent、Read、Grep、Glob）だけ、写す。
+4. 変換は機械的なまま：`convert.py` は「Copilot の定義を Claude Code の書き方にする」だけで、統括の中身を知らない。`tools` のない統括は `tools` なしのまま（Claude Code では全ツールを継ぐ）。統括を絞るのは、adapter.mjs の役目を Agent SDK で受け持つ内側のつなぎ口（inner-adapter.mjs）。
+5. 定義にすでに `tools` があるときは、足さずにそのまま使う（古い版の生成プラグインでも動く）。
+
+**作りと試験**
+- `ORCHESTRATOR_BUILTIN_TOOLS`（`Agent`、`Read`、`Grep`、`Glob`）と `addTools(markdown, tools)`（フロントマターに `tools:` を足す。すでにあれば `null`）。`prepareRunPlugin` が、モデルの書き換えのあと、統括の定義に tools がなければ書く。書いた一覧は、実行の記録（`events.jsonl` の `orchestrator_tools`）と `runs()` の `orchestratorTools` に残す。元の置き換えた版は変えない。
+- Copilot CLI の組み込みとの対応：view→Read、grep・rg→Grep、glob→Glob、task→Agent。`read_agent`・`list_agents`・`write_agent` に当たるツールは、統括が task を前面（`run_in_background: false`）で1体ずつ呼ぶ決まりなので、足さない。
+- 試験：inner-adapter.test.mjs に4件（コピーの統括の定義に書く・元と作業と検証と本文は変えない、すでに tools があれば足さない、`addTools`、adapter.mjs との突き合わせ）。突き合わせは、生成プラグインの adapter.mjs の `ORCHESTRATOR_BUILTIN_TOOLS` を読み、Claude Code の名前に当てた集合が `ORCHESTRATOR_BUILTIN_TOOLS` と同じことと、記録のツールの絞り方（`TOOL_DEFS` の `caller`）が同じ書き方なことを確かめる。adapter.mjs の一覧に、表にないツールが足されたら落ちて、足す場所を示す。inner-e2e.test.mjs に1件（上の確かめたことを、役割ごとのツールの名前で通す）。
+- test_convert.py の落ちていた2件を直した：統括の定義に `tools` がないことを前提にした（統括の `tools` を見ていた確かめを、作業と検証だけにした）。「統括に tools がなく、変換が足さない」試験を1件足した。
+
+**変異試験**：この分の7か所を1つずつ壊して、どれも試験が見つけた（組み込みの一覧から Glob を外す／Write を足す、書かない、caller を間違える、すでにある tools を上書きする、記録を残さない、別のエージェントの定義に書く）。注意：統括の途中経過のコミットが、壊した写しを取り込んだことがある（9b58b92 の inner-adapter.mjs に `if (false)` が1行残っていた。この作業のコミットで直した）。壊す検査は、元のファイルではなく別のフォルダの写しでやる。
+
+**本物のモデルでしか分からないこと**
+- 統括が、使えないツールを試して拒まれる動き（回り道をしないか。ひな形の本文に1項目足した効き）は、内側の EVAL では見えない。使えないツールが見えないため。Copilot CLI の実機で見る（B1 の要確認）。
+- 統括が呼べるエージェントの種類は、絞っていない（Copilot CLI の `task` も、adapter.mjs は種類を絞らない）。作業と検証のほかを呼ばないことは、ひな形の本文の決まりに任せている。Claude Code の `Agent` が組み込みのエージェントを呼べるかは確かめていない。
+
+**上位の文書で直すこと**：testing.md 4章に、「生成プラグインの統括は tools を書かない（Copilot CLI では全ツールを持ち、adapter.mjs が一覧にないツールを拒む）。変換は tools を足さない。内側の EVAL の統括を絞るのは内側のつなぎ口で、実行用のコピーの統括の定義に、同じ範囲の tools を書く」を足す。
 
 ## 要確認（本物のモデル・手元の環境でしか確かめられないこと）
 

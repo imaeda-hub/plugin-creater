@@ -397,7 +397,7 @@ export async function createInnerAdapter(options) {
       const file = path.join(dest, orchestratorEntry.file);
       const allowed = orchestratorTools();
       const written = addTools(fs.readFileSync(file, 'utf8'), allowed);
-      if (false) {
+      if (written !== null) {
         fs.writeFileSync(file, written);
         tools = allowed;
         record({ t: 'orchestrator_tools', run: id, tools });
