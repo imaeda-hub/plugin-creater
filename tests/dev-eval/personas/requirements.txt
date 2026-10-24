@@ -1,0 +1,4 @@
+# 模擬ユーザーの示すファイル（docx・xlsx）を作る make_files.py の部品。
+# スクラッチの仮想環境に入れて使う：python3 -m venv <場所> && <場所>/bin/pip install -r requirements.txt
+python-docx==1.2.0
+openpyxl==3.1.5

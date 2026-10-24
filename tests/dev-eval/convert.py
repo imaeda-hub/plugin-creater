@@ -55,7 +55,7 @@ class Refusal(Exception):
 # 画面で選ぶモデル（Copilot の名前）を ID にするときも、この表を使う（変換レポートの model_map）。
 MODEL_MAP = {
     "claude-haiku-5.5": "claude-haiku-5-5",
-    "gpt-6-luna": "claude-haiku-5-5",
+    "gpt-6-luna": "claude-sonnet-5-5",
     "claude-sonnet-5.5": "claude-sonnet-5-5",
     "gpt-6.1-sol": "claude-sonnet-5-5",
     "claude-opus-5.5": "claude-opus-5-5",
@@ -253,7 +253,7 @@ _INLINE_CODE = re.compile(r"(?<!`)`([^`\n]+)`(?!`)")
 def convert_body(text: str, ctx: Context, where: str) -> str:
     """本文のツール名を Claude Code の名前にする（testing.md 4章）。
 
-    - バッククォートで囲んだ名前: 実行時のツール名、エクステンションのツール名
+    - バッククォートで囲んだ名前: 実行時のツール名、エクステンションのツール名（`<エクステンション>_` だけの、名前の頭の言い方も）
     - 下線を含む名前（ask_user など）: 本文のどこにあっても
     - task の引数の名前（agent_type、mode）と値（"sync"、"background"）: バッククォートで囲んだものを、引数の名前を示す本文でだけ
     変数（${PLUGIN_ROOT}）は置き換えない。Copilot CLI は本文で展開せず、Claude Code は本文の ${CLAUDE_PLUGIN_ROOT} を
@@ -269,6 +269,9 @@ def convert_body(text: str, ctx: Context, where: str) -> str:
             return AGENT_ARG_TOKENS[inside]
         if inside == AGENT_ARG_MODE[0] and talks_about_task_args:
             return AGENT_ARG_MODE[1]
+        for ext in ctx.extensions:  # 「名前が `<エクステンション>_` で始まるもの」のような、名前の頭だけの言い方
+            if inside == ext + "_":
+                return f"mcp__{server_name(ext)}__"
         return to_mcp_name(inside, ctx, where)
 
     def span(match: re.Match) -> str:

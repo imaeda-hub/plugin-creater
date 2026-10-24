@@ -18,7 +18,7 @@ export const COMPACTION_NOTICE =
   '会話が自動で要約されました。いまの手順が消えているかもしれません。skill ツールで make-plugin を読み直し、plugin-creator_state を呼んで、段階と、まだ聞いていないことを確かめてから続けてください。';
 
 if (Buffer.byteLength(COMPACTION_NOTICE, 'utf8') >= INJECTION_MAX_BYTES) {
-  throw new Error('コンパクションの後の差し込みが 1KB を超えています');
+  throw new Error('会話の自動の要約の後の差し込みが 1KB を超えています');
 }
 
 /** ask_user の結果の文から、答えの種類を見分ける（hearing.md 2.1） */

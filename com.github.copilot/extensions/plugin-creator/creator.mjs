@@ -48,7 +48,7 @@ export function createCreator({
   runGh = defaultRunGh,
   warn = (text) => console.error(`[plugin-creator] ${text}`),
 }) {
-  if (!sessionId) throw new Error('セッションの番号がありません。Copilot CLI のエクステンションとして動かしてください。');
+  if (!sessionId) throw new Error('セッションの番号がありません。Copilot CLI の中で動かしてください。');
 
   let workDir = cwd;
   const store = createStore({ home, sessionId });
@@ -108,7 +108,7 @@ export function createCreator({
     const draft = readDraft(taskPath);
     const criterionRows = knowledgeRows.filter((k) => k.kind === 'criterion');
     if (criterionRows.length === 0) {
-      throw new Refusal('「合否の決め方」のナレッジがありません。合否の基準は、種類が「合否の決め方」のナレッジから作るので、基準にするナレッジを plugin-creator_record で「合否の決め方」にしてください。');
+      throw new Refusal('種類が「合否の決め方」の仕事のやり方や決まりがありません。合格の条件は、種類が「合否の決め方」の仕事のやり方や決まりから作るので、合格の条件にするものを plugin-creator_record で種類「合否の決め方」にしてください。');
     }
     const task = injectCriteria(draft, criterionRows);
     const ui = await loadUi();
@@ -116,34 +116,34 @@ export function createCreator({
     try {
       schema = JSON.parse(fs.readFileSync(ui.taskSchemaPath, 'utf8'));
     } catch (error) {
-      throw new Error(`作業の定義の決まり（task.schema.json）を読めません：${errorMessage(error)}`);
+      throw new Error(`画面と合格の条件の設定の決まり（task.schema.json）を読めません：${errorMessage(error)}`);
     }
     const problems = checkTaskDefinition(task, schema);
     if (problems.length) {
       const shown = problems.slice(0, 8).join('\n');
       throw new Refusal(
-        `作業の定義の案が決まりに合いません（${taskPath}）。直してから、もう一度知らせてください。\n${shown}${problems.length > 8 ? `\nほか${problems.length - 8}件` : ''}`,
+        `画面と合格の条件の設定の案が決まりに合いません（${taskPath}）。直してから、もう一度知らせてください。\n${shown}${problems.length > 8 ? `\nほか${problems.length - 8}件` : ''}`,
       );
     }
     try {
       return await sample.update(task);
     } catch (error) {
-      throw new Error(`Web管理画面の見本を開けません：${errorMessage(error)}`);
+      throw new Error(`作業の画面の見本を開けません：${errorMessage(error)}`);
     }
   }
 
   function validateConfirmArgs(args) {
     const a = args && typeof args === 'object' && !Array.isArray(args) ? args : {};
     const text = (v) => (typeof v === 'string' ? v.trim() : '');
-    if (!Array.isArray(a.knowledgeIds) || a.knowledgeIds.length === 0) throw new Refusal('示すナレッジの番号の一覧（knowledgeIds）を渡してください。');
-    if (!text(a.behavior)) throw new Refusal('生成プラグインの振る舞いの案（behavior）を渡してください。');
-    if (!text(a.taskPath)) throw new Refusal(`作業の定義の案のパス（taskPath）を渡してください。置き場所は ${DRAFT_TASK_SUFFIX} です。`);
-    if (!Array.isArray(a.evalTasks) || a.evalTasks.length === 0) throw new Refusal('EVAL の課題の案（evalTasks）を、1つ以上渡してください。');
+    if (!Array.isArray(a.knowledgeIds) || a.knowledgeIds.length === 0) throw new Refusal('示す仕事のやり方や決まりの番号の一覧（knowledgeIds）を渡してください。');
+    if (!text(a.behavior)) throw new Refusal('できあがるプラグインの振る舞いの案（behavior）を渡してください。');
+    if (!text(a.taskPath)) throw new Refusal(`画面と合格の条件の設定の案のパス（taskPath）を渡してください。置き場所は ${DRAFT_TASK_SUFFIX} です。`);
+    if (!Array.isArray(a.evalTasks) || a.evalTasks.length === 0) throw new Refusal('試しに動かして採点する試験の課題の案（evalTasks）を、1つ以上渡してください。');
     const evalTasks = a.evalTasks.map((t, i) => {
-      if (!t || typeof t !== 'object' || !text(t.prompt)) throw new Refusal(`EVAL の課題 ${i + 1} に、頼むときの言葉（prompt）がありません。`);
+      if (!t || typeof t !== 'object' || !text(t.prompt)) throw new Refusal(`試しに動かして採点する試験の課題 ${i + 1} に、頼むときの言葉（prompt）がありません。`);
       const inputs = (Array.isArray(t.inputs) ? t.inputs : []).map((f) => {
         const p = typeof f === 'string' ? f : f?.path;
-        if (!text(p)) throw new Refusal(`EVAL の課題 ${i + 1} の入力のファイルに、場所（path）がありません。`);
+        if (!text(p)) throw new Refusal(`試しに動かして採点する試験の課題 ${i + 1} の入力のファイルに、場所（path）がありません。`);
         return { path: text(p), provisional: typeof f === 'object' && f?.provisional === true };
       });
       return { prompt: text(t.prompt), inputs, criteria: (Array.isArray(t.criteria) ? t.criteria : []).map(String) };
@@ -163,7 +163,7 @@ export function createCreator({
     const a = validateConfirmArgs(args);
     const normalized = path.resolve(workDir, a.taskPath);
     if (!normalized.split(path.sep).join('/').endsWith(`/${DRAFT_TASK_SUFFIX}`)) {
-      throw new Refusal(`作業の定義の案は、作業フォルダの ${DRAFT_TASK_SUFFIX} に置いてください（今のパス：${a.taskPath}）。`);
+      throw new Refusal(`画面と合格の条件の設定の案は、作業フォルダの ${DRAFT_TASK_SUFFIX} に置いてください（今のパス：${a.taskPath}）。`);
     }
     if (hearing.state.rebuild && a.rebuild === null) {
       throw new Refusal('作り直しのときは、引き継ぐことと変わること（rebuild）も知らせてください。');
@@ -173,18 +173,18 @@ export function createCreator({
     for (const task of a.evalTasks) {
       for (const id of task.criteria) {
         const k = known.get(id);
-        if (!k) throw new Refusal(`EVAL の課題の基準にしたナレッジ ${id} が、示すナレッジの一覧（knowledgeIds）にありません。`);
-        if (k.kind !== 'criterion') throw new Refusal(`ナレッジ ${id} は「合否の決め方」ではないので、EVAL の課題の基準にできません。`);
+        if (!k) throw new Refusal(`試しに動かして採点する試験の課題の合格の条件にした仕事のやり方や決まり ${id} が、示す一覧（knowledgeIds）にありません。`);
+        if (k.kind !== 'criterion') throw new Refusal(`仕事のやり方や決まり ${id} は種類が「合否の決め方」ではないので、試しに動かして採点する試験の課題の合格の条件にできません。`);
       }
     }
     // 決まったナレッジは、すべて示す（画面の「決まったこと」の一覧と、生成前の確認の一覧を、同じにする。REQ-043）
     const omitted = hearing.state.knowledge.filter((k) => k.status === 'decided' && !known.has(k.id)).map((k) => k.id);
     if (omitted.length) {
-      throw new Refusal(`決まったナレッジのすべてを、示すナレッジの一覧（knowledgeIds）に入れてください。入っていないもの：${omitted.join('、')}`);
+      throw new Refusal(`決まった仕事のやり方や決まりのすべてを、示す一覧（knowledgeIds）に入れてください。入っていないもの：${omitted.join('、')}`);
     }
     const sampleUrl = await prepareSample({ taskPath: normalized, knowledgeRows: rows });
     hearing.commitConfirmation({ ...a, taskPath: normalized });
-    return `生成前の確認で示すものを受け付けました。画面で見られます。Web管理画面の見本：${sampleUrl}`;
+    return `作る前の確認で示すものを受け付けました。画面で見られます。作業の画面の見本：${sampleUrl}`;
   }
 
   /** 止まっている見本を作り直す。再開（--continue）のあと、生成前の確認が残っているときのため。失敗しても黙る */
@@ -195,7 +195,7 @@ export function createCreator({
       const rows = hearing.knowledgeByIds(c.knowledgeIds);
       await prepareSample({ taskPath: c.taskPath, knowledgeRows: rows });
     } catch (error) {
-      warn(`Web管理画面の見本を作り直せませんでした：${errorMessage(error)}`);
+      warn(`作業の画面の見本を作り直せませんでした：${errorMessage(error)}`);
     }
   }
 

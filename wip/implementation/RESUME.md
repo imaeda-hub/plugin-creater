@@ -109,6 +109,7 @@
 - B3-fix：上位の文書で直すこと14件（tasks/B3-fix.md の同じ節）。主なもの：hearing.md 3.1・10.1 の段階の表に「生成」の行がなく、コンパクションの後の生成の続け方が決まっていない。段階「生成」ではフックが止まるので、生成の途中のコンパクションで読み直しの差し込みがない。「ほかにありますか？」の答えの出どころを「ユーザーが自分から話した」にした。生成の後の承認（道具を入れる、Issue を起票する）に答えが来なかったときの扱い。creator-structure.md 4.1 で組み立てが断ったときに誰が直すかと、その直しを3回に数えるか（数える）。REQ-034 の「読み取って確かめた項目」の範囲。再開の後はいつも URL を示し直す。autopilot の切り方（Shift+Tab）。
 - 最終確認で人が確かめること（B3-fix の依頼）：marketplace.json の source "./" で入れられるか（copilot plugin marketplace add、marketplace browse、plugin install、plugin list --json）。test-plugin が隣の make-plugin の references を読めるか。読み込みの確認の題に出る名前。
 - D1c への引き継ぎ（B3-fix）：会話例を置いたら、README の「置きます」を「あります」に直す。
+- B2-fix：上位の文書で直すこと（tasks/B2-fix.md）。BLUEPRINT 8章：差し込み口の見出しは ### 以下、統括の差し込み口は作業エージェントに渡すもので検証エージェントにはナレッジを渡さない。generated-plugin-structure.md 4.8 の3：検証エージェントに渡すものに、作業ごとの設定の値と入力のファイルの場所を足す。REQ-011・4.3・4.8：頼みの文と合否の基準が食い違うときの決まりがない（ユーザーに確認）。
 - R2：`requestSandboxPermissive` を「サンドボックスの外で動かす」と示さない（generated-plugin-structure.md 6.3）。tasks.list には shell と client のタスクも入る。
 
 ## 後の仕事に渡すこと（作業のエージェントの報告から）
@@ -156,7 +157,7 @@
 | B3（書く） | a85fc7bf7ada9e044（完了。次は点検：briefs/review.md） |
 | B2 | ae0285d8193b30123（完了） |
 | B2 の点検 | 4つとも完了（design 8件、format 6件、models 19件、language 9件。high はなし） |
-| B2 を直す | aacc17a8675d68a69（指示は briefs/fix.md。メモは tasks/B2-fix.md） |
+| B2 を直す | aacc17a8675d68a69（完了。42件中36件を直した） |
 | D1a 変換 | a94162dfbb0aaf6aa（指示は briefs/D1.md） |
 | D1b 模擬ユーザー | a28af96a1b11b7fea（FORMAT.md ができたら D1c と H1 を立てる） |
 | D1d 内側の EVAL | afe3eb2243185d726 |

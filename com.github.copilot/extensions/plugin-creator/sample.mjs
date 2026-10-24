@@ -35,14 +35,14 @@ export function readDraft(file) {
   try {
     source = fs.readFileSync(file, 'utf8');
   } catch (error) {
-    throw new Error(error.code === 'ENOENT' ? `作業の定義の案が見つかりません：${file}` : `作業の定義の案を読めません：${file}（${error.message}）`);
+    throw new Error(error.code === 'ENOENT' ? `画面と合格の条件の設定の案が見つかりません：${file}` : `画面と合格の条件の設定の案を読めません：${file}（${error.message}）`);
   }
   try {
     const value = JSON.parse(source);
     if (value === null || typeof value !== 'object' || Array.isArray(value)) throw new Error('JSON のまとまり（{ }）ではありません');
     return value;
   } catch (error) {
-    throw new Error(`作業の定義の案が JSON として読めません：${file}（${error.message}）`);
+    throw new Error(`画面と合格の条件の設定の案が JSON として読めません：${file}（${error.message}）`);
   }
 }
 
@@ -87,7 +87,7 @@ function withSampleDefaults(settings) {
 const SAMPLE_MODEL = { id: 'sample-model', name: '見本のモデル' };
 
 const NOTICES = [
-  { text: 'これは Web管理画面の見本です。表示は仮のデータで、実際には何も動きません。「開始する」を押すと実行中の見本、「止める」を押すと終わった後の見本に変わります。' },
+  { text: 'これは作業の画面の見本です。表示は仮のデータで、実際には何も動きません。「開始する」を押すと実行中の見本、「止める」を押すと終わった後の見本に変わります。' },
 ];
 
 /**
@@ -135,9 +135,9 @@ export function buildSampleState({ task, mode, version, nowMs }) {
     agent(`worker-${i + 1}`, 'worker', w.label, running ? 'running' : 'completed', '（見本）成果物を作る', running ? '' : '（見本）成果物を作りました。'),
   );
   const agents = [
-    agent('orchestrator', 'orchestrator', '統括', running ? 'standby' : 'completed', '（見本）計画を立てて、結果をまとめる', running ? '' : '（見本）すべての基準を満たしました。'),
+    agent('orchestrator', 'orchestrator', '統括', running ? 'standby' : 'completed', '（見本）計画を立てて、結果をまとめる', running ? '' : '（見本）すべての合格の条件を満たしました。'),
     ...workers,
-    agent('verifier', 'verifier', '検証', running ? 'standby' : 'completed', '（見本）成果物を基準で確かめる', running ? '' : '（見本）すべて合格です。'),
+    agent('verifier', 'verifier', '検証', running ? 'standby' : 'completed', '（見本）成果物を合格の条件で確かめる', running ? '' : '（見本）すべて合格です。'),
   ];
   const displays = {};
   for (const def of task.displays ?? []) displays[def.key] = sampleValue(def);
@@ -160,7 +160,7 @@ export function buildSampleState({ task, mode, version, nowMs }) {
       {
         n: 1,
         criteria,
-        plan: '（見本）基準を満たす成果物を作る計画です。',
+        plan: '（見本）合格の条件を満たす成果物を作る計画です。',
         verdicts: running ? [] : criteria.map((c) => ({ criterionId: c.id, pass: true, note: '' })),
         agentIds: [],
       },
@@ -178,7 +178,7 @@ export function buildSampleState({ task, mode, version, nowMs }) {
 // ---- 見本の画面のサーバー ---------------------------------------------------------------------
 
 const SAMPLE_IMAGE = `<svg xmlns="http://www.w3.org/2000/svg" width="320" height="120" viewBox="0 0 320 120"><rect width="320" height="120" fill="#e8eef5"/><text x="160" y="66" font-size="20" text-anchor="middle" fill="#2b3a4a" font-family="sans-serif">見本の画像（仮）</text></svg>`;
-const SAMPLE_FILE = 'これは Web管理画面の見本のファイルです。仮のデータです。\n';
+const SAMPLE_FILE = 'これは作業の画面の見本のファイルです。仮のデータです。\n';
 
 /**
  * 見本の画面のサーバーを持つ。

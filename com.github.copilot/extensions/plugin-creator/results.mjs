@@ -15,6 +15,9 @@ const RAW_MAX_CHARS = 20_000;
 
 const STATUS_JA = { passed: '合格', failed: '不合格', none: '試験なし', stopped: '止まった', skipped: '対象外' };
 const statusJa = (s) => STATUS_JA[s] ?? (s == null ? '' : String(s));
+// 試験の入口（tests/run.py）が書く段階の名前を、ユーザーに話す言葉に直す（words.md）。ほかの名前は、そのまま出す
+const STAGE_NAME_DISPLAY = { 構造の検査: 'ファイルの形の検査', 部品の試験: '動きの試験' };
+const stageNameJa = (name) => STAGE_NAME_DISPLAY[name] ?? name;
 
 const isObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
@@ -39,7 +42,7 @@ function stagesView(json) {
     overall: statusJa(json.status),
     overallStatus: json.status ?? null,
     stages: json.stages.map((s) => ({
-      name: String(s?.name ?? s?.id ?? ''),
+      name: stageNameJa(String(s?.name ?? s?.id ?? '')),
       status: statusJa(s?.status),
       statusKey: s?.status ?? null,
       counts: isObject(s?.counts) ? s.counts : null,

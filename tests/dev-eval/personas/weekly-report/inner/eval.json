@@ -1,0 +1,15 @@
+{
+  "id": "T-01",
+  "prompt": "inputs/sales.csv から、今週の週報を作ってください。",
+  "inputs": ["inputs/sales.csv"],
+  "settings": { "maxIterations": 2 },
+  "criteria": [
+    { "id": "C-01", "knowledge": "output", "text": "成果物は weekly_report.md という名前のファイルである", "grading": "program", "check": { "type": "file_exists", "file": "weekly_report.md" } },
+    { "id": "C-02", "knowledge": "headings", "text": "見出しに「■今週の売上」がある", "grading": "program", "check": { "type": "contains", "file": "weekly_report.md", "text": "■今週の売上" } },
+    { "id": "C-03", "knowledge": "headings", "text": "見出しに「■来週の予定」がある", "grading": "program", "check": { "type": "contains", "file": "weekly_report.md", "text": "■来週の予定" } },
+    { "id": "C-04", "knowledge": "man-yen", "text": "合計が、円のまま足してから万円にした「47万円」で書かれている", "grading": "program", "check": { "type": "regex", "file": "weekly_report.md", "pattern": "47\\s*万円" } },
+    { "id": "C-05", "knowledge": "man-yen", "text": "売上が1万円に満たない担当は「1万円未満」と書かれている", "grading": "program", "check": { "type": "contains", "file": "weekly_report.md", "text": "1万円未満" } },
+    { "id": "C-06", "knowledge": "man-yen", "text": "売上の金額が万円の単位で書かれ、1万円未満の端数が切り捨てられている（円のままの金額が残っていない。例：128,000円は12万円）", "grading": "model", "check": { "files": ["weekly_report.md"] } },
+    { "id": "C-07", "knowledge": "ijou", "text": "最後の行が「以上」の2文字だけである", "grading": "program", "check": { "type": "regex", "file": "weekly_report.md", "pattern": "(?:^|\\n)以上\\s*$" } }
+  ]
+}

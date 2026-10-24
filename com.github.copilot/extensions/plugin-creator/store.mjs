@@ -32,7 +32,7 @@ export function hearingDir(home, sessionId) {
 /** 記録のファイルを読めなかったとき。上書きして消してしまわないよう、書く側はこれを見て断る */
 export class RecordUnreadable extends Error {
   constructor(file, cause) {
-    super(`ヒアリングの記録（${file}）を読めません。ファイルを確かめてください。${cause ? `（${cause}）` : ''}`);
+    super(`お話を聞くことの記録（${file}）を読めません。ファイルを確かめてください。${cause ? `（${cause}）` : ''}`);
     this.name = 'RecordUnreadable';
     this.file = file;
   }

@@ -1,7 +1,7 @@
 // クリエイターの画面を組み立てる。見るだけの画面：入力の欄、開始と止めるボタン、承認のボタンは出さない（REQ-043）。
 // 答えや直しは、Copilot CLI のチャットで行う。状態の全体（GET /api/state）を1秒ごとに取り直し、
 // 版が変わったときだけ描き直す。再読み込みなしで、決まったことが増えていく。
-// 描画の部品は、ひな形の render.js（window.PluginUi）を使う。生成プラグインの Web管理画面と同じ部品である。
+// 描画の部品は、ひな形の render.js（window.PluginUi）を使う。できあがるプラグインの作業の画面と同じ部品である。
 //
 // 決まり：記録やファイルから来た文字は、必ず文字として出す（PluginUi.h の子は文字のノードになる）。HTML としては扱わない。
 (function () {
@@ -66,7 +66,7 @@
       h(
         'div',
         { class: 'top-state stage-line', id: 'stage' },
-        stage ? ['今の段階：', badge(stage, 'info')] : badge('ヒアリングはまだ始まっていません', 'standby'),
+        stage ? ['今の段階：', badge(stage, 'info')] : badge('お話を聞くことはまだ始まっていません', 'standby'),
         view.hearing.approvedAt ? badge(`ユーザーがよいと答えた時刻：${formatDateTime(view.hearing.approvedAt) ?? view.hearing.approvedAt}`, 'completed') : null,
       ),
       h('p', { class: 'help top-message' }, 'この画面は見るだけです。答えや直しは、Copilot CLI のチャットで行ってください。'),
@@ -104,13 +104,13 @@
 
   function renderItems(view) {
     const hearing = view.hearing;
-    if (!hearing.exists) return [h('h2', null, 'ヒアリングの進み具合'), none('ヒアリングが始まると、聞くことの進み具合がここに出ます。')];
+    if (!hearing.exists) return [h('h2', null, 'お話を聞くことの進み具合'), none('お話を聞くことが始まると、聞くことの進み具合がここに出ます。')];
     const main = hearing.items.filter((i) => i.main);
     const asked = main.filter((i) => i.done);
     const notAsked = main.filter((i) => !i.done);
     const others = hearing.items.filter((i) => !i.main);
     return [
-      h('h2', null, 'ヒアリングの進み具合'),
+      h('h2', null, 'お話を聞くことの進み具合'),
       h(
         'div',
         { class: 'item-columns' },
@@ -136,8 +136,8 @@
     const hearing = view.hearing;
     return [
       h('h2', null, '決まったこと'),
-      h('h3', { class: 'sub' }, `ナレッジ（${hearing.knowledge.length}件）`),
-      h('div', { id: 'knowledge' }, knowledgeTable(hearing.knowledge, '決まったナレッジの一覧')),
+      h('h3', { class: 'sub' }, `仕事のやり方や決まり（${hearing.knowledge.length}件）`),
+      h('div', { id: 'knowledge' }, knowledgeTable(hearing.knowledge, '決まった仕事のやり方や決まりの一覧')),
       h('h3', { class: 'sub' }, `流用する資産（${hearing.assets.length}件）`),
       hearing.assets.length
         ? table(['名前', '場所', '説明'], hearing.assets.map((a) => [a.name, a.location ?? '', textCell(a.note ?? '')]), '流用する資産の一覧')
@@ -156,19 +156,19 @@
     const dropped = hearing.dropped;
     if (candidates.length === 0 && assetCandidates.length === 0 && dropped.length === 0) return null;
     return [
-      candidates.length || assetCandidates.length ? h('h2', null, 'まだ確かめていない候補') : null,
-      candidates.length ? h('p', { class: 'help' }, 'ファイルや頼みの文から推し量ったものです。ユーザーが確かめるまで、ナレッジとしては使いません。') : null,
-      candidates.length ? h('div', { id: 'candidates' }, knowledgeTable(candidates, '確かめていない候補の一覧')) : null,
+      candidates.length || assetCandidates.length ? h('h2', null, 'まだ確かめていないこと') : null,
+      candidates.length ? h('p', { class: 'help' }, 'ファイルや頼みの文から推し量ったものです。ユーザーが確かめるまで、仕事のやり方や決まりとしては使いません。') : null,
+      candidates.length ? h('div', { id: 'candidates' }, knowledgeTable(candidates, '確かめていないことの一覧')) : null,
       assetCandidates.length
         ? h(
             'div',
             { id: 'asset-candidates' },
-            h('h3', { class: 'sub' }, '資産の候補'),
-            table(['名前', '場所', '説明'], assetCandidates.map((a) => [a.name, a.location ?? '', textCell(a.note ?? '')]), '資産の候補の一覧'),
+            h('h3', { class: 'sub' }, '確かめたい資産'),
+            table(['名前', '場所', '説明'], assetCandidates.map((a) => [a.name, a.location ?? '', textCell(a.note ?? '')]), '確かめたい資産の一覧'),
           )
         : null,
       dropped.length
-        ? collapsible({ key: 'dropped', summary: `外したナレッジ（${dropped.length}件）を開く`, open: ui.open }, knowledgeTable(dropped, '外したナレッジの一覧'))
+        ? collapsible({ key: 'dropped', summary: `外した仕事のやり方や決まり（${dropped.length}件）を開く`, open: ui.open }, knowledgeTable(dropped, '外した仕事のやり方や決まりの一覧'))
         : null,
     ];
   }
@@ -177,21 +177,21 @@
     const c = view.confirmation;
     if (!c) return null;
     const parts = [
-      h('h2', null, '生成前の確認で示すもの'),
+      h('h2', null, '作る前の確認で示すもの'),
       h('p', { class: 'help' }, `受け付けた時刻：${formatDateTime(c.at) ?? c.at}。よいと答えることや、直すことは、チャットで行います。`),
-      h('h3', { class: 'sub' }, `ナレッジの一覧（${c.knowledge.length}件）`),
-      h('div', { id: 'confirm-knowledge' }, knowledgeTable(c.knowledge, '生成前の確認で示すナレッジの一覧')),
-      h('h3', { class: 'sub' }, '生成プラグインの振る舞いの案'),
+      h('h3', { class: 'sub' }, `仕事のやり方や決まりの一覧（${c.knowledge.length}件）`),
+      h('div', { id: 'confirm-knowledge' }, knowledgeTable(c.knowledge, '作る前の確認で示す仕事のやり方や決まりの一覧')),
+      h('h3', { class: 'sub' }, 'できあがるプラグインの振る舞いの案'),
       h('p', { class: 'text-block', id: 'confirm-behavior' }, c.behavior),
-      h('h3', { class: 'sub' }, 'Web管理画面の見本'),
+      h('h3', { class: 'sub' }, '作業の画面の見本'),
       c.sampleUrl
-        ? h('p', { id: 'confirm-sample' }, h('a', { class: 'sample-link', href: c.sampleUrl, target: '_blank', rel: 'noopener noreferrer' }, 'Web管理画面の見本を開く（別のタブで開きます）'))
-        : h('p', { class: 'muted', id: 'confirm-sample' }, '見本はまだ開けません。チャットで、生成前の確認をやり直すと開けます。'),
-      h('h3', { class: 'sub' }, `EVAL の課題と合否の基準`),
-      h('p', { class: 'help' }, '合否の基準は、種類が「合否の決め方」のナレッジの文のままです。'),
+        ? h('p', { id: 'confirm-sample' }, h('a', { class: 'sample-link', href: c.sampleUrl, target: '_blank', rel: 'noopener noreferrer' }, '作業の画面の見本を開く（別のタブで開きます）'))
+        : h('p', { class: 'muted', id: 'confirm-sample' }, '見本はまだ開けません。チャットで、作る前の確認をやり直すと開けます。'),
+      h('h3', { class: 'sub' }, `試しに動かして採点する試験の課題と合格の条件`),
+      h('p', { class: 'help' }, '合格の条件は、種類が「合否の決め方」の仕事のやり方や決まりの文のままです。'),
       c.criteria.length
-        ? table(['基準の番号', '基準', 'もとのナレッジ'], c.criteria.map((x) => [x.id, textCell(x.text), x.knowledge]), '合否の基準の一覧')
-        : none('合否の基準はまだありません'),
+        ? table(['条件の番号', '条件', 'もとの仕事のやり方や決まり'], c.criteria.map((x) => [x.id, textCell(x.text), x.knowledge]), '合格の条件の一覧')
+        : none('合格の条件はまだありません'),
       h(
         'div',
         { id: 'confirm-eval' },
@@ -205,12 +205,12 @@
               ? h(
                   'div',
                   null,
-                  h('p', { class: 'help' }, '入力のファイル（生成プラグインのリポジトリに入ります）'),
+                  h('p', { class: 'help' }, '入力のファイル（できあがるプラグインのリポジトリに入ります）'),
                   h('ul', { class: 'plain-list' }, t.inputs.map((f) => h('li', null, f.path, f.provisional ? [' ', badge('仮のファイル', 'warn')] : null))),
                 )
               : h('p', { class: 'help' }, '入力のファイルはありません'),
             t.criteria.length
-              ? h('div', null, h('p', { class: 'help' }, 'この課題の合否の基準'), h('ul', { class: 'plain-list' }, t.criteria.map((x) => h('li', null, `${x.id}：${x.text}`))))
+              ? h('div', null, h('p', { class: 'help' }, 'この課題の合格の条件'), h('ul', { class: 'plain-list' }, t.criteria.map((x) => h('li', null, `${x.id}：${x.text}`))))
               : null,
           ),
         ),
@@ -255,19 +255,19 @@
     const v = result.view;
     const score = (n) => (n === null || n === undefined ? '—' : String(n));
     return [
-      h('h3', null, result.name, ' ', badge('EVAL', 'info')),
+      h('h3', null, result.name, ' ', badge('試しに動かして採点する試験', 'info')),
       h('p', { class: 'help' }, result.path),
       h(
         'dl',
         { class: 'kv' },
-        h('div', { class: 'fact' }, h('dt', null, '生成プラグインありの点数'), h('dd', null, score(v.withScore))),
-        h('div', { class: 'fact' }, h('dt', null, '生成プラグインなしの点数'), h('dd', null, score(v.withoutScore))),
+        h('div', { class: 'fact' }, h('dt', null, 'できあがるプラグインありの点数'), h('dd', null, score(v.withScore))),
+        h('div', { class: 'fact' }, h('dt', null, 'できあがるプラグインなしの点数'), h('dd', null, score(v.withoutScore))),
         h('div', { class: 'fact' }, h('dt', null, '点数の差'), h('dd', null, score(v.difference))),
         h('div', { class: 'fact' }, h('dt', null, '使った AI クレジット'), h('dd', null, score(v.credits))),
       ),
       v.runs.length
         ? table(
-            ['課題', 'あり・なし', '点数', '基準ごとの合否'],
+            ['課題', 'あり・なし', '点数', '条件ごとの合否'],
             v.runs.map((r) => [
               r.task,
               r.variant,
@@ -284,7 +284,7 @@
     const results = view.results ?? [];
     if (results.length === 0) return null;
     return [
-      h('h2', null, '生成プラグインの試験の結果'),
+      h('h2', null, 'できあがるプラグインの試験の結果'),
       results.map((result) => {
         let body;
         if (result.error) body = [h('h3', null, result.name), h('p', { class: 'alert alert-error', role: 'alert' }, result.error)];
