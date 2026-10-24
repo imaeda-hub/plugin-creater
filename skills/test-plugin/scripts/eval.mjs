@@ -130,6 +130,7 @@ export async function main(argv, deps = {}) {
         runs: options.runs,
         tasks: loaded.tasks,
         sdk: tools.sdk,
+        extensionSdkPath: tools.extensionSdkPath,
         screen,
         judge,
         model: options.model,

@@ -33,17 +33,18 @@ function entryOf(pkg) {
   return typeof entry === 'string' ? entry : pkg.module ?? pkg.main ?? 'index.js';
 }
 
-/** dir/node_modules の中のパッケージを読み込む。@returns {Promise<{ module: object, version: string }>} */
+/** dir/node_modules の中のパッケージを読み込む。@returns {Promise<{ module: object, version: string, dir: string, entry: string }>} */
 export async function importFromDir(dir, name) {
   const pkgDir = path.join(dir, 'node_modules', ...name.split('/'));
   const pkg = JSON.parse(fs.readFileSync(path.join(pkgDir, 'package.json'), 'utf8'));
-  const module = await import(pathToFileURL(path.join(pkgDir, entryOf(pkg))).href);
-  return { module, version: pkg.version ?? null };
+  const entry = path.join(pkgDir, entryOf(pkg));
+  const module = await import(pathToFileURL(entry).href);
+  return { module, version: pkg.version ?? null, dir: pkgDir, entry };
 }
 
 /**
  * EVAL の道具を読み込む。
- * @returns {Promise<{ sdk: object, chromium: object, versions: object, dir: string }>}
+ * @returns {Promise<{ sdk: object, chromium: object, extensionSdkPath: string, versions: object, dir: string }>}
  * @throws {ToolsMissingError} 入っていない、または読み込めないとき
  */
 export async function loadEvalTools(env = process.env, { dir = toolsDir(env) } = {}) {
@@ -62,9 +63,15 @@ export async function loadEvalTools(env = process.env, { dir = toolsDir(env) } =
   const chromium = playwright.module.chromium ?? playwright.module.default?.chromium;
   if (!chromium) throw new ToolsMissingError(dir, [{ name: 'playwright', reason: 'chromium が見つかりません' }]);
   if (!sdk.module.CopilotClient || !sdk.module.RuntimeConnection) throw new ToolsMissingError(dir, [{ name: '@github/copilot-sdk', reason: 'CopilotClient が見つかりません' }]);
+  // エクステンションの子プロセスが読み込む SDK のフォルダ（index.js と extension.js がある）。セッションの extensionSdkPath に渡す
+  const extensionSdkPath = path.dirname(sdk.entry);
+  if (!fs.existsSync(path.join(extensionSdkPath, 'extension.js'))) {
+    throw new ToolsMissingError(dir, [{ name: '@github/copilot-sdk', reason: `${extensionSdkPath} に extension.js がありません` }]);
+  }
   return {
     sdk: sdk.module,
     chromium,
+    extensionSdkPath,
     versions: { copilotSdk: sdk.version, playwright: playwright.version, node: process.version },
     dir,
   };

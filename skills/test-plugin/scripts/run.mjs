@@ -17,6 +17,7 @@ import os from 'node:os';
 import path from 'node:path';
 
 import { clipText, createEventLog, createTracker, waitUntil } from './events.mjs';
+import { createExtensionLaunchProvider } from './extension-launch.mjs';
 import { gradeRun } from './grade.mjs';
 import { createPermissionHandler, createUserInputHandler } from './permissions.mjs';
 import { RESULT_FILE, createResultsDir, summarizeRuns, writeJsonAtomic } from './results.mjs';
@@ -109,6 +110,9 @@ async function tryList(call) {
  * @param {object} [opts.versions] 記録に残す版（copilotSdk、playwright など）
  * @param {Array} [opts.tasks] loadTasks の課題（省くと読み込む）
  * @param {string} [opts.resultsDir] 結果を置くフォルダ（省くと tests/results/eval-<日時>）
+ * @param {string} [opts.extensionSdkPath] エクステンションの子プロセスが読み込む SDK のフォルダ（index.js と extension.js がある）。
+ *   ありの実行で、セッションの extensionSdkPath に渡し、エクステンションの起動のしかた（extensionLaunchProvider）を CopilotClient に渡す。
+ *   Copilot SDK でエクステンションを動かすのに要る（本物のランタイムで確かめた）。省くと、どちらも渡さない
  * @param {string} [opts.workRoot] 作業フォルダを作る場所（省くと OS の一時フォルダの下）
  * @param {object} [opts.env] ランタイムに渡す環境
  * @param {(text: string) => void} [opts.log] 進み具合
@@ -269,6 +273,7 @@ async function runOne(ctx, task, variant, n, where) {
   let inputs = new Map();
   let client = null;
   let session = null;
+  let launchProviderOf = null;
 
   const tracker = createTracker({
     log: eventLog,
@@ -298,10 +303,15 @@ async function runOne(ctx, task, variant, n, where) {
         ),
     });
 
+    // ありのとき、起動してよいのは生成プラグインのエクステンションだけ。ユーザーの ~/.copilot/extensions/ などのものは、起動を断って混ぜない
+    const hostExtensions = variant === 'with' && opts.extensionSdkPath;
+    const launchProvider = hostExtensions ? createExtensionLaunchProvider({ accept: (request) => isOurExtension(request, plugin), env: opts.env ?? process.env }) : null;
+    launchProviderOf = launchProvider;
     client = new sdk.CopilotClient({
       connection: sdk.RuntimeConnection.forStdio({ args: variant === 'with' ? ['--plugin-dir', plugin.path] : [], env: runtimeEnv(opts.env ?? process.env) }),
       workingDirectory: workDir,
       logLevel: 'error',
+      ...(launchProvider ? { extensionLaunchProvider: launchProvider } : {}),
     });
     await withTimeout(client.start(), timing.sdkCallMs, 'Copilot のランタイムを起動できませんでした（時間切れ）');
     session = await withTimeout(
@@ -309,6 +319,7 @@ async function runOne(ctx, task, variant, n, where) {
         ...(opts.model ? { model: opts.model } : {}),
         workingDirectory: workDir,
         requestExtensions: variant === 'with',
+        ...(hostExtensions ? { extensionSdkPath: opts.extensionSdkPath } : {}),
         trustWorkingDirectory: 'session',
         onPermissionRequest: permission,
         onUserInputRequest: userInput,
@@ -343,6 +354,7 @@ async function runOne(ctx, task, variant, n, where) {
     record.error = state.stopped.message;
   }
   fillFromTracker({ record, tracker, permission, userInput });
+  if (launchProviderOf) record.extensionLaunch = { launched: launchProviderOf.launched, refused: launchProviderOf.skipped };
   if ((record.status === 'completed' || record.status === 'incomplete') && workDir) {
     try {
       const graded = await gradeRun({ task: task.json, workDir, inputs, judge });
@@ -412,9 +424,16 @@ async function recordExtensions({ session, tracker, record, plugin }) {
   const result = await tryList(() => session.rpc.extensions.list());
   const list = Array.isArray(result?.extensions) ? result.extensions : tracker.state.extensions ?? [];
   record.extensions = list.map((e) => ({ id: e.id, source: e.source, status: e.status }));
-  const seen = new Set(record.foreignExtensions ?? []);
-  for (const e of list) if (record.variant === 'without' || !isOurExtension(e, plugin)) seen.add(e.id);
-  record.foreignExtensions = [...seen];
+  // 混ざったのは、生成プラグイン以外で、動いている（または動き出している）もの。起動を断ったもの（failed など）は混ざっていない
+  const mixed = new Set(record.foreignExtensions ?? []);
+  const refused = new Set(record.refusedExtensions ?? []);
+  for (const e of list) {
+    if (record.variant === 'with' && isOurExtension(e, plugin)) continue;
+    if (e.status === 'running' || e.status === 'starting') mixed.add(e.id);
+    else refused.add(e.id);
+  }
+  record.foreignExtensions = [...mixed];
+  record.refusedExtensions = [...refused];
 }
 
 async function driveWithPlugin({ ctx, task, tracker, record, runDir, remaining, eventLog }) {
