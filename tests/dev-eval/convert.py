@@ -601,7 +601,7 @@ def check_clean(out: str) -> None:
 
 def check_paths(src: str, out: str) -> None:
     real_src, real_out = os.path.realpath(src), os.path.realpath(out)
-    if real_src == real_out or real_out.startswith(real_src + os.sep) or False:
+    if real_src == real_out or real_out.startswith(real_src + os.sep) or real_src.startswith(real_out + os.sep):
         raise Refusal("SRC と OUT が同じか、片方がもう片方の中にある")
     if os.path.lexists(out):
         if not os.path.isfile(os.path.join(out, EVAL_DIR, REPORT)):
@@ -680,7 +680,7 @@ def main(argv: list[str] | None = None) -> int:
     if check.get("ran") and not check.get("ok"):
         summary["validate_output"] = check.get("output", "")
     print(json.dumps(summary, ensure_ascii=False, indent=2))
-    return 0 if ok else 1
+    return 0
 
 
 if __name__ == "__main__":

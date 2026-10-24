@@ -233,7 +233,7 @@ export async function createInnerAdapter(options) {
     const description = launch?.input.description;
     agents.set(agentId, {
       agentId, parentAgentId, agentType: input.agent_type, displayName: description ?? input.agent_type, status: 'running',
-      executionMode: launch?.input.run_in_background === true ? 'background' : 'sync', selectedModel: selected, model: undefined, actualClaudeId: undefined,
+      executionMode: launch?.input.run_in_background === false ? 'sync' : 'background', selectedModel: selected, model: undefined, actualClaudeId: undefined,
       startedAt: now(), endedAt: null,
     });
     emit({
@@ -380,8 +380,9 @@ export async function createInnerAdapter(options) {
         options: makeQueryOptions({
           cwd: workDir, home, model: claudeId, plugins: [copy.dest], mcpServers: { [serverName]: buildToolServer(root) }, mcpTools: mcpTools(),
           hooks: makeHooks(root), agent: orchestratorType, sandbox, maxTurns: ORCHESTRATOR_MAX_TURNS, abortController: root.abort,
-          // サブエージェントは、前面で動かして、終わるのを待つ（既定は裏。設計書 4.8 の「sync で1体ずつ」と同じにするため）
-          envExtra: { ...envExtra, CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: '1' },
+          // Agent は既定で裏で動く。前面で動かして終わるのを待つかは、統括の指示（run_in_background: false）に従うかで決まる。
+          // 環境変数 CLAUDE_CODE_DISABLE_BACKGROUND_TASKS で強制はしない（指示に従うかも試すため）
+          envExtra,
         }),
       });
       emit({ type: 'agent.started', agentId: id, parentAgentId: undefined, agentType, model: copilotName, executionMode: 'background', description: undefined });
