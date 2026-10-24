@@ -1,6 +1,6 @@
 # B3 の点検：観点 format
 
-状態：途中（SKILL.md 2つ・references・エージェント2つ・plugin.json・ツールの説明の案まで見た。README と marketplace.json は公式ドキュメントで確かめている途中）
+状態：完了
 
 点検の物差し：R1 の (1)（SKILL.md とカスタムエージェントの決まり）、R3 の 1.1・1.4・1.8（plugin.json、スキルのフロントマター、marketplace.json）、B3.md の「決まり」、hearing.md 10.1、ユーザーの答え 11・12（RESUME.md）、公式ドキュメント（README のコマンド）。
 
@@ -65,3 +65,60 @@
 - 直し方：本文の「記録のしかた」か「問いの形」に、すべての段階で効く1文を置く。例：「どの段階でも、答えに `<pasted_content file="…" />` があれば、そのファイルを読んで答えとする。発言に文書がそのまま添えられて届いたら、その文書を自分で読む。」references の側は、段階に特有の扱いだけを残す（ファイルの場所として記録する、候補を記録する）。足すと本文は約60トークン増えるが、5,000トークンには収まる。設計書との食い違いは、作業のメモの「上位の文書で直すこと」に書く。
 - 確かさ：たぶん（`ask_user` の自由入力の欄に約20KB を超えて貼ったときにも `<pasted_content>` になるかで決まる。チャットに書く答え〔答えが来ないときの続け方、Claude Code の文章の問い〕では、hearing.md 2.4 のとおり起きる）
 
+### F-4（low）スキルのフォルダの、スクリプトでないファイルの絶対パスの作り方が書かれていない
+
+- ファイルと場所：skills/make-plugin/SKILL.md「## 段階の一覧」の「スクリプトは、このスキルを呼んだときに示される「Base directory for this skill」のフォルダからの絶対パスで動かす」。references/confirm.md「決まり：このスキルのフォルダの `assets/template/com.github.copilot/extensions/_plugin_/core/task.schema.json`（絶対パス）」
+- 問題：本文は、Base directory を元にすることを、スクリプトについてしか書いていない。confirm.md は、作業エージェントにひな形のスキーマの絶対パスを渡すよう求める。しかし、そのパスの作り方（Base directory からであること）は書いていない。generate.md は `<スキルのフォルダ>` を Base directory と定めるが、confirm.md より後に読むファイルである。作業フォルダから解いた誤ったパス（`<作業フォルダ>/assets/...`）を渡すおそれがある。
+- 根拠：R1 (1) の SKILL.md の6「スキルのフォルダのファイルは、『このスキルのベースのフォルダ（Base directory for this skill に示されるフォルダ）』からの場所で名指しする。…作業フォルダがスキルのフォルダだと決めつけない」。
+- 直し方：本文の1文を、「スキルのフォルダのファイル（`scripts/` のスクリプト、`assets/template/` のひな形）は、このスキルを呼んだときに示される「Base directory for this skill」のフォルダからの絶対パスで扱う」に広げる。confirm.md の「このスキルのフォルダの」を「「Base directory for this skill」のフォルダの」にする。
+- 確かさ：確か
+
+### F-5（low）ほかのスキルのフォルダのファイルを読む・動かす
+
+- ファイルと場所：skills/test-plugin/SKILL.md「`<スキルのフォルダ>/../make-plugin/references/words.md` の表に従う」「`<スキルのフォルダ>/../make-plugin/references/improve.md` を読み」。references/generate.md「`python3 <スキルのフォルダ>/../test-plugin/scripts/check_tools.py --plugin …`」
+- 問題：Agent Skills の決まりでは、スキルが名指しするのは自分のフォルダのファイルで、名指しは SKILL.md から1段にとどめる。test-plugin の本文は、隣の make-plugin のフォルダの references を読ませている。ここは test-plugin の「Related files」にも並ばない。Copilot CLI ではプラグインのフォルダごと入るので、動く見込みはある（R3 1.2「読み込むパスは、…プラグインの根の中に収まること」は満たす）。ただし、スキルの形の決まりの外の使い方になる。作業のメモの「決めたこと」には、同じことを2か所に書かないための判断として残っている。
+- 根拠：Agent Skills の仕様の「File references」（「When referencing other files in your skill, use relative paths from the skill root」「Keep file references one level deep from SKILL.md」。agentskills.io/specification、2026-10-24 に取得）。R1 (1) の SKILL.md の5「references は SKILL.md から1段だけにし」。
+- 直し方：次のどちらかにする。
+  - (a) 今のままにし、作業のメモの「要確認」に、「スキルのフォルダの外を読むことを、入れたプラグインで確かめる」と書く。確かめ方は、最終確認で test-plugin を呼び、`../make-plugin/references/words.md` を確認なしで読めるかを見る。
+  - (b) 確かめて読めなかったときだけ、test-plugin が使う部分（言葉の表と、頼まれた試験の後の振り返り）を test-plugin の references に置く。check_tools.py は BLUEPRINT 9章のとおり test-plugin のスクリプトなので、generate.md の呼び方はそのままでよい（シェルで絶対パスを動かすだけで、名指しの決まりの対象ではない）。
+  - (a) を勧める。変更が小さく、同じことを2か所に書かない判断（憲章 第9条）とも合う。
+- 確かさ：たぶん（入れたプラグインで test-plugin を呼び、隣のフォルダのファイルを読むときに、パスの許可の確認が出るかと、読めるかで決まる）
+
+### F-6（low）カスタムエージェントの本文の並びが、R1 の組み立てと違う
+
+- ファイルと場所：com.github.copilot/agents/reader.agent.md と worker.agent.md の見出しの並び（「## してはいけないこと」→ 続ける1文 →「## 返す形」で終わる）
+- 問題：R1 は、本文を「役割 → 受け取るもの → 手順 → 返す形 → してはいけないこと」の順に組み立てると定める。2つのエージェントは、返す形を最後に置いている。返す形を最後に置く理由（最後の文だけが返るので、雛形を末尾に置くなど）は、作業のメモにない。
+- 根拠：R1 (1) のカスタムエージェントの8「指示文（本文）は30,000文字以内にし、次の順に組み立てる（組み込みのエージェントの型）。1 役割… 2 受け取るもの… 3 手順。4 返す形… 5 してはいけないこと…」
+- 直し方：「## 返す形」を「## してはいけないこと」の前に移す。止まらずに続ける1文は、「してはいけないこと」の末尾に残す。返す形を最後に置くほうがよいと判断したのなら、その理由を作業のメモの「決めたこと」に書く。
+- 確かさ：確か
+
+### F-7（low）理由のない決まりがある
+
+- ファイルと場所：
+  - worker.agent.md「### ファイルの決まり」の「MCP サーバー：`files/mcp.json` は次の形にする。`type` は必ず書き、ほかの項目（`tools`、`timeout` など）は書かない。」
+  - references/confirm.md「「合否の決め方」のナレッジは、どれかの課題の基準に必ず入れる。」
+- 問題：どちらも「必ず」で言い切るが、理由がない。ほかの決まりには「〜ためである」が添えてある。理由がないと、モデルは決まりを、ほかの場面に一般化して使えない。
+- 根拠：R1 (1) の SKILL.md の8「強い言葉…は関門だけに使い、ほかは『X のときは Y する』のふつうの言い方にする。決まりには理由を1文添える」。カスタムエージェントの12「強い言葉と理由の添え方…は、SKILL.md の 8〜11 と同じにする」。B3.md の決まり「強い言葉は生成前の関門だけ」。
+- 直し方：
+  - worker：「`type` を書き、ほかの項目（`tools`、`timeout` など）は書かない。`mcp.json` は閉じた形で、`type` がないサーバーや、知らない項目があるサーバーは読み飛ばされるためである。」（R3 1.3「すべて閉じた形で、知らない項目があるとそのサーバーだけ無効」）
+  - confirm.md：「必ず」を外し、どれかの課題の基準に入れる理由を1文添える（設計の根拠になる節を引く）。
+- 確かさ：確か
+
+## 確かめて合っていたこと（指摘なし）
+
+- SKILL.md 2つ：フロントマターは `name` と `description` だけ。`name` はフォルダ名と同じ。description は日本語で、何ができあがるかの1句、呼ばれる場面、呼ばれてはいけない似た頼みの順になっている。手順の要約はない。make-plugin と test-plugin で、呼ばれる場面が分かれている（ユーザーの答え11・12）。
+- 本文の先頭に決まりがあり、範囲（「このスキルの終わりまで、すべての段階で」）を書いている。応答の言語は「日本語で応答する。ユーザーが別の言語で書いたら、その言語で応答する」。強い禁止の形は、生成前の関門（先頭の決まり4）だけ。
+- ツール名はすべてバッククォートで囲んでいる（`ask_user`、`plugin-creator_*`、`skill`、`task`、`task_complete`）。`ask_user` の引数の名前（`requestedSchema`、`default` など）は、スキルの本文と references に出てこない。`skill` ツールで呼ぶ名前（make-plugin）とユーザーに示すコマンド（README の `/plugin-creator:make-plugin`）は書き分けている。
+- 本文と references に、日付と版は書いていない。
+- references は14個とも20KB 未満で、100行を超えるものはない。どれも本文で、読む時点とともに名指しされている。
+- エージェント：ID はファイル名（`plugin-creator:reader`、`plugin-creator:worker` で呼ぶ）で、`name` は書いていない。reader は `model` なし、`tools` は `read`・`search`・`web`・`plugin-creator_doc_text`（C1 の tool-defs.mjs の名前と同じ）。worker は `model: [gpt-6-luna, claude-haiku-5.5]`、`tools` は `read`・`edit`・`search`（`skill` も `*` もない）。`disable-model-invocation`・`include-custom-instructions` は書いていない。どちらも、ユーザーに質問しない文、止まらずに続ける文、返す形の雛形、返す言語（日本語）がある。worker に、自分の成果物の合否を決めさせる文はない。
+- plugin.json：`$schema` が正規の文字列と完全に一致する。`name`・`version`・`description`・`repository`（文字列）だけで、写したスキーマで合格した。
+- marketplace.json：`.github/plugin/` にある。必須の `name`・`owner`（`{ name }`）・`plugins[].name`・`plugins[].source` がそろっている（`source` の値は F-2）。
+- README のコマンドは、公式ドキュメント（github/docs の main、2026-10-24 に取得）の書き方と合う。
+  - `copilot plugin marketplace add OWNER/REPO`、`copilot plugin install NAME@MARKETPLACE`、`/plugin marketplace add SOURCE`、`/plugin install SOURCE`
+  - `/experimental [on|off|show]`、`--experimental`、`/model`、`--continue`、`-r`/`--resume[=VALUE]`、`--no-ask-user`、`-p`、`--allow-tool`
+  - `/extensions mode` の3つのモード（Load & Augment〔既定〕・Load Only・Disabled）。Disabled が次のセッションにも残ること
+  - マーケットプレイスの名前が `marketplace.json` の `name` になること（plugin reference「The marketplace's own name, from its marketplace.json manifest, becomes its registration key」）
+  - 読み込みのときの確認の題・本文・選択肢は、R2 の 3.10 と generated-plugin-structure.md 4.1 の実測の文と同じ。
+- assets.md の `copilot plugin marketplace browse awesome-copilot` と「最初から登録されている awesome-copilot」は、公式の plugins-finding-installing と合う。
+- B3-tool-descriptions.md：強い言葉がなく、引数の名前（`approvalQuote`、`taskPath`、`evalTasks.criteria`、`knowledge.status`、`knowledge.item`、`assets.status`、`title`、`body`）は C1 の tool-defs.mjs にある。
