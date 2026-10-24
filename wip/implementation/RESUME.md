@@ -153,6 +153,9 @@
 | B2 | ae0285d8193b30123（完了） |
 | B2 の点検 | 4つとも完了（design 8件、format 6件、models 19件、language 9件。high はなし） |
 | B2 を直す | aacc17a8675d68a69（指示は briefs/fix.md。メモは tasks/B2-fix.md） |
+| D1a 変換 | a94162dfbb0aaf6aa（指示は briefs/D1.md） |
+| D1b 模擬ユーザー | a28af96a1b11b7fea（FORMAT.md ができたら D1c と H1 を立てる） |
+| D1d 内側の EVAL | afe3eb2243185d726 |
 | B3 の点検 | 4つとも完了（design 19件〔high 2〕、format 7件、models 24件〔high 1〕、language 34件） |
 | B3 を直す | ad474ab788e9b207f（指示は briefs/fix.md。メモは tasks/B3-fix.md） |
 | B1 | a7b491f44bb4b21eb（完了） |
