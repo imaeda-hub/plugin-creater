@@ -160,6 +160,16 @@
 - A1：窓口の listTasks がエージェントだけなので、「止めても止まらなかったシェルの処理」（4.10）は課題にできない（報告すること）。まとめ中のフェーズは null。開始は最大30秒かかりうる（各10秒×3）。
 - A1：記録のツールの説明の文は仮（【仮】）。B2 が仕上げる。
 
+## 次にすること（2026-10-24 時点）
+
+1. V1 の追加の確かめ（ひな形を移した先が読み込まれないか、/settings experimental on）を待つ。
+2. ひな形を移す（答え25。Sonnet）。SKILL.md・references（confirm.md、generate.md）・scaffold.py・check_creator.py・test_scaffold.py・test_convert.py の置き場所の参照を直す。あわせて generate.md 27〜28行目の manifest の `"orchestrator": { "extra_tools": [] }` を消す（B1 の報告）。
+3. X3 の仕分けを待ち、担当ごとの直しを立てる。D の問いはユーザーに聞く。ひな形の docs/design/design.md の統括の表（B1 の報告）も直しに入れる。
+4. 直しが全部入ったら、V1 に本物の Copilot CLI で確かめ直してもらう（統括の許す一覧で通るか、GPT の族の統括が受け取るツールの全部、apply_patch のフックの toolName、update_todo を拒んで困らないか、断りの文、担当の欄）。
+5. T1 の通しをもう一度。
+6. EVAL：まず1回だけ回して費用を測る（ユーザーに承認をとる）。会話例。README の「置きます」→「あります」。
+7. 最後の報告。
+
 ## 2026-10-22 23:15 の立て直し
 
 - 16:50 ごろ、利用枠の上限で C1 と B3 のワークフローの全エージェントが止まった。その後のプロセスの再起動で Workflow の道具が使えなくなった。
@@ -189,7 +199,7 @@
 | B2 を直す | aacc17a8675d68a69（完了。42件中36件を直した） |
 | D1a 変換 | a94162dfbb0aaf6aa（完了） |
 | D1b 模擬ユーザー | a28af96a1b11b7fea（完了。週報・議事録・研修のアンケートの集計の3人） |
-| D1d 内側の EVAL | afe3eb2243185d726（V1 の直しへの合わせは完了〔58ba51f〕。断りの文は内側の EVAL でも届く。B1 が統括の tools: を消すと内側の試験が8件落ちる〔変換した統括が Skill を含む全ツールを持つ〕。B1 の後に、統括のツールの絞り方〔変換で Claude Code の名前の tools を書くか、フックで拒むか〕の合わせを頼む） |
+| D1d 内側の EVAL | afe3eb2243185d726（V1 の直しへの合わせは完了〔58ba51f〕。断りの文は内側の EVAL でも届く。統括の tools: をなくしたことへの合わせ〔convert.py と内側の試験。今は test_convert 2件と内側8件が落ちる〕を頼んだ） |
 | D1c 外側の EVAL | af526bb1af09f9618（完了） |
 | X1 突き合わせ（生成プラグインの側） | a573cbefd6ad8b7da（完了。19件〔high 2：V1 の不具合1・2と同じ〕。reviews/X1.md） |
 | X2 突き合わせ（クリエイターの側） | a015be8b3c3f5b5f0（完了。22件〔high 0〕。reviews/X2.md） |
@@ -199,7 +209,7 @@
 | H1 見ない模擬ユーザー | ac4ca894931c3fb3d（完了。形の確かめに通った。tests/dev-eval/heldout/h1/ に作る。統括はこのフォルダの中身を読まない。git の出力も `grep -v heldout` で外して見る） |
 | B3 の点検 | 4つとも完了（design 19件〔high 2〕、format 7件、models 24件〔high 1〕、language 34件） |
 | B3 を直す | ad474ab788e9b207f（完了。84件中81件を直した。上位の文書で直すこと14件は tasks/B3-fix.md） |
-| B1 | a7b491f44bb4b21eb（V1 の不具合2・3は直して push〔448e24e〕。続けて不具合1〔答え24〕を頼んだ） |
+| B1 | a7b491f44bb4b21eb（V1 の不具合1〜3を直して push〔448e24e、6201eb4〕。統括の許す一覧は adapter.mjs。判断は tasks/B1.md） |
 | C2 | ab07d1229ed5e8971（完了） |
 | C3 | ad65681a2d31da659（完了） |
 
