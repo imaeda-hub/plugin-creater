@@ -63,6 +63,7 @@
 28. 既存のプラグインの作り直しの流れ（REQ-032〜036）は、最終確認で人が手元の Copilot CLI で1回確かめる。testing.md 9章の一覧に足す（2026-10-24。X2-09 の(3)）。
 29. 試験的機能の案内は「初めて使うときに `copilot --experimental` で起動する（次からは付けなくてよい）。起動した後なら `/settings experimental on`」にする。仕様書 REQ-023（creation-requirements.md）と REQ-004（output-requirements.md）の書き方は、ユーザーの承認を得て統括が直した（2026-10-24）。設計書（creator-structure.md、generated-plugin-structure.md）の `/experimental on` は最後の報告で示す。ユーザーは「セッションモードで使う予定」と言った（Copilot CLI の試験的機能の新しい画面の Session の画面のことなら、同じ切り替えで有効になる）。
 30. EVAL：まず1回だけ回して測る（2026-10-24 承認）。週報の模擬ユーザー・ふつうの話し方・クリエイターの腕（with）・Claude Opus 5.5・1回、やりとり150回・60分まで。時間と利用枠の減り方を測って示し、残りの回数をもう一度相談する。EVAL の呼び出しは ANTHROPIC_BASE_URL を通り、この作業と同じアカウントの利用枠を使う。
+31. EVAL の1回目（2026-10-24 07:20〜07:51 UTC、30分35秒、手番139、問い44〔すべて1回1問〕、費用は SDK の値で 6.97 ドル分〔クリエイター Opus 6.05、ユーザー役 Sonnet 0.92〕、点数 0.88、必須の2観点で不合格：not-embedded:title-date〔決まりではないと答えた題名の日付の書き方を、クリエイターが生成前の確認で K-26〔source added_at_confirmation、quote は「違うところはない」〕として足し直し、作業エージェントの定義に入った〕、all-items-heard〔前回の1回といつもと違うときの抜き書きが、答えの言葉そのままでなく要約をつないだもの〕）。記録は scratchpad/eval-pilot-1/。ユーザーの決定：2つの原因を直してから、同じ条件でもう1回回して確かめる。その後、残りを絞った案で相談する。
 13. ユーザーが「質問しないで作って」とはっきり頼んだとき：聞かないと仕事の決まりが入らない理由を1文で伝え、急ぎのときと同じ3つ（ここでやめて後で続ける〔おすすめ〕／残りを手早く聞く／このまま続ける）から選ばせる。推測で埋めて作らない（仕様 REQ-015 に足す必要がある）。
 
 ## 報告すること（最後にまとめて示す）
@@ -180,7 +181,7 @@
 3c. （2026-10-24 に頼んだ）X4 の後に B3 へ：X4 の指摘と、generate.md に「eval.json の prompt・inputs・settings は confirm に渡した evalTasks と同じにする。実物の入力は confirm の path と manifest.json の eval_inputs の from に同じ絶対パスを書く。仮のファイルの path は tests/eval/<課題>/inputs/<名前>」を足す件（C2 の依頼。違うと build が断る）。
 4. （済み〔3b21380〕：3通りとも all_passed。統括の許す一覧で足りないものなし〔拒んだのは (a) 19・(b) 18 個〕、apply_patch の toolName は apply_patch、断りの文・担当の欄・Related files 16 件も通った。合わなかったのは「always allow」が Git のリポジトリでは「in this repo」と出ることだけ→ A4 が5つのファイルに書き足した〔65c9fce・dd68452〕。4つ目の選択肢は実機で出せず。止めた後の show の断りは作れず）直しが全部入ったら、V1 に本物の Copilot CLI で確かめ直してもらう（統括の許す一覧で通るか、GPT の族の統括が受け取るツールの全部、apply_patch のフックの toolName、update_todo を拒んで困らないか、断りの文、担当の欄）。
 5. （済み：1段目は REQ-037 の1件だけ不合格、2段目 1202 件すべて合格）T1 の通しをもう一度（2026-10-24、統括が `python3 tests/creator/run.py` を NODE_PATH=scratchpad/a2/node_modules で動かしている。結果は scratchpad/t2-creator-run.*）。生成プラグインの tests/run.py は、各担当が組み立てて通した〔C1：2段目 391 件〕。
-6. EVAL：まず1回だけ回して費用を測る（ユーザーに承認をとる）。会話例。README の「置きます」→「あります」。
+6. （1回目は済んだ：答え31。直してからもう1回）EVAL：まず1回だけ回して費用を測る（ユーザーに承認をとる）。会話例。README の「置きます」→「あります」。
 7. 最後の報告。材料は R5（add583e893e36421b。指示は briefs/R5.md）が wip/implementation/REPORT-draft.md にまとめている。
 
 ## 2026-10-22 23:15 の立て直し
