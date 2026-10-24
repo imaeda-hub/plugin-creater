@@ -217,6 +217,7 @@
 | T1 すべての試験の通し | a7e9349258395fe6a（完了。約1,500件が通り、落ちたのは会話例がないこと〔REQ-037。EVAL の後に作る〕だけ。組み立てた生成プラグインの tests/run.py も、Playwright を入れた後に合格） |
 | V1 Copilot CLI の読み込みの確かめ | a2958fd3e81866605（不具合3件と追加の確かめ2つを報告〔7001605〕。道具は scratchpad/v1/。直しが全部入った後に確かめ直しを頼む） |
 | M1 ひな形を移す | adf071c830ffd5da8（完了。template/ に移した。Related files は16件になる見込み。上位の文書：hearing.md 587行目、generated-plugin-structure.md 712行目、creator-structure.md 3.4） |
+| 第2陣（X の直し。2026-10-24） | B3 を直す担当 ad474ab788e9b207f（クリエイターの自然言語の部分・README・setup.md・improve.md）、B2 ae0285d8193b30123（入口のスキルの案内）、A1 a53fe02c46a87994d（X1-06・15・11）、A2 a4dd7b3736f4dd2a9（X1-05・19・14）、A3 a6ae7ad9d3151a163（X1-13・07・09・14、X2-19）、A4 afd1d4ef4c0e6d043（文書のひな形と案内）、C2 ab07d1229ed5e8971（X2-03・22・10）、D1c af526bb1af09f9618（会話例の版の呼び方）、C3 ad65681a2d31da659（第1陣の続き：X1-16・X2-10）。B3 の後に自然言語の点検を立てる |
 | X3 突き合わせの指摘の仕分け | a806235c922ce2476（完了。40行：A 5、B 33、D 2〔答え26〜28〕。担当ごとの束は reviews/X3-triage.md の2章） |
 | H1 見ない模擬ユーザー | ac4ca894931c3fb3d（完了。形の確かめに通った。tests/dev-eval/heldout/h1/ に作る。統括はこのフォルダの中身を読まない。git の出力も `grep -v heldout` で外して見る） |
 | B3 の点検 | 4つとも完了（design 19件〔high 2〕、format 7件、models 24件〔high 1〕、language 34件） |
