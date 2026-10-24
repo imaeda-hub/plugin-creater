@@ -300,9 +300,9 @@ test('REQ-014 repository がないときと GitHub の URL でないときは、
     const step = canFile.steps.find((s) => /repository/.test(s));
     assert.ok(step, `${c.name}：${canFile.steps.join(' / ')}`);
     // 手元のフォルダから入れたものはコピーされず、次のセッションで反映される。GitHub などから入れたときは、入れ直すと反映される
-    assert.match(step, /手元のフォルダから入れたときは、新しいセッションを始めると反映される/);
-    assert.match(step, /GitHub などから入れたときは、入れ直すと反映される/);
-    assert.doesNotMatch(step, /コピー/, '入れ方によらず「コピー」とは書かない');
+    assert.match(step, /手元のフォルダから入れたときは、Copilot CLI を起動し直すか、\/clear で新しい会話を始めると反映される/);
+    assert.match(step, /GitHub などから入れたときは、直した plugin\.json を GitHub に送ってから、入れ直すと反映される/);
+    assert.doesNotMatch(step, /コピー|セッション/, '入れ方によらず「コピー」とは書かず、説明のない「セッション」を使わない（REQ-025）');
     assert.ok(canFile.steps.some((s) => /公開する/.test(s)), c.name);
     // 案は並ぶが、承認しても起票されない
     assert.equal(h.state().previous.issues.length, 1, c.name);
