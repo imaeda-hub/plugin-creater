@@ -181,7 +181,7 @@
 3c. （2026-10-24 に頼んだ）X4 の後に B3 へ：X4 の指摘と、generate.md に「eval.json の prompt・inputs・settings は confirm に渡した evalTasks と同じにする。実物の入力は confirm の path と manifest.json の eval_inputs の from に同じ絶対パスを書く。仮のファイルの path は tests/eval/<課題>/inputs/<名前>」を足す件（C2 の依頼。違うと build が断る）。
 4. （済み〔3b21380〕：3通りとも all_passed。統括の許す一覧で足りないものなし〔拒んだのは (a) 19・(b) 18 個〕、apply_patch の toolName は apply_patch、断りの文・担当の欄・Related files 16 件も通った。合わなかったのは「always allow」が Git のリポジトリでは「in this repo」と出ることだけ→ A4 が5つのファイルに書き足した〔65c9fce・dd68452〕。4つ目の選択肢は実機で出せず。止めた後の show の断りは作れず）直しが全部入ったら、V1 に本物の Copilot CLI で確かめ直してもらう（統括の許す一覧で通るか、GPT の族の統括が受け取るツールの全部、apply_patch のフックの toolName、update_todo を拒んで困らないか、断りの文、担当の欄）。
 5. （済み：1段目は REQ-037 の1件だけ不合格、2段目 1202 件すべて合格）T1 の通しをもう一度（2026-10-24、統括が `python3 tests/creator/run.py` を NODE_PATH=scratchpad/a2/node_modules で動かしている。結果は scratchpad/t2-creator-run.*）。生成プラグインの tests/run.py は、各担当が組み立てて通した〔C1：2段目 391 件〕。
-6. （1回目は済んだ：答え31。B3 が手順の文を直した〔d00a885：確認で外したナレッジを足し直さない・「違うところはない」は足したことにならない・抜き書きは1つの答えの言葉をそのまま写す〕。C1 に守り2つ〔record：確認で足したナレッジの quote が選択肢の文だけなら断る。progress：quote が前の答えにないなら断る〕を頼んだ。C1 の後に同じ条件でもう1回）EVAL：まず1回だけ回して費用を測る（ユーザーに承認をとる）。会話例。README の「置きます」→「あります」。
+6. （1回目は済んだ：答え31。B3 が手順の文を直した〔d00a885：確認で外したナレッジを足し直さない・「違うところはない」は足したことにならない・抜き書きは1つの答えの言葉をそのまま写す〕。C1 が守り2つを足した〔818dc0e。quote.mjs：record は確認で足したナレッジの quote が選んだ選択肢の文だけなら断る、progress は quote が前の答えにないなら断る。問答の記録が0件なら通す〕。2回目を scratchpad/eval-pilot-2/ で回している）EVAL：まず1回だけ回して費用を測る（ユーザーに承認をとる）。会話例。README の「置きます」→「あります」。
 7. 最後の報告。材料は R5（add583e893e36421b。指示は briefs/R5.md）が wip/implementation/REPORT-draft.md にまとめている。
 
 ## 2026-10-22 23:15 の立て直し
