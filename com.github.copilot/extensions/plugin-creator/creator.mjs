@@ -23,6 +23,10 @@ import { TOOL_DEFS } from './tool-defs.mjs';
 const STATE_INCLUDES = ['最後の問答', '振り返りの材料'];
 const MAX_RESULT_FILES = 20;
 
+/** ツールの失敗の結果。理由の文が、そのままモデルに届く */
+const failure = (reason) => ({ textResultForLlm: reason, resultType: 'failure' });
+const UNEXPECTED_FAILURE = 'うまくいきませんでした（思いがけない失敗です）。もう一度呼んでも同じときは、ユーザーにそのまま伝えてください。';
+
 const errorMessage = (e) => (e && typeof e === 'object' && 'message' in e ? String(e.message) : String(e));
 
 /**
@@ -105,18 +109,28 @@ export function createCreator({
 
   /** 作業の定義の案を読み、合否の基準を差し込み、決まりで確かめて、見本を作り直す。見本の URL を返す */
   async function prepareSample({ taskPath, knowledgeRows }) {
-    const draft = readDraft(taskPath);
+    let draft;
+    try {
+      draft = readDraft(taskPath);
+    } catch (error) {
+      throw new Refusal(errorMessage(error)); // 読めない理由（平易な日本語）を、そのままモデルに返す
+    }
     const criterionRows = knowledgeRows.filter((k) => k.kind === 'criterion');
     if (criterionRows.length === 0) {
       throw new Refusal('種類が「合否の決め方」の仕事のやり方や決まりがありません。合格の条件は、種類が「合否の決め方」の仕事のやり方や決まりから作るので、合格の条件にするものを plugin-creator_record で種類「合否の決め方」にしてください。');
     }
     const task = injectCriteria(draft, criterionRows);
-    const ui = await loadUi();
+    let ui;
+    try {
+      ui = await loadUi();
+    } catch (error) {
+      throw new Refusal(errorMessage(error));
+    }
     let schema;
     try {
       schema = JSON.parse(fs.readFileSync(ui.taskSchemaPath, 'utf8'));
     } catch (error) {
-      throw new Error(`画面と合格の条件の設定の決まり（task.schema.json）を読めません：${errorMessage(error)}`);
+      throw new Refusal(`画面と合格の条件の設定の決まり（task.schema.json）を読めません：${errorMessage(error)}`);
     }
     const problems = checkTaskDefinition(task, schema);
     if (problems.length) {
@@ -128,7 +142,7 @@ export function createCreator({
     try {
       return await sample.update(task);
     } catch (error) {
-      throw new Error(`作業の画面の見本を開けません：${errorMessage(error)}`);
+      throw new Refusal(`作業の画面の見本を開けません：${errorMessage(error)}`);
     }
   }
 
@@ -215,7 +229,7 @@ export function createCreator({
       try {
         url = await screen.ensure();
       } catch (error) {
-        throw new Error(`クリエイターの画面を起動できません：${errorMessage(error)}`);
+        throw new Refusal(`クリエイターの画面を起動できません：${errorMessage(error)}`);
       }
       try {
         hearing.setUrl(url);
@@ -284,15 +298,21 @@ export function createCreator({
     },
   };
 
-  /** 画面に出る返り値と失敗の文を、平易な日本語にそろえる。想定外の失敗は、内部の事情を足して返す */
+  /**
+   * ツールの処理を包む。断るときも、失敗したときも、例外を投げず、理由の文を結果として返す。
+   * Copilot CLI 1.0.102 は、処理が例外を投げると、モデルに「Tool execution failed」だけを返し、理由の文を捨てる（V1 不具合 2）。
+   * `{ textResultForLlm, resultType: 'failure' }` なら、理由の文がそのままモデルに届く（`rejected` は手番が止まるので使わない）。
+   */
   const guard = (handler) => async (args, invocation) => {
     try {
       return await handler(args ?? {}, invocation);
     } catch (error) {
-      if (error instanceof Refusal || error instanceof IssueError || error instanceof DocTextError) throw error;
-      if (error?.name === 'RecordUnreadable') throw new Refusal(error.message);
+      if (error instanceof Refusal || error instanceof IssueError || error instanceof DocTextError || error?.name === 'RecordUnreadable') {
+        return failure(error.message);
+      }
+      // 想定外の失敗：内部の情報とスタックは返さず（標準エラー＝エクステンションのログに残す）、平易な文だけ返す
       warn(`${error?.stack ?? error}`);
-      throw new Error(`うまくいきませんでした：${errorMessage(error)}`);
+      return failure(UNEXPECTED_FAILURE);
     }
   };
 

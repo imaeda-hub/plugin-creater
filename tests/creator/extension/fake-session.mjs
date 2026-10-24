@@ -5,7 +5,9 @@
 //
 // 本物の振る舞いに合わせたところ（R2：wip/implementation/research/R2-extension-api.md）
 // - ツールの handler は (args, invocation) で呼ばれる。invocation.agentId は、サブエージェントが呼んだときだけ付く。
-//   例外を投げると、その message が失敗の文になる（callTool は失敗を { ok: false, error } で返す callToolSafe も持つ）。
+//   処理が例外を投げると、実機の Copilot CLI 1.0.102 はモデルに「Tool execution failed」だけを返し、理由の文を捨てる（V1 不具合 2）。
+//   そのため、このエクステンションは断りも失敗も例外にせず、`{ textResultForLlm, resultType: 'failure' }` を返す。
+//   callToolRaw はその返り値をそのまま返し、例外はそのまま投げる（例外が出たら不具合として試験が落ちる）。
 // - フックの入力は BaseHookInput（agentId?、sessionId、timestamp、workingDirectory）に toolName などを足したもの。
 //   本物の SDK は、フックが例外を投げると握りつぶして undefined を返す。ここでは握りつぶさず、そのまま投げる
 //   （「フックの関数は例外を投げない」を試験で確かめるため）。
@@ -58,20 +60,31 @@ export function createFakeSession({ sessionId = 'session-test-0001', cwd = proce
       return found;
     },
 
-    /** ツールを呼ぶ。成功の文を返す。失敗（例外）はそのまま投げる */
-    async callTool(name, args = {}, { agentId } = {}) {
+    /**
+     * ツールを呼ぶ。SDK に渡る返り値（文字列か ToolResultObject）を、そのまま返す。
+     * 処理が例外を投げたら、そのまま投げる。断りも失敗も、例外にしない決まり（実機の Copilot CLI 1.0.102 は、例外の理由の文をモデルに返さない。V1 不具合 2）なので、
+     * 例外が出たら不具合として試験が落ちる。
+     */
+    async callToolRaw(name, args = {}, { agentId } = {}) {
       const tool = fake.tool(name);
       const toolCallId = `call-${nextCall++}`;
       return tool.handler(args, { sessionId, toolCallId, toolName: name, arguments: args, ...(agentId ? { agentId } : {}) });
     },
 
-    /** ツールを呼ぶ。成功か失敗かを { ok, text | error } で返す */
+    /** ツールを呼ぶ。成功の文を返す。失敗（resultType が failure の結果）は、理由の文を持つ Error として投げる（成功を期待する呼び出し用） */
+    async callTool(name, args = {}, options = {}) {
+      const result = await fake.callToolRaw(name, args, options);
+      if (typeof result === 'string') return result;
+      if (result?.resultType === 'failure') throw new Error(result.textResultForLlm);
+      return result?.textResultForLlm ?? result;
+    },
+
+    /** ツールを呼ぶ。成功か失敗かを { ok, text | error } で返す（失敗は resultType が failure の結果。理由の文が error になる） */
     async callToolSafe(name, args = {}, options = {}) {
-      try {
-        return { ok: true, text: await fake.callTool(name, args, options) };
-      } catch (error) {
-        return { ok: false, error: error?.message ?? String(error) };
-      }
+      const result = await fake.callToolRaw(name, args, options);
+      if (typeof result === 'string') return { ok: true, text: result };
+      if (result?.resultType === 'failure') return { ok: false, error: result.textResultForLlm };
+      return { ok: true, text: result?.textResultForLlm ?? result };
     },
 
     /** フックを動かす。input に BaseHookInput の足りない項目を足して渡す */

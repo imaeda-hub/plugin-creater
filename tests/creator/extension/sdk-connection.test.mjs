@@ -73,8 +73,11 @@ describe('本物の Copilot SDK とのつなぎ目', { skip: skipReason }, () =>
       assert.ok(fs.existsSync(path.join(home, 'plugin-data', 'plugin-creator', 'hearings', sessionId, 'state.json')));
 
       const refused = await peer.callTool(sessionId, 'plugin-creator_progress', { items: [{ item: '成果', status: '聞いた', quote: 'x' }] });
-      assert.equal(refused.result, undefined);
-      assert.match(refused.error, /^聞くことの名前が違います：「成果」。使える名前：作業の目的、/);
+      // 断るときは例外を投げず、理由の文を結果として返す（例外だと、Copilot CLI 1.0.102 はモデルに理由を返さない。V1 不具合 2）
+      assert.equal(refused.error, undefined, '例外で断ると、SDK は error として送る');
+      assert.equal(refused.result.resultType, 'failure');
+      assert.deepEqual(Object.keys(refused.result).sort(), ['resultType', 'textResultForLlm']);
+      assert.match(refused.result.textResultForLlm, /^聞くことの名前が違います：「成果」。使える名前：作業の目的、/);
 
       const state = await peer.callTool(sessionId, 'plugin-creator_state', {});
       assert.match(state.result, /^段階：始まり$/m);
@@ -83,7 +86,9 @@ describe('本物の Copilot SDK とのつなぎ目', { skip: skipReason }, () =>
 
       // サブエージェント（読み取り役）から呼ばれても動く
       const reader = await peer.callTool(sessionId, 'plugin-creator_doc_text', { path: 'no-such.docx' }, { agentId: 'agent-reader-1' });
-      assert.match(reader.error, /ファイルが見つかりません/);
+      assert.equal(reader.error, undefined);
+      assert.equal(reader.result.resultType, 'failure');
+      assert.match(reader.result.textResultForLlm, /ファイルが見つかりません/);
       assert.equal(peer.stderr, '', `標準エラーに出力がある：${peer.stderr}`);
     });
   });
