@@ -19,6 +19,7 @@ import { gradeRun } from '../../../skills/test-plugin/scripts/grade.mjs';
 import { findScreenUrl } from '../../../skills/test-plugin/scripts/screen.mjs';
 import { prepareWorkDir } from '../../../skills/test-plugin/scripts/tasks.mjs';
 import { createInnerAdapter, summarizeMessage } from './inner-adapter.mjs';
+import { decideSettings, previewInputs } from './inner-settings.mjs';
 import { makeQueryOptions, usageLimitPrefixes } from './isolation.mjs';
 import { modelMapOf, readConversionReport, toClaudeModelId } from './model-map.mjs';
 
@@ -104,7 +105,7 @@ function ensureDir(dir) {
  * @param {object} [o.screen] createScreen() の入れ物（ありのとき。ブラウザーは使い回す）
  * @param {string} [o.pluginRoot] Copilot CLI 向けの生成プラグイン（ありのとき）
  * @param {string} [o.convertedRoot] 置き換えた版（ありのとき）
- * @param {object} [o.taskSettings] 画面の作業ごとの設定に足す値（{ key: 値 }。課題の settings.task より後に入れる）
+ * @param {object} [o.taskSettings] 画面の作業ごとの設定に使う値（{ key: 値 }。ユーザー役が決めた値と課題の settings.task を上書きする）
  * @param {object} [o.models] 画面で選ぶモデル { orchestrator?, worker?, verifier? }（Copilot の名前）。省くと画面の既定のまま
  * @param {object} [o.envExtra] 試すエージェントの環境変数に足すもの
  * @param {boolean} [o.sandbox]
@@ -129,7 +130,7 @@ export async function runInnerArm(o) {
   const result = {
     arm, task: task.id, status: 'completed', reason: null, runDir, workDir, url: null, replies: 0, history: [], skillsUsed: [], mainTools: [],
     main: { sessionId: null, turns: 0, costUsd: 0, results: [] }, screen: null, finalState: null, agents: [], orchestratorRuns: [],
-    checks: [], grading: null, refused: [], subagentModels: {}, limitHit: null,
+    checks: [], grading: null, refused: [], subagentModels: {}, limitHit: null, settings: [],
   };
 
   let adapter = null;
@@ -263,16 +264,35 @@ export async function runInnerArm(o) {
     }
   }
 
-  const screenSettings = () => {
+  /**
+   * 画面に入れる設定。役割ごとのモデルと繰り返しの上限は試験の仕組みが決める。作業ごとの設定の欄は、ユーザー役が決める
+   * （コマンドラインの補い ＞ 課題の settings.task ＞ ユーザー役。decideSettings）。決めた値と聞いた文・答えは result.settings に残す。
+   */
+  async function resolveScreenSettings() {
     const base = task.json.settings ?? {};
-    return { ...(base.maxIterations !== undefined ? { maxIterations: base.maxIterations } : {}), task: { ...modelFields(models), ...(base.task ?? {}), ...taskSettings } };
-  };
+    const state = await adapter.core.getState();
+    let decided;
+    try {
+      decided = await decideSettings({
+        definitions: state.setup?.taskSettings ?? [], fromEval: base.task ?? {}, fromCli: taskSettings, userRole, prompt: task.json.prompt,
+        inputs: await previewInputs(inputs, workDir), history,
+      });
+    } catch (error) {
+      // ユーザー役が答えられないまま開始すると、決めていない値で動いてしまう。この実行は止める
+      result.userRoleError = error;
+      abort.abort();
+      throw error;
+    }
+    result.settings = decided.decisions;
+    record({ t: 'settings', decisions: decided.decisions });
+    return { ...(base.maxIterations !== undefined ? { maxIterations: base.maxIterations } : {}), task: { ...modelFields(models), ...decided.values } };
+  }
 
   async function screenFlow() {
     const url = await urlPromise;
     if (!url) return null;
     return screen.operate({
-      url, settings: screenSettings(), timeoutMs: Math.max(1000, timeoutMs - (Date.now() - startedAt)), pollMs,
+      url, settings: await resolveScreenSettings(), timeoutMs: Math.max(1000, timeoutMs - (Date.now() - startedAt)), pollMs,
       screenshotPath: path.join(runDir, 'screen.png'), signal: abort.signal,
       onSnapshot: (snapshot) => record({ t: 'screen', snapshot }),
     });

@@ -251,3 +251,95 @@ test('REQ-004 変換した版の .eval/rules.md（インストラクション）
   await runInnerArm({ arm: 'without', task: fixture.task, runDir: tmpDir('rules-without'), sdk: withoutSdk, userRole: async () => '', judge });
   assert.equal(withoutSdk.calls[0].options.systemPrompt.append, undefined);
 });
+
+/** 作業の定義の settings.task を外した課題（ユーザー役が決める設定の試験用） */
+function taskWithoutSettings(task) {
+  const json = structuredClone(task.json);
+  json.settings = { maxIterations: json.settings?.maxIterations };
+  return { ...task, json };
+}
+
+const loadedSdk = (url = 'http://127.0.0.1:8731/?k=abc123') =>
+  fakeSdk([[init(['weekly-report'], [{ name: 'weekly-report', status: 'connected' }]), say(`画面を開きました：${url}`), done(`画面を開きました：${url}`)]]);
+const fakeScreen = (operated) => ({
+  operate: async (args) => {
+    operated.push(args);
+    return { finished: true, timedOut: false, endReason: { kind: 'all_passed' }, endReasonText: 'ok', summary: null, snapshots: [] };
+  },
+});
+
+test('REQ-007 REQ-031 ありの実行：画面の設定の欄は、ユーザー役が見出しと説明を読み、頼みの文と渡したファイルから決めて入れる。決めた値と聞いた文・答えは記録に残す', { skip: SKIP }, async () => {
+  const fixture = buildSamplePlugin();
+  const asked = [];
+  const operated = [];
+  const userRole = async ({ question, choices, via, meta }) => {
+    asked.push({ question, choices, via, meta });
+    return '2026-W43';
+  };
+  const run = await runInnerArm({
+    arm: 'with', task: taskWithoutSettings(fixture.task), runDir: tmpDir('settings-by-role'), sdk: loadedSdk(), userRole, judge, screen: fakeScreen(operated),
+    pluginRoot: fixture.pluginRoot, convertedRoot: fixture.convertedRoot, models: { worker: 'gpt-6-luna' },
+  });
+  assert.equal(run.status, 'completed', run.reason);
+  // ユーザー役が聞かれたのは、作業ごとの設定の欄（対象の週）。見出し・説明・頼みの文・渡したファイルが入っている
+  assert.equal(asked.length, 1);
+  assert.equal(asked[0].via, 'setting');
+  assert.deepEqual(asked[0].meta, { setting: 'week' });
+  assert.match(asked[0].question, /設定の欄「対象の週」/);
+  assert.match(asked[0].question, /週報を作る週を書きます/);
+  assert.match(asked[0].question, /先週の記録をもとに、今週の週報を書いてください。/);
+  assert.match(asked[0].question, /- inputs\/memo\.txt/);
+  assert.match(asked[0].question, /この欄は必ず入れます。/);
+  // 画面に入れる設定：上限の回数は課題、モデルは試験の仕組み、作業ごとの設定はユーザー役
+  assert.deepEqual(operated[0].settings, { maxIterations: 3, task: { 'model-worker': 'gpt-6-luna', week: '2026-W43' } });
+  assert.deepEqual(run.settings.map((d) => [d.key, d.source, d.value, d.answer]), [['week', 'user-role', '2026-W43', '2026-W43']]);
+  assert.match(run.settings[0].question, /設定の欄「対象の週」/);
+  assert.equal(run.history.find((h) => h.via === 'setting').answer, '2026-W43');
+  const events = (await import('node:fs')).readFileSync((await import('node:path')).join(run.runDir, 'events.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+  assert.deepEqual(events.find((e) => e.t === 'settings').decisions.map((d) => d.source), ['user-role']);
+});
+
+test('REQ-007 ありの実行：課題の settings.task に同じ鍵があれば、ユーザー役に聞かずそれを使う。--setting の補いは、決めた値を上書きする', { skip: SKIP }, async () => {
+  const fixture = buildSamplePlugin();
+  let called = 0;
+  const operated = [];
+  const fromTask = await runInnerArm({
+    arm: 'with', task: fixture.task, runDir: tmpDir('settings-eval'), sdk: loadedSdk(), userRole: async () => { called += 1; return 'x'; }, judge, screen: fakeScreen(operated),
+    pluginRoot: fixture.pluginRoot, convertedRoot: fixture.convertedRoot,
+  });
+  assert.equal(called, 0);
+  assert.deepEqual(operated[0].settings.task, { week: '2026-W42' });
+  assert.deepEqual(fromTask.settings.map((d) => [d.key, d.source]), [['week', 'eval-json']]);
+  const overridden = [];
+  const cli = await runInnerArm({
+    arm: 'with', task: taskWithoutSettings(fixture.task), runDir: tmpDir('settings-cli'), sdk: loadedSdk(), userRole: async () => { called += 1; return 'x'; }, judge, screen: fakeScreen(overridden),
+    pluginRoot: fixture.pluginRoot, convertedRoot: fixture.convertedRoot, taskSettings: { week: '2026-W50' },
+  });
+  assert.equal(called, 0);
+  assert.deepEqual(overridden[0].settings.task, { week: '2026-W50' });
+  assert.deepEqual(cli.settings.map((d) => [d.key, d.source]), [['week', 'cli']]);
+});
+
+test('REQ-007 ありの実行：ユーザー役が決められなかった必須の欄は、値を入れずに画面に渡し、理由を記録に残す', { skip: SKIP }, async () => {
+  const fixture = buildSamplePlugin();
+  const operated = [];
+  const run = await runInnerArm({
+    arm: 'with', task: taskWithoutSettings(fixture.task), runDir: tmpDir('settings-abstain'), sdk: loadedSdk(), userRole: async () => '特に決まっていません', judge, screen: fakeScreen(operated),
+    pluginRoot: fixture.pluginRoot, convertedRoot: fixture.convertedRoot,
+  });
+  assert.deepEqual(operated[0].settings.task, {});
+  assert.deepEqual(run.settings.map((d) => [d.key, d.source, d.note]), [['week', 'default', 'abstain']]);
+});
+
+test('REQ-007 ありの実行：設定をユーザー役が決められずに失敗したら、画面を開始せず、error にして理由を示す', { skip: SKIP }, async () => {
+  const fixture = buildSamplePlugin();
+  const operated = [];
+  const run = await runInnerArm({
+    arm: 'with', task: taskWithoutSettings(fixture.task), runDir: tmpDir('settings-fail'), sdk: loadedSdk(), userRole: async () => { throw new Error('API が応答しません'); }, judge, screen: fakeScreen(operated),
+    pluginRoot: fixture.pluginRoot, convertedRoot: fixture.convertedRoot,
+  });
+  assert.equal(operated.length, 0);
+  assert.equal(run.status, 'error');
+  assert.match(run.reason, /ユーザー役の呼び出しに失敗しました：API が応答しません/);
+  assert.equal(run.grading, null);
+});

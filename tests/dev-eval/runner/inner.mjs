@@ -7,7 +7,8 @@
 //        [--converted <置き換えた版>] [--runs 1] [--arms with,without] [--out <結果のフォルダ>] [--style normal]
 //        [--model claude-sonnet-5-5] [--judge-model claude-sonnet-5-5]
 //        [--orchestrator-model <Copilot の名前>] [--worker-model …] [--verifier-model …]   画面で選ぶモデル（省くと画面の既定）
-//        [--setting 鍵=値]…   画面の作業ごとの設定に入れる値（必須の設定があるとき。課題の settings.task に足す）
+//        [--setting 鍵=値]…   画面の作業ごとの設定の欄に入れる値。ふつうは、ユーザー役が欄の見出しと説明を読み、模擬ユーザーのナレッジと
+//                              課題（頼みの文と入力のファイル）から決める。これは、決めた値を上書きするときに使う
 //        [--no-sandbox] [--timeout-minutes 30] [--pass-env NAME,NAME]
 //   --converted を省くと、convert.py で <結果のフォルダ>/converted に置き換える。
 //   サンドボックス（bubblewrap、socat）が既定で要る。ないときは始めずに断る。--no-sandbox で外せる（結果に警告が残る）。
@@ -48,7 +49,7 @@ export function summarizeRun(run, { task, arm, n }) {
     score: run.grading?.score ?? null, passed: run.grading?.passed ?? null, total: run.grading?.total ?? null,
     criteria: (run.grading?.results ?? []).map((r) => ({ id: r.id, text: r.text, grading: r.grading, pass: r.pass, reason: r.reason, ...(r.error ? { error: true } : {}) })),
     replies: run.replies, url: run.url, endReason: run.screen?.endReason ?? null, endReasonText: run.screen?.endReasonText ?? '',
-    checks: run.checks, finalModels: run.finalState?.settings?.models ?? null,
+    checks: run.checks, settings: run.settings ?? [], finalModels: run.finalState?.settings?.models ?? null,
     agents: (run.agents ?? []).map((a) => ({ agentType: a.agentType, status: a.status, selectedModel: a.selectedModel, actualClaudeId: a.actualClaudeId, executionMode: a.executionMode })),
     skillsUsed: run.skillsUsed, costUsd: run.costUsd, seconds: run.seconds, runDir: run.runDir, workDir: run.workDir,
   };
@@ -255,7 +256,7 @@ export async function main(argv = process.argv.slice(2)) {
     const userRoleFor = (task, arm, n) => {
       const home = fs.mkdtempSync(path.join(os.tmpdir(), `plugin-creator-dev-user-${task.id}-${arm}-${n}-`));
       const role = createUserRole({ persona: personaOf.get(task.id), styleName: args.style, query: sdk.query, home, envExtra });
-      const fn = async ({ question, choices }) => (await role.answer(question, choices ?? [], (choices ?? []).length > 0 ? 'AskUserQuestion' : 'text')).answer;
+      const fn = async ({ question, choices, via, meta }) => (await role.answer(question, choices ?? [], via ?? ((choices ?? []).length > 0 ? 'AskUserQuestion' : 'text'), meta ?? {})).answer;
       fn.cost = () => role.cost;
       return fn;
     };
