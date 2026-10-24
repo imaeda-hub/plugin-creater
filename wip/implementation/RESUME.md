@@ -62,6 +62,7 @@
 27. EVAL でできた生成プラグインの実行の記録は、EVAL の後に test-plugin が消す。ただし、EVAL で作った生成プラグインそのものは消さない（2026-10-24。ユーザーの言葉「作業記録は消してもいいけど作った生成プラグインは消さないで欲しい」。X1-16）。
 28. 既存のプラグインの作り直しの流れ（REQ-032〜036）は、最終確認で人が手元の Copilot CLI で1回確かめる。testing.md 9章の一覧に足す（2026-10-24。X2-09 の(3)）。
 29. 試験的機能の案内は「初めて使うときに `copilot --experimental` で起動する（次からは付けなくてよい）。起動した後なら `/settings experimental on`」にする。仕様書 REQ-023（creation-requirements.md）と REQ-004（output-requirements.md）の書き方は、ユーザーの承認を得て統括が直した（2026-10-24）。設計書（creator-structure.md、generated-plugin-structure.md）の `/experimental on` は最後の報告で示す。ユーザーは「セッションモードで使う予定」と言った（Copilot CLI の試験的機能の新しい画面の Session の画面のことなら、同じ切り替えで有効になる）。
+30. EVAL：まず1回だけ回して測る（2026-10-24 承認）。週報の模擬ユーザー・ふつうの話し方・クリエイターの腕（with）・Claude Opus 5.5・1回、やりとり150回・60分まで。時間と利用枠の減り方を測って示し、残りの回数をもう一度相談する。EVAL の呼び出しは ANTHROPIC_BASE_URL を通り、この作業と同じアカウントの利用枠を使う。
 13. ユーザーが「質問しないで作って」とはっきり頼んだとき：聞かないと仕事の決まりが入らない理由を1文で伝え、急ぎのときと同じ3つ（ここでやめて後で続ける〔おすすめ〕／残りを手早く聞く／このまま続ける）から選ばせる。推測で埋めて作らない（仕様 REQ-015 に足す必要がある）。
 
 ## 報告すること（最後にまとめて示す）
@@ -178,7 +179,7 @@
 3b. 会話例の冒頭の「クリエイターの版：」を、画面の文（X2-18 で「plugin-creator の版」にそろえた）に合わせて「plugin-creator の版：」にする（統括の判断。エンドユーザーに見える文なので。D1c：examples-build.mjs と試験、check_creator.py の REQ-037 の確かめ。B3：improve.md）。仕様 REQ-037 の「クリエイターの版」は開発者の用語なので、そのままでよい。
 3c. （2026-10-24 に頼んだ）X4 の後に B3 へ：X4 の指摘と、generate.md に「eval.json の prompt・inputs・settings は confirm に渡した evalTasks と同じにする。実物の入力は confirm の path と manifest.json の eval_inputs の from に同じ絶対パスを書く。仮のファイルの path は tests/eval/<課題>/inputs/<名前>」を足す件（C2 の依頼。違うと build が断る）。
 4. （2026-10-24 に頼んだ。報告は V1 報告の9節）直しが全部入ったら、V1 に本物の Copilot CLI で確かめ直してもらう（統括の許す一覧で通るか、GPT の族の統括が受け取るツールの全部、apply_patch のフックの toolName、update_todo を拒んで困らないか、断りの文、担当の欄）。
-5. T1 の通しをもう一度（2026-10-24、統括が `python3 tests/creator/run.py` を NODE_PATH=scratchpad/a2/node_modules で動かしている。結果は scratchpad/t2-creator-run.*）。生成プラグインの tests/run.py は、各担当が組み立てて通した〔C1：2段目 391 件〕。
+5. （済み：1段目は REQ-037 の1件だけ不合格、2段目 1202 件すべて合格）T1 の通しをもう一度（2026-10-24、統括が `python3 tests/creator/run.py` を NODE_PATH=scratchpad/a2/node_modules で動かしている。結果は scratchpad/t2-creator-run.*）。生成プラグインの tests/run.py は、各担当が組み立てて通した〔C1：2段目 391 件〕。
 6. EVAL：まず1回だけ回して費用を測る（ユーザーに承認をとる）。会話例。README の「置きます」→「あります」。
 7. 最後の報告。
 
