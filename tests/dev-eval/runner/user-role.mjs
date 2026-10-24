@@ -1,7 +1,7 @@
 // ユーザー役（testing.md 6.1、6.2、6.3）。外側の EVAL で、人の代わりにクリエイターの質問に答える AI。
 //
 // - 渡すもの（personas/FORMAT.md 5章）：profile、files の place・describe・reveal、knowledge の fact・reveal・volunteer、
-//   file の answer・detail、話し方の instruction、それまでのやり取り。
+//   file の answer・detail、話し方の instruction、それまでのやり取り（質問と答えに加え、クリエイターが質問の前にチャットに書いた文）。
 //   渡さないもの：markers、userRoleTests、inner、id、ほかの模擬ユーザー（言葉の見分けを知らせると、答え方が変わるため）。
 // - モデルは ID で固定する（claude-sonnet-5-5）。別名は、プロバイダーで解決先が変わるので使わない。ユーザー役の試験
 //   （user-role-test.mjs）に通ったモデルと指示を、比べる EVAL のあいだで変えない（6.2）。
@@ -28,8 +28,11 @@ export const REASK_QUESTION = 'もう少し具体的に教えてください。'
  */
 export const INSTRUCTION_WORDS = /答える条件|自分から話す|答え方の決まり|聞かれているので答え|聞かれたので答え|答えてよいことに|話してよいことに|話さないことになっ|隠すように|ユーザー役|模擬ユーザー|プロンプト|システムの指示|指示されて|設定されて/;
 
-/** 1回の呼び出しに載せるやり取りの上限（古いものから落とす）と、1つの質問の文字数の上限（後ろを残す） */
-export const HISTORY_LIMITS = Object.freeze({ exchanges: 40, questionChars: 1200, answerChars: 800 });
+/**
+ * 1回の呼び出しに載せるやり取りの上限（古いものから落とす）と、1つの質問の文字数の上限（後ろを残す）。
+ * noteChars は、クリエイターが質問の前にチャットに書いた文の上限（今の質問に付くもの。履歴に入ったものは questionChars）。
+ */
+export const HISTORY_LIMITS = Object.freeze({ exchanges: 40, questionChars: 1200, answerChars: 800, noteChars: 3000 });
 
 /** 選択肢の言葉。決まりの確かめの 4 つの答え → 質問に付ける選択肢 */
 const CHOICE_OF_ANSWER = Object.freeze(Object.fromEntries(CONFIRM_ANSWERS.map((a) => [a, CONFIRM_CHOICES.find((c) => c.startsWith(a)) ?? a])));
