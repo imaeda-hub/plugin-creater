@@ -14,10 +14,12 @@ import {
   HISTORY_LIMITS,
   INSTRUCTION_WORDS,
   USER_ROLE_MODEL,
+  USER_RULES,
   askUserRole,
   buildSystemPrompt,
   buildUserPrompt,
   createUserRole,
+  joinNotes,
 } from './user-role.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -46,7 +48,8 @@ test('REQ-017 ユーザー役に渡すもの：profile・ファイル・ナレ�
   }
   // 決まりの確かめ：答えの選択肢と、足す中身
   const man = weekly.knowledge.find((k) => k.id === 'man-yen');
-  assert.ok(system.includes('「そうしないときもある（どんなときか）」を選ぶ'));
+  assert.ok(system.includes('「そうしないときもある」を選ぶ（名前だけを書く）'));
+  assert.ok(!system.includes('そうしないときもある（どんなときか）'), '選択肢の説明まで写させない');
   assert.ok(system.includes(man.file.detail));
   assert.ok(system.includes('「決まりではなく、たまたま」を選ぶ'));
   // 渡さない：言葉の見分け（正規表現の文字）は、指示に入らない
@@ -177,3 +180,68 @@ test('REQ-015 指示のことを話さない：見張る言葉は、指示の言
     assert.ok(!INSTRUCTION_WORDS.test(ok), ok);
   }
 });
+
+// ---- 会話例の下読みの直し（E1）：クリエイターがチャットに書いた文、答え方 -----------------------------------------------
+
+test('REQ-015 質問のプロンプトに、クリエイターが質問の前にチャットに書いた文が入る（「上のまとめ」に答えるため。testing.md 6.1）', () => {
+  const p = buildUserPrompt({ question: '上のまとめで、違うところはどこですか？', notes: ['確かめた決まりは次のとおりです。\n・金額は万円', '足りなければ教えてください。'] });
+  const at = (text) => p.indexOf(text);
+  assert.ok(at('AI が質問の前にチャットに書いた文：') >= 0);
+  assert.ok(at('・金額は万円') > at('AI が質問の前にチャットに書いた文：'));
+  assert.ok(at('AI からの質問：上のまとめで') > at('足りなければ教えてください。'), '前の文は、質問より前');
+  // 文がないときは、見出しも出さない
+  for (const none of [undefined, '', [], ['', '  ']]) assert.ok(!buildUserPrompt({ question: 'q', notes: none }).includes('チャットに書いた文'));
+  assert.equal(joinNotes(['a', ' ', 'b ']), 'a\n\nb');
+  // 長いときは後ろ（質問に近い側）を残す
+  const long = buildUserPrompt({ question: 'q', notes: `${'あ'.repeat(HISTORY_LIMITS.noteChars)}末尾` });
+  assert.ok(long.includes('末尾') && long.includes('…'));
+});
+
+test('REQ-015 createUserRole は、前の文を次の質問に付け、履歴にも残す。後の質問は、前の質問と一緒に前の文も読める', async () => {
+  const prompts = [];
+  const sdk = createFakeSdk({ userRole: ({ prompt }) => { prompts.push(prompt); return '答え'; } });
+  const home = tmp();
+  const role = createUserRole({ persona: weekly, query: sdk.query, home });
+  const first = await role.answer('上のまとめで、違うところは？', [], 'AskUserQuestion', {}, ['まとめ：金額は万円']);
+  await role.answer('次の質問', [], 'AskUserQuestion');
+  assert.ok(prompts[0].includes('AI が質問の前にチャットに書いた文：\nまとめ：金額は万円'));
+  assert.equal(first.notes, 'まとめ：金額は万円', '何を見せたかを、答えの記録に残す');
+  // 2 つ目：今回の前の文はないが、履歴には 1 つ目の前の文が入っている
+  assert.ok(!prompts[1].includes('AI が質問の前にチャットに書いた文：\n'));
+  assert.ok(prompts[1].includes('AI がチャットに書いた文：まとめ：金額は万円\nAI：上のまとめで、違うところは？'));
+  assert.equal(role.answers[1].notes, undefined);
+  fs.rmSync(home, { recursive: true, force: true });
+});
+
+test('REQ-015 答え方の決まり：選択肢は名前だけを書き、「名前（説明）」と写さない。見えないものを指す問いには聞き返し、「見えません」と言わない', () => {
+  const rules = USER_ROLE_RULES_TEXT();
+  assert.match(rules, /名前（説明）」の形にしない/);
+  assert.match(rules, /説明の部分は写さない/);
+  assert.match(rules, /「上の〜とは、どれのことですか？」のように聞き返す/);
+  assert.match(rules, /「違いはない」「特にない」と答えない/);
+  assert.match(rules, /「見えません」「表示されていません」のような、機械の言い方はしない/);
+  assert.match(rules, /「（　）」で重ねて書かない/);
+  assert.match(rules, /AI が質問の前にチャットに書いた文も、読んだものとして踏まえる/);
+  assert.match(rules, /最初に書いてある自分の立場と仕事（誰として、何のために、何をしているか）は、自分のこととして答えてよい/);
+  // 選択肢の見出しにも、名前だけを使うと書く（説明は手がかり）
+  const p = buildUserPrompt({ question: 'q', choices: [{ label: '違いも不足もない', description: 'このままでよい' }] });
+  assert.ok(p.includes('選ぶときは名前だけを使う'));
+  assert.ok(p.includes('- 違いも不足もない（このままでよい）'));
+  // 指示の言葉の見張り（INSTRUCTION_WORDS）に、足した決まりの文が当たらないように、決まりの文は口に出さない側に書いてある
+  assert.ok(USER_RULES.some((r) => r.includes('口に出さない')));
+});
+
+test('REQ-017 決まりの確かめ：足す中身（例外・本当のやり方）そのものを確かめられたときは「このとおり」。足す中身のないものには付けない', () => {
+  const system = buildSystemPrompt(weekly);
+  const rule = weekly.knowledge.find((k) => k.id === 'headings');
+  assert.ok(rule && !rule.file.detail);
+  const blocks = system.split('\n- ').filter((b) => b.includes('これはファイル「'));
+  const withDetail = blocks.filter((b) => b.includes('ただし、相手が確かめてきた文の中に、すでにこの具体的な中身が書いてあるときは'));
+  assert.equal(withDetail.length, weekly.knowledge.filter((k) => k.from === 'file' && k.file.detail).length);
+  assert.ok(withDetail.every((b) => b.includes('「このとおり」を選ぶ')));
+  assert.ok(blocks.length > withDetail.length, '足す中身のない決まり（このとおり・たまたま）には付かない');
+});
+
+function USER_ROLE_RULES_TEXT() {
+  return USER_RULES.join('\n');
+}

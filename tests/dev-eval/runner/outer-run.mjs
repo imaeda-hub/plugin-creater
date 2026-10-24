@@ -311,16 +311,24 @@ export async function runOuterOnce(o) {
     envExtra, // 模擬の API につなぐ試験では、ユーザー役も同じ接続先にする（渡さないと、ユーザー役だけ本物のモデルを呼ぶ）
   });
 
+  // クリエイターがチャットに書いた文のうち、まだユーザー役に渡していないもの（前の答えの後に書かれたもの）。
+  // 人は、質問と一緒にこれを読む。「上のまとめで…」のような質問に答えるために、次の質問と一緒にユーザー役へ渡す（testing.md 6.1）
+  const unreadNotes = [];
+
   // 質問のツール（AskUserQuestion）への答え。ユーザー役が答える
   let askGroup = 0; // 質問のツールの呼び出しの番号。1 回の呼び出しの問いの欄の数を数えるため（testing.md 6.5、hearing.md 4.1）
   const onQuestion = async (questions) => {
     const answers = {};
     askGroup += 1;
     const group = askGroup;
+    // 質問の直前の文の処理が、この呼び出しより後になることがあるので、1 回譲ってから受け取る
+    await new Promise((resolve) => setImmediate(resolve));
+    let notes = unreadNotes.splice(0);
     for (const q of questions) {
       const options = (q.options ?? []).map((opt) => ({ label: String(opt.label ?? ''), description: String(opt.description ?? '') }));
       recorder.add('creator.question', { header: q.header ?? '', question: q.question, options, multiSelect: Boolean(q.multiSelect), group, groupSize: questions.length });
-      const entry = await userRole.answer(q.question, options, 'AskUserQuestion', { header: q.header ?? '', multiSelect: Boolean(q.multiSelect) });
+      const entry = await userRole.answer(q.question, options, 'AskUserQuestion', { header: q.header ?? '', multiSelect: Boolean(q.multiSelect) }, notes);
+      notes = []; // 1 回の呼び出しに問いの欄が複数あるときも、前の文は最初の欄にだけ付ける（履歴に入るため）
       answers[q.question] = entry.answer;
       recorder.add('user.answer', { index: entry.index, via: 'AskUserQuestion', question: q.question, header: q.header ?? '', choices: entry.choices, answer: entry.answer, rawAnswer: entry.rawAnswer, signal: entry.signal });
       toolkit?.recordAsk({ question: q.question, choices: options, header: q.header, multiSelect: q.multiSelect, answer: entry.answer });
@@ -346,8 +354,11 @@ export async function runOuterOnce(o) {
       ...(rules ? { systemPromptAppend: rules } : {}),
       onQuestion,
       refused,
-      // 裏で動くサブエージェントではなく、前面で 1 体ずつ動かす（設計は task を同期で呼ぶ前提）
-      envExtra: { CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: '1', ...(arm === 'control' ? { CONTROL_SCAFFOLD: CONTROL_SCAFFOLD_PATH } : {}), ...envExtra },
+      // 裏で動くサブエージェントではなく、前面で 1 体ずつ動かす（設計は task を同期で呼ぶ前提）。
+      // コマンドは、毎回、作業フォルダから始める。Claude Code のサンドボックスは、コマンドを始めたフォルダに、保護するファイル
+      // （.mcp.json、.claude/ の中など）を /dev/null で重ねる。生成プラグインのフォルダがコマンドの始まりのフォルダになると、
+      // そこに中身のない .mcp.json が見えて、生成プラグインの1段目が落ちる（会話例の下読み E1 の 3章の7）。作業フォルダなら、生成プラグインの外
+      envExtra: { CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: '1', CLAUDE_BASH_MAINTAIN_PROJECT_WORKING_DIR: '1', ...(arm === 'control' ? { CONTROL_SCAFFOLD: CONTROL_SCAFFOLD_PATH } : {}), ...envExtra },
       maxTurns,
       resume,
       abortController,
@@ -365,6 +376,7 @@ export async function runOuterOnce(o) {
           for (const c of m.message?.content ?? []) {
             if (c.type === 'text' && owner === 'main' && c.text?.trim()) {
               recorder.add('creator.text', { text: c.text, turn: turnNumber });
+              unreadNotes.push(c.text.trim());
               turn.lastText = c.text;
             } else if (c.type === 'tool_use') {
               if (c.name === 'AskUserQuestion') continue; // onQuestion が問いと答えを記録する
@@ -417,7 +429,9 @@ export async function runOuterOnce(o) {
       // 文章で質問して手番を終えたときも、ユーザー役の答えを次の発言として返す（6.1）
       const question = text || '（クリエイターの発言がありませんでした）';
       recorder.add('creator.question-text', { text: question, turn: turn.number });
-      const entry = await userRole.answer(question, [], 'text');
+      // 手番の最後の文は問いそのもの。それより前に書いた文だけを、前の文として渡す
+      const notes = unreadNotes.splice(0).filter((n) => n !== question.trim());
+      const entry = await userRole.answer(question, [], 'text', {}, notes);
       recorder.add('user.answer', { index: entry.index, via: 'text', question, header: '', choices: [], answer: entry.answer, rawAnswer: entry.rawAnswer, signal: entry.signal });
       toolkit?.recordPrompt(entry.answer);
       onProgress({ phase: 'answer', via: 'text', index: entry.index });

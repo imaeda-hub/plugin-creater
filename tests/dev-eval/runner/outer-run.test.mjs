@@ -118,6 +118,7 @@ test('REQ-015 流れ：質問のツールにも、文章の問いにも、ユー
   assert.ok(Object.keys(o.mcpServers).includes('plugin-creator'));
   assert.ok(o.allowedTools.includes('mcp__plugin-creator__progress'));
   assert.equal(o.env.CLAUDE_CODE_DISABLE_BACKGROUND_TASKS, '1');
+  assert.equal(o.env.CLAUDE_BASH_MAINTAIN_PROJECT_WORKING_DIR, '1', 'コマンドは毎回、作業フォルダから始める（サンドボックスの保護のファイルが生成プラグインの中に重ならないように）');
   assert.equal(o.sandbox, undefined, 'sandbox: false のときは付けない');
   assert.equal(o.env.HOME.includes('agent-home'), true);
   // 会話の全文
@@ -137,6 +138,91 @@ test('REQ-015 流れ：質問のツールにも、文章の問いにも、ユー
   assert.ok(fs.existsSync(path.join(record.dirs.work, '資料', '先週の週報.docx')));
   assert.ok(record.costUsd.userRole > 0);
   fs.rmSync(runRoot, { recursive: true, force: true });
+});
+
+
+test('REQ-015 クリエイターが質問の前にチャットに書いた文は、次の質問と一緒にユーザー役に渡る（「上のまとめ」に答えるため。testing.md 6.1）', async () => {
+  const runRoot = tmp('notes');
+  const prompts = [];
+  const sdk = createFakeSdk({
+    userRole: ({ prompt }) => { prompts.push(prompt); return '答え'; },
+    agent: async (ctx) => {
+      if (ctx.turn === 1) {
+        await ctx.say('まとめです。\n・成果物は weekly_report.md');
+        await ctx.say('足りなければ教えてください。');
+        // 1 回の呼び出しに問いの欄が 2 つ：前の文は最初の欄にだけ付く
+        await ctx.ask([
+          { question: '上のまとめで、違うところは？', header: 'まとめ', options: [{ label: '違いも不足もない', description: 'このままでよい' }], multiSelect: false },
+          { question: '2つ目の欄', header: '2つ目', options: [], multiSelect: false },
+        ]);
+        // 文を書かずに、続けて質問する
+        await ctx.ask([{ question: '3つ目の質問', header: '3つ目', options: [], multiSelect: false }]);
+        await ctx.say('メモ：ここまでで以上です。');
+        return 'ほかにありますか？';
+      }
+      return '終わりです。';
+    },
+  });
+  const record = await runOuterOnce({ ...baseOptions(runRoot), loaded: loadedWeekly, query: sdk.query, maxExchanges: 2, model: 'claude-opus-5-5' });
+  const NOTE_HEAD = 'AI が質問の前にチャットに書いた文：\n';
+
+  const q = (text) => prompts.filter((p) => p.includes(`AI からの質問：${text}`));
+  assert.equal(q('上のまとめで、違うところは？').length, 1);
+  const first = q('上のまとめで、違うところは？')[0];
+  assert.ok(first.includes(`${NOTE_HEAD}まとめです。\n・成果物は weekly_report.md\n\n足りなければ教えてください。`), first);
+  // 同じ呼び出しの 2 つ目の欄：今回の前の文はない。履歴には、1 つ目の欄に付いた前の文が入る
+  const second = q('2つ目の欄')[0];
+  assert.ok(!second.includes(NOTE_HEAD));
+  assert.ok(second.includes('AI がチャットに書いた文：まとめです。'));
+  // 続けての質問にも前の文はなく、同じ文を二度渡さない
+  assert.ok(!q('3つ目の質問')[0].includes(NOTE_HEAD));
+  // 文章の問い（手番の最後の文）：問いそのものは前の文に入れず、それより前に書いた文だけを前の文にする
+  const textQ = q('ほかにありますか？')[0];
+  assert.ok(textQ.includes(`${NOTE_HEAD}メモ：ここまでで以上です。\n\nAI からの質問：ほかにありますか？`), textQ);
+  assert.ok(!textQ.slice(textQ.indexOf(NOTE_HEAD)).split('AI からの質問：')[0].includes('ほかにありますか？'));
+  // 2 回目の手番：前の文を書かずに終わる。問いだけ
+  const last = q('終わりです。')[0];
+  assert.ok(!last.includes(NOTE_HEAD));
+  // 何を見せたかを、記録に残す
+  assert.equal(record.userRole.answers[0].notes, 'まとめです。\n・成果物は weekly_report.md\n\n足りなければ教えてください。');
+  assert.equal(record.userRole.answers[1].notes, undefined);
+  assert.equal(record.userRole.answers[3].notes, 'メモ：ここまでで以上です。');
+  assert.equal(record.userRole.answers[3].via, 'text');
+});
+
+test('REQ-015 文を流した直後に質問のコールバックが呼ばれても、前の文は落ちない（本物の SDK は、文の次の制御要求をすぐ処理する）', async () => {
+  const runRoot = tmp('race');
+  const prompts = [];
+  const userSdk = createFakeSdk({ userRole: ({ prompt }) => { prompts.push(prompt); return '答え'; } });
+  // 文のメッセージを渡した同じ瞬間に、質問のコールバックを呼ぶ偽の query（消費する側が文を処理するより先に、コールバックが始まる）
+  const racing = ({ options }) => {
+    const queue = [];
+    let waiting = null;
+    let closed = false;
+    const push = (m) => { if (waiting) { const w = waiting; waiting = null; w({ value: m, done: false }); } else queue.push(m); };
+    (async () => {
+      push({ type: 'system', subtype: 'init', session_id: 'race-1', model: 'claude-opus-5-5', plugins: [], mcp_servers: [] });
+      await new Promise((resolve) => setImmediate(resolve));
+      push({ type: 'assistant', session_id: 'race-1', parent_tool_use_id: null, message: { model: 'claude-opus-5-5', content: [{ type: 'text', text: '上のまとめです。' }] } });
+      await options.canUseTool('AskUserQuestion', { questions: [{ question: '上のまとめで、違うところは？', header: 'まとめ', options: [], multiSelect: false }] }, { signal: new AbortController().signal, toolUseID: 't1', requestId: 'r1' });
+      push({ type: 'result', session_id: 'race-1', subtype: 'success', is_error: false, result: '終わり', total_cost_usd: 0, num_turns: 1, duration_ms: 1 });
+      closed = true;
+      if (waiting) { const w = waiting; waiting = null; w({ value: undefined, done: true }); }
+    })();
+    return {
+      [Symbol.asyncIterator]() {
+        return {
+          next: () => (queue.length ? Promise.resolve({ value: queue.shift(), done: false }) : closed ? Promise.resolve({ value: undefined, done: true }) : new Promise((resolve) => { waiting = resolve; })),
+          return: () => Promise.resolve({ value: undefined, done: true }),
+        };
+      },
+    };
+  };
+  const record = await runOuterOnce({ ...baseOptions(runRoot), arm: 'without', loaded: loadedWeekly, query: racing, userRoleQuery: userSdk.query, maxExchanges: 1, model: 'claude-opus-5-5' });
+  assert.equal(record.stopped.reason, 'max_exchanges', JSON.stringify(record.stopped));
+  const first = prompts.find((p) => p.includes('AI からの質問：上のまとめで、違うところは？'));
+  assert.ok(first, prompts.join('\n---\n'));
+  assert.ok(first.includes('AI が質問の前にチャットに書いた文：\n上のまとめです。'), first);
 });
 
 test('REQ-015 流れ：質問のツールの問答は、ヒアリングの記録ができた後に qa.jsonl に残る', async () => {

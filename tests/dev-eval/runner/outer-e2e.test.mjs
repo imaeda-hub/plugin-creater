@@ -15,6 +15,7 @@ import * as sdk from '@anthropic-ai/claude-agent-sdk';
 import { loadPersona } from '../personas/validate.mjs';
 import { guardSdk, startFakeAnthropic } from './fake-anthropic.mjs';
 import { REPO_ROOT } from './creator-tools.mjs';
+import { sandboxStatus } from './isolation.mjs';
 import { convertPlugin, runOuterOnce } from './outer-run.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -104,6 +105,10 @@ test('REQ-015 本物の SDK で通す：質問のツールにユーザー役が�
   assert.ok(state, '状態取得ツールを呼んでいない');
   assert.ok(record.toolEvents.some((e) => e.type === 'tool.result' && e.tool === 'state' && e.isError === false));
   assert.ok(typeof record.sessionId === 'string');
+  // クリエイターが質問の前にチャットに書いた文（'お話を聞かせてください。'）が、本物の SDK の流れでも、ユーザー役への最初の質問に付いた
+  const firstUserRole = log.find((l) => l.role === 'user-role');
+  assert.ok(firstUserRole.text.startsWith('AI が質問の前にチャットに書いた文：\nお話を聞かせてください。'), firstUserRole.text);
+  assert.equal(record.userRole.answers[0].notes, 'お話を聞かせてください。');
   // 続きの会話（resume）に、ユーザー役の返事が渡った
   assert.ok(log.some((l) => l.role === 'creator' && l.text.includes('weekly_report.md')));
   assert.ok(record.costUsd.creator > 0);
@@ -116,4 +121,41 @@ test('REQ-015 本物の SDK で通す：質問のツールにユーザー役が�
   // メインのメッセージのモデルは、指定のモデル（REQ-045）
   assert.deepEqual(record.mainModels, ['claude-opus-5-5']);
   assert.equal(record.grading.grades.find((g) => g.id === 'main-model').ok, true);
+});
+
+test('REQ-039 サンドボックスの中のコマンドは、cd の後でも、次のコマンドを作業フォルダから始める（生成プラグインのフォルダを、コマンドの始まりのフォルダにしない）', { skip: sandboxStatus().available ? false : 'bwrap か socat がありません', timeout: 240_000 }, async (t) => {
+  // サンドボックスは、コマンドを始めたフォルダに、保護するファイル（.mcp.json など）を /dev/null で重ねる。生成プラグインの1段目は、
+  // そこに中身のない .mcp.json を見て落ちた（会話例の下読み E1 の 3章の7）。コマンドが生成プラグインのフォルダから始まらないことを、本物の Claude Code で確かめる
+  const loaded = await loadPersona(path.join(PERSONAS, 'weekly-report'), { allStyles: true });
+  const outputs = [];
+  const steps = [
+    'mkdir -p generated-plugin && cd generated-plugin && pwd',
+    'echo START; pwd; ls -a | tr "\\n" " "',
+    'cd generated-plugin && echo SUB; pwd; ls -a | tr "\\n" " "',
+  ];
+  const api = await startFakeAnthropic(({ body, system }) => {
+    if (system.includes('あなたは営業チームのリーダー')) return { blocks: [{ type: 'text', text: 'はい' }] };
+    const results = lastToolResults(body);
+    if (results.length) outputs.push(results.join('\n'));
+    const step = steps[outputs.length];
+    return step ? { blocks: [{ type: 'tool_use', name: 'Bash', input: { command: step, description: '確かめる' } }] } : { blocks: [{ type: 'text', text: '確かめました。' }] };
+  });
+  t.after(() => api.close());
+  const runRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'outer-e2e-cwd-'));
+  t.after(() => fs.rmSync(runRoot, { recursive: true, force: true }));
+  const guarded = guardSdk(sdk, api);
+  const record = await runOuterOnce({
+    loaded, runRoot, sandbox: true, arm: 'without', query: guarded.query, maxExchanges: 1, model: 'claude-opus-5-5',
+    envExtra: { ...FAKE_ENV, ANTHROPIC_BASE_URL: api.url },
+    runStages: async () => ({ skipped: true, reason: 'x' }),
+  });
+  assert.equal(outputs.length, 3, JSON.stringify(outputs));
+  const work = fs.realpathSync(record.dirs.work);
+  assert.ok(outputs[0].trim().endsWith(`${path.sep}generated-plugin`));
+  // 2 つ目のコマンドは、前のコマンドで cd した先ではなく、作業フォルダから始まる
+  assert.ok(outputs[1].includes(`START\n${work}\n`) || outputs[1].includes(`START\n${record.dirs.work}\n`), outputs[1]);
+  // 3 つ目：cd して入った生成プラグインのフォルダには、サンドボックスの重ね合わせ（.mcp.json、.claude）が見えない
+  const sub = outputs[2].split('SUB\n')[1] ?? '';
+  assert.ok(sub.includes('generated-plugin'), outputs[2]);
+  assert.ok(!/\.mcp\.json|\.claude|\.bashrc|\.gitconfig/.test(sub.split('\n').slice(1).join('\n')), outputs[2]);
 });
