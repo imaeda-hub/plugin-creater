@@ -94,7 +94,8 @@ export function scriptedModel(scenario = {}) {
     onRequest?.(role, body);
     const used = toolNamesIn(body);
     const model = body.model;
-    if (role === 'user-role') return { model, blocks: [textBlock('はい、お願いします')] };
+    // ユーザー役：画面の設定の欄「対象の週」を聞かれたら週を答える。ほかは、チャットの返事
+    if (role === 'user-role') return { model, blocks: [textBlock(firstUserText(body).includes('対象の週') ? '2026-W42' : 'はい、お願いします')] };
     if (role === 'judge') return { model, blocks: [textBlock('{"pass": true, "reason": "満たしている"}')] };
     const plain = forcedPlain ?? !(body.tools ?? []).some((t) => t.name === mcp('open'));
     if (role === 'main') {

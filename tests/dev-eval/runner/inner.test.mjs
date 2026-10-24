@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 
 import * as sdk from '@anthropic-ai/claude-agent-sdk';
 
-import { startFakeAnthropic } from './fake-anthropic.mjs';
+import { firstUserText, startFakeAnthropic } from './fake-anthropic.mjs';
 import { describeFailure, InnerEvalError, innerEval, main, parseArgs, scoresOf, summarizeRun } from './inner.mjs';
 import { buildSamplePlugin, pythonHasModules, scriptedModel, tmpDir } from './inner-test-support.mjs';
 
@@ -164,7 +164,8 @@ test('REQ-041 コマンドライン：模擬ユーザーの inner/ の課題を�
   const persona = path.join(PERSONAS, 'weekly-report');
   // 模擬ユーザーの基準（weekly_report.md、見出し2つ、47万円、1万円未満、最後の行が「以上」）を満たす中身を、ありだけが書く
   const good = '■今週の売上\n合計 47万円\n田中 1万円未満\n■来週の予定\n- 訪問\n以上\n';
-  const api = await startFakeAnthropic(scriptedModel({ deliverable: 'weekly_report.md', content: good, plainContent: 'できました\n', verifierDelayMs: 300 }));
+  const userRoleQuestions = [];
+  const api = await startFakeAnthropic(scriptedModel({ deliverable: 'weekly_report.md', content: good, plainContent: 'できました\n', verifierDelayMs: 300, onRequest: (role, body) => { if (role === 'user-role') userRoleQuestions.push(firstUserText(body)); } }));
   t.after(() => api.close());
   const outDir = tmpDir('cli');
   const saved = { env: { ...process.env }, log: console.log };
@@ -173,7 +174,7 @@ test('REQ-041 コマンドライン：模擬ユーザーの inner/ の課題を�
   console.log = (line) => printed.push(String(line));
   let code;
   try {
-    code = await main(['--plugin', fixture.pluginRoot, '--persona', persona, '--out', outDir, '--no-sandbox', '--setting', 'week=2026-W42', '--timeout-minutes', '4', '--pass-env', 'ANTHROPIC_API_KEY,CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC']);
+    code = await main(['--plugin', fixture.pluginRoot, '--persona', persona, '--out', outDir, '--no-sandbox', '--timeout-minutes', '4', '--pass-env', 'ANTHROPIC_API_KEY,CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC']);
   } finally {
     console.log = saved.log;
     process.env = saved.env;
@@ -188,6 +189,13 @@ test('REQ-041 コマンドライン：模擬ユーザーの inner/ の課題を�
   assert.equal(record.runs[0].passed, 7, JSON.stringify(record.runs[0].criteria.filter((c) => !c.pass)));
   assert.ok(record.runs[1].passed < 7);
   assert.ok(record.scores.difference > 0);
+  // 画面の設定の欄（対象の週）は、--setting なしで、ユーザー役が決めた。聞いた文には、模擬ユーザーの頼みの文と渡したファイルの先頭が入っている
+  assert.deepEqual(record.runs[0].settings.map((d) => [d.key, d.source, d.value]), [['week', 'user-role', '2026-W42']]);
+  assert.deepEqual(record.runs[1].settings, []);
+  assert.equal(userRoleQuestions.length, 1);
+  const salesHead = fs.readFileSync(path.join(persona, 'inner', 'inputs', 'sales.csv'), 'utf8').split('\n')[0].trim();
+  assert.match(userRoleQuestions[0], /あなたが頼んだこと：inputs\/sales\.csv から、今週の週報を作ってください。/);
+  assert.ok(userRoleQuestions[0].includes(salesHead), salesHead);
   assert.ok(fs.existsSync(path.join(outDir, 'inner-result.json')));
   assert.ok(fs.existsSync(path.join(outDir, 'converted', '.claude-plugin', 'plugin.json')));
 });

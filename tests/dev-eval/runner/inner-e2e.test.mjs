@@ -187,3 +187,54 @@ test('REQ-009 止める：統括の実行だけが取り消され、10秒のう�
   const left = spawnSync('ps', ['-eo', 'args'], { encoding: 'utf8' }).stdout.split('\n').filter((line) => line.includes(runDir));
   assert.deepEqual(left, []);
 });
+
+function withoutTaskSettings(task) {
+  const json = structuredClone(task.json);
+  json.settings = { maxIterations: json.settings?.maxIterations };
+  return { ...task, json };
+}
+
+test('REQ-007 REQ-031 ありの実行：課題に作業ごとの設定がなくても、ユーザー役が画面の欄を読んで値を決めて入れ、そのまま開始できる', { skip: SKIP, timeout: 240_000 }, async (t) => {
+  const fixture = buildSamplePlugin();
+  const api = await startFakeAnthropic(scriptedModel({ verifierDelayMs: 300 }));
+  const screen = createScreen({ chromium, env: { ...process.env, PLUGIN_TEST_BROWSER_CHANNEL: 'chromium' } });
+  t.after(async () => {
+    await screen.close();
+    await api.close();
+  });
+  const questions = [];
+  const userRole = async ({ question }) => {
+    questions.push(question);
+    return '2026-W44';
+  };
+  const result = await runInnerArm({
+    arm: 'with', task: withoutTaskSettings(fixture.task), runDir: tmpDir('run-settings'), sdk, userRole, judge, screen, pluginRoot: fixture.pluginRoot, convertedRoot: fixture.convertedRoot,
+    envExtra: { ...FAKE_ENV, ANTHROPIC_BASE_URL: api.url }, timeoutMs: 180_000, pollMs: 300,
+  });
+  assert.equal(result.status, 'completed', `${result.reason} / ${result.screenError}`);
+  assert.equal(questions.length, 1);
+  assert.match(questions[0], /設定の欄「対象の週」/);
+  assert.match(questions[0], /週報を作る週を書きます/);
+  // 画面の欄に入れた値が、中心の処理の設定として届いた（統括への指示にも入る）
+  assert.equal(result.finalState.settings.task.week, '2026-W44');
+  assert.deepEqual(result.settings.map((d) => [d.key, d.source, d.value]), [['week', 'user-role', '2026-W44']]);
+  assert.equal(result.grading.passed, 2);
+});
+
+test('REQ-007 ありの実行：必須の欄をユーザー役が決められなければ、画面は開始できず、入れなかった欄を理由に示して incomplete にする', { skip: SKIP, timeout: 240_000 }, async (t) => {
+  const fixture = buildSamplePlugin();
+  const api = await startFakeAnthropic(scriptedModel());
+  const screen = createScreen({ chromium, env: { ...process.env, PLUGIN_TEST_BROWSER_CHANNEL: 'chromium' } });
+  t.after(async () => {
+    await screen.close();
+    await api.close();
+  });
+  const result = await runInnerArm({
+    arm: 'with', task: withoutTaskSettings(fixture.task), runDir: tmpDir('run-settings-abstain'), sdk, userRole: async () => '特に決まっていません', judge, screen,
+    pluginRoot: fixture.pluginRoot, convertedRoot: fixture.convertedRoot, envExtra: { ...FAKE_ENV, ANTHROPIC_BASE_URL: api.url }, timeoutMs: 120_000, pollMs: 300,
+  });
+  assert.equal(result.status, 'incomplete');
+  assert.match(result.reason, /画面で開始できませんでした.*対象の週/);
+  assert.equal(result.finalState, null);
+  assert.deepEqual(result.settings.map((d) => [d.key, d.source, d.note]), [['week', 'default', 'abstain']]);
+});
