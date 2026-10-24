@@ -28,6 +28,8 @@ sys.dont_write_bytecode = True
 HERE = os.path.dirname(os.path.abspath(__file__))
 WORK = ".plugin-creator-work"
 STATE_FILE = ".control-hearing.json"
+EVAL_PROMPT = "%sを作ってください。"
+EVAL_SETTINGS = {"maxIterations": 3, "task": {}}
 
 
 def default_scaffold() -> str:
@@ -102,9 +104,9 @@ def build_parts(work: str, name: str, title: str, description: str, bullets: lis
     write(os.path.join(files, "tests", "eval", "T-01", "inputs", "memo.txt"), "対照のクリエイターが作った見本の入力です。\n")
     write(os.path.join(files, "tests", "eval", "T-01", "eval.json"), json.dumps({
         "id": "T-01",
-        "prompt": "%sを作ってください。" % title,
+        "prompt": EVAL_PROMPT % title,
         "inputs": ["inputs/memo.txt"],
-        "settings": {"maxIterations": 3, "task": {}},
+        "settings": EVAL_SETTINGS,
         "criteria": [{"knowledge": "K-01", "grading": "model"}],
     }, ensure_ascii=False, indent=2) + "\n")
 
@@ -129,7 +131,13 @@ def build_state(path: str, bullets: list, title: str) -> None:
         "knowledgeCounter": len(knowledge), "knowledge": knowledge, "assets": [], "ossChoices": [],
         "confirmation": {"at": now, "knowledgeIds": [k["id"] for k in knowledge], "behavior": "%sを作る" % title,
                          "taskPath": ".plugin-creator-work/draft/task.json",
-                         "evalTasks": [{"id": "T-01", "prompt": "%sを作ってください。" % title}], "rebuild": None},
+                         # scaffold.py は、eval.json をこの課題（生成前の確認でよいと答えた課題）と突き合わせる（prompt・inputs・criteria・settings）。
+                         # eval.json は build_parts が同じ値で書く。仮の入力のファイルの path は、生成プラグインの中の置き場所
+                         "evalTasks": [{"prompt": EVAL_PROMPT % title,
+                                        "inputs": [{"path": "tests/eval/T-01/inputs/memo.txt", "provisional": True}],
+                                        "criteria": [k["id"] for k in knowledge if k["kind"] == "criterion"],
+                                        "settings": dict(EVAL_SETTINGS)}],
+                         "rebuild": None},
         "approvedAt": now, "approvalQuote": "（対照のクリエイターは、確認を取らない）", "url": None,
     }
     write(path, json.dumps(state, ensure_ascii=False, indent=2) + "\n")

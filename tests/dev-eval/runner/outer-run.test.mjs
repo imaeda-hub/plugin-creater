@@ -24,6 +24,9 @@ const tmp = (prefix) => fs.mkdtempSync(path.join(os.tmpdir(), `outer-run-${prefi
 const SETTABLE = ITEMS.filter((i) => !i.computed && !i.rebuildOnly).map((i) => i.name);
 const T = (name) => `mcp__plugin-creator__${name}`;
 
+/** 組み立ての見本の parts が持つ EVAL の課題。confirm で示す課題は、これと同じにする */
+const SAMPLE_EVAL = JSON.parse(fs.readFileSync(path.join(SAMPLE_PARTS, 'files', 'tests', 'eval', 'T-01', 'eval.json'), 'utf8'));
+
 const loadedWeekly = await loadPersona(path.join(PERSONAS, 'weekly-report'), { allStyles: true });
 
 /** 変換の代わり。置き換えた版の入れ物と変換レポートだけを作る（変換そのものは D1a の試験） */
@@ -261,7 +264,14 @@ test('REQ-020 生成までたどる：本物の記録のツールで承認まで
         knowledgeIds: ['K-01', 'K-02', 'K-03', 'K-04'],
         behavior: '週報を作る。',
         taskPath: '.plugin-creator-work/draft/task.json',
-        evalTasks: [{ prompt: '週報を作ってください。', inputs: [{ path: 'inputs/memo.txt', provisional: true }], criteria: ['K-01', 'K-03'] }],
+        // 組み立てのスクリプトは、作業エージェントが書く eval.json（見本の parts）を、ここで確かめた課題と突き合わせる（X2-03）。
+        // 課題は頼むときの言葉で結びつく。仮の入力のファイルの path は、生成プラグインの中の置き場所
+        evalTasks: [{
+          prompt: SAMPLE_EVAL.prompt,
+          inputs: [{ path: 'tests/eval/T-01/inputs/memo.txt', provisional: true }],
+          criteria: ['K-01', 'K-03'],
+          settings: SAMPLE_EVAL.settings,
+        }],
       });
       assert.equal(conf.isError, false, conf.text);
       await ctx.ask([{ question: 'この内容で作ってよいですか？', header: '承認', options: [{ label: '作る', description: '' }, { label: '直す', description: '' }] }]);
@@ -271,7 +281,7 @@ test('REQ-020 生成までたどる：本物の記録のツールで承認まで
       // 読み取り役は選んだモデルのまま、作業エージェントは費用の低いモデルで動く（REQ-045・REQ-046）
       await ctx.subagent({ type: 'plugin-creator:reader', description: '読む' }, async (sub) => { await sub.say('読みました'); });
       await ctx.subagent({ type: 'plugin-creator:worker', description: '書く', model: 'claude-haiku-5-5' }, async (sub) => { await sub.say('書きました'); });
-      await ctx.tool('Bash', { command: `python3 -I ${SCAFFOLD} build --hearing STATE --work ${work}/.plugin-creator-work --out ${work}/weekly-report` }, {
+      const build = await ctx.tool('Bash', { command: `python3 -I ${SCAFFOLD} build --hearing STATE --work ${work}/.plugin-creator-work --out ${work}/weekly-report` }, {
         run: () => {
           copySampleParts(work);
           const state = findState(path.join(ctx.options.env.HOME, '..', 'copilot-home'));
@@ -280,6 +290,7 @@ test('REQ-020 生成までたどる：本物の記録のツールで承認まで
           return r.stdout.slice(0, 200);
         },
       });
+      assert.equal(build.isError, false, build.text);
       return '作りました。';
     },
   });
