@@ -222,15 +222,70 @@ C1 の今の返り値の文は、report.mjs の stateText、hearing.mjs の rema
 
 ## X の直し（全体の突き合わせの点検の指摘。X3-triage.md 2.2 の B3 の束と、答え27・29、会話例の版の呼び方）
 
-指示：briefs/X-fix.md、統括の頼み（2026-10-24）。tests/dev-eval/heldout/ は読まない。
+指示：briefs/X-fix.md、統括の頼み（2026-10-24）。tests/dev-eval/heldout/ は読まない（検索も `--exclude-dir=heldout` で外した）。
 
 ### 状態
 
-- [x] 読む（X1-10、X2-01・02・04〜07・11・13・14・16・17・20・22、X3-triage.md、RESUME.md の答え24〜29、V1 2節・7.2、V1 の生データの bash の定義、tasks/C1.md と C3.md の X の直し、estimate.mjs・eval.mjs・run.mjs の出力、creator.mjs の parseSettings）
-- [ ] test-plugin の SKILL.md（X1-10/X2-04 の(1)、X2-05、X2-06、X2-16、答え27）
-- [ ] make-plugin の SKILL.md（X2-11、X2-20）
-- [ ] references：confirm.md（X2-02、X2-17）、generate.md（X2-02、X2-07、X2-16、X2-22）、screen.md（X2-01、X2-11）、items.md・assets.md（X2-11）、improve.md（版の呼び方）、setup.md（答え29、X2-14）
-- [ ] worker.agent.md（X2-07、X2-13）
-- [ ] descriptions.mjs（X2-02 の【仮】3つ、X2-16）
-- [ ] README.md（答え29、X2-14）
-- [ ] 数える、試験、コミットと push
+- [x] 読む（X1-10、X2-01・02・04〜07・11・13・14・16・17・20・22、X3-triage.md、RESUME.md の答え24〜29、V1 2節・7.2、V1 の生データ scratchpad/v1/out/gen-a/requests.jsonl の `bash` の定義、tasks/C1.md と C3.md の X の直し、estimate.mjs・eval.mjs・run.mjs の出力、creator.mjs の parseSettings）
+- [x] test-plugin の SKILL.md（X1-10/X2-04 の(1)、X2-05、X2-06、X2-16、答え27）
+- [x] make-plugin の SKILL.md（X2-11、X2-20）
+- [x] references：confirm.md（X2-02、X2-17）、generate.md（X2-02、X2-07、X2-16、X2-22）、screen.md（X2-01、X2-11）、items.md・assets.md（X2-11）、improve.md（版の呼び方）、setup.md（答え29、X2-14）
+- [x] worker.agent.md（X2-07、X2-13）
+- [x] descriptions.mjs（X2-02 の【仮】3つ、X2-16）
+- [x] README.md（答え29、X2-14）
+- [x] 数える、試験
+- [x] コミットと push（統括の途中経過のコミットに直しの大半がすでに入っていたので、残りの差分とこのメモだけを入れた）
+
+### 指摘の扱い
+
+| 指摘 | 扱い | 確かめたことと、直したこと |
+| --- | --- | --- |
+| X1-10/X2-04 の(1) | 直した | estimate.mjs は、前の記録も目安もないと `credits.estimate` が null で、`message` に「見込みは出せません。使った AI クレジットは、終わった後に示します。」の旨が入る（確かめた）。test-plugin の手順6に、null のときは推し量らず `message` のとおりに伝えること（理由つき）と、選択肢の3つ目を「この回数で始める」にすることを足した。(2) の目安を埋めるのは C3（波 E の後） |
+| X2-05 | 直した | V1 の生データの `bash` の定義で、`initial_wait` は30〜600秒で、終わらなければ途中の出力を返して動き続け、終わると知らせが来ることを確かめた。手順6で、課題の数×回数×2回を動かすので長くかかること（1回の上限は既定30分）を先に伝える。手順7で、途中の出力が返っても終わりの知らせまで待ち、もう一度動かさないこと（二重に AI クレジットを使う理由つき）、`result.json` は実行のたびに書き直され、`status` が `running` の間は終わっていないことを書いた。ツールの名前と引数（`bash`、`initial_wait`）は、族と OS で変わるので書いていない（X3 のとおり） |
+| X2-06 | 直した | check_tools.py の `--scope stage12|eval|all` を確かめた。手順4を `--scope stage12` にし、EVAL の道具は手順6で始めると答えた後に `--scope eval` で確かめ、足りなければ4と同じ形で入れてよいかを聞く。入れないと答えたら、EVAL をせずに8へ進む |
+| X2-16 | 直した | creator.mjs の results が `path.resolve(workDir, p)` で、eval.mjs run の出力に絶対パスの `resultFile` があることを確かめた。手順8と generate.md の4の8を絶対パスにし、相対パスは作業フォルダから探される理由を添えた。descriptions.mjs の `results` と `results.paths` に「絶対パス」（と `result.json` の名前）を足した |
+| X2-01 | 直した | screen.md の例を「〇〇を毎回選ぶ」にし、抜き書きは1つの答えの中の言葉だけで、部品の名前などを足さない（ユーザーの答えの中にある言葉かで確かめられる理由つき）。決めた部品は、決める問いの答えとして問答の記録に残り、生成前の確認で作業の定義の案に入る、と書いた |
+| X2-02 | 直した | C1 の bf9b154 で `evalTasks[].settings`（`maxIterations`、`task`）が足されたことを確かめた。confirm.md の2で課題ごとの設定の値を決め、3で confirm に渡し、3の2で示す。generate.md の渡すものの設定の値を、生成前の確認で示した値（state.json の `confirmation.evalTasks[].settings`）にした。descriptions.mjs の【仮】3つを仕上げた（【仮】は残っていない。tools.test.mjs が確かめる） |
+| X2-07 | 直した | worker.agent.md の B（manifest.json・task.json と並べて）と C に、頼みに「流用する資産と写した場所」として書かれたファイルは書き換えず、合わないときは「足りなかったこと」に書くことを、理由（REQ-035）つきで足した。generate.md の2の渡すものにも、そう伝えると書いた。ハッシュで比べる確かめは、X3 のとおり足していない |
+| X2-11 | 直した | SKILL.md の「記録のしかた」に、その問いで聞いたことへの答えは「ヒアリングの答え」、聞いていない別の項目の決まりは「ユーザーが自分から話した」（まだ聞いていない項目でも）と理由つきで足した。items.md の記録の文はそれを指し、assets.md・screen.md には、ほかの項目の決まりが話に出たら記録する（出どころは本文の決め方）を1行ずつ足した |
+| X2-13 | 直した | worker.agent.md のツール名の行を、`slots/` では `{{plugin_name}}_show` と書いてよく、`files/` の下では置き換わらないので manifest.json の `plugin_name` の名前をそのまま書く、にした |
+| X2-17 | 直した | tasks.mjs が入力を作業フォルダの `inputs/<名前>` に写すことは X3 で確かめ済み。confirm.md の2に、頼むときの言葉にその場所を書くこと（例つき、理由つき）を足した |
+| X2-20 | 直した | SKILL.md の「答えが来ないとき」の対象をヒアリングの問い（生成前の承認まで）にし、生成の段階の承認に答えが来なかったときは止まらずに generate.md と improve.md のとおりに進める、を別の1行で足した |
+| X2-22 | 直した | generate.md の名前の決まりに「`plugin-creator` にはしない」と理由（ツールの名前とマーケットプレイスの名前が重なる）を足した。scaffold.py で断るのは C2 |
+| X2-14・答え29 | 直した | README と setup.md の試験的機能の案内を、V1 7.2 の案内の文の例のとおり「初めて使うときは `copilot --experimental` で起動（設定に残るので次からは付けなくてよい）。起動した後なら `/settings experimental on`（自動で再起動する）」にした。再起動の後に読み込みの確認が続けて2回出ることがある（V1 7.2）も添えた。README のうまく始まらないときの1つ目も同じに直した。確認の題と選択肢の名前を `plugin:plugin-creator:plugin-creator` にした（V1 2節。前の要確認5が解けた） |
+| 会話例の版の呼び方 | 直した | improve.md の「クリエイターの版」3か所を「plugin-creator の版」にした（統括の決定。画面の文とそろえる） |
+| 答え27 | 直した | C3 の 91752c2 の push を git log で確かめた。tasks/C3.md の案の2つを、中身を変えずに入れた。手順7に、試験の間にできたプラグインが残した実行の記録は eval.mjs が実行のたびに消し、ふだんの作業の記録・生成プラグインのフォルダ・tests/results/ の結果は消さないこと、`warnings` の注意はそのまま示すこと。手順6の承認の前に伝えることに、実行の記録が一時的にでき、ふだんの記録がすでに多いと古いものから消えることがある、を足した（統括の判断） |
+
+### 決めたこと
+
+1. 手順6の「長くかかる」の伝え方は、時間の数を推し量らず、動かす回数（課題の数×回数×2回）と1回の上限（既定30分。eval.mjs の `--timeout-minutes` の既定）だけにした。
+2. EVAL の道具を入れるかは、EVAL を始めると答えた後に聞く（承認が2回続くことがある）。始めるかを決める前に、使わないかもしれない道具を入れるかを聞かないため。
+3. descriptions.mjs の `results` の説明に、EVAL の結果のファイルの名前 `result.json` を入れた（X2-16 の「名前も書いていない」）。
+4. 抜き書きの決まり（X2-01）は screen.md にだけ置いた。ほかの段階の例は、もとから1つの答えの言葉だけである。
+
+### 試験と数（2026-10-24）
+
+- make-plugin の SKILL.md の本文：121行・4,928トークン（5,000未満。残りは72トークン。次に足すときは、どこかを削る必要がある）。test-plugin：51行・2,718トークン。
+- references：16個とも 20,000 バイト未満（いちばん大きい generate.md が 13,553 バイト・87行、confirm.md 9,153 バイト）。
+- エージェントの本文：worker 6,126 文字、reader 1,802 文字（30,000 文字以内）。
+- 1段目の構造の検査（tests/creator/check_creator.py）：会話例がないことの1件だけが不合格で、前と同じ。
+- tests/creator/extension：187 件が通る（descriptions.mjs の【仮】がなくなっても、tools.test.mjs の確かめが通る）。tests/creator/test-plugin：204 件が通る。tests/dev-eval/test_convert.py：78 件が通る。
+- tests/dev-eval/runner：203 件のうち 3 件が落ちる（control-creator.test.mjs の2件と outer-run.test.mjs の1件）。落ちる理由は、組み立てのスクリプトが eval.json と確かめた課題を突き合わせるようになった（C2 の X2-03 の直しの途中。61ca9b4 の scaffold.py）のに、対照のクリエイターと試験の記録が課題を確かめた形になっていないことと、記録のツールが段階「生成」の後の書き込みを断ること。どちらも、この直しのファイル（自然言語の部品と descriptions.mjs）を使わないので、担当の外（C2・D1 に知らせる）。
+- 自然言語の直しなので、変異の試験はしていない。descriptions.mjs の形は既存の試験（説明が引数と過不足なく合う、【仮】が残らない）で確かめた。文の中身は、統括が立てる別の点検で見る。
+
+### ほかの担当への依頼
+
+1. C2：scaffold.py の `load_manifest` で、生成プラグインの名前 `plugin-creator` を断る（X2-22 の C2 の分）。あわせて、dev-eval の control-creator.test.mjs と outer-run.test.mjs の3件が、eval.json と確かめた課題の突き合わせ（X2-03）で落ちているので、D1 と合わせる。
+2. C3：estimate.mjs の GUIDELINE を波 E の後に埋める（X1-10/X2-04 の(2)）。埋まるまで、初めての EVAL では見込みが出ない（REQ-040 の残り）。
+3. 統括：V1 の報告か R1 に、`bash` の定義（`initial_wait` 30〜600秒、途中の出力を返して動き続け、終わると知らせが来る、`mode: "async"`、`read_bash`）を足す（X3 のとおり）。
+
+### 上位の文書で直すこと
+
+1. testing.md 10.1 の手順1：道具の確かめを、1・2段目の前と、EVAL を始めてよいと答えた後の2回に分ける（X2-06）。
+2. hearing.md 7.3：出どころ「ヒアリングの答え」と「ユーザーが自分から話した」の決め方を書く（X2-11）。7.2：抜き書きは1つの答えの中の言葉だけにする（X2-01、C-13）。
+3. hearing.md 6.5・7.1：生成前の確認の記録に、課題の設定の値（`evalTasks[].settings`）がある（X2-02、C-14）。
+4. testing.md 10.4：頼むときの言葉には、入力のファイルの場所（作業フォルダの `inputs/<名前>`）を含む（X2-17）。
+5. creator-structure.md 3.5：作業エージェントは、流用のファイルを書き換えない（X2-07）。hearing.md か creator-structure.md：生成プラグインの名前を `plugin-creator` にしない（X2-22）。
+6. hearing.md 5.5：生成の段階の承認に答えが来なかったときは、止まらずに入れない・出さないとして進める（X2-20、C-22。既出）。
+7. creator-structure.md・generated-plugin-structure.md の `/experimental on`：答え29の案内にそろえる（最後の報告で示す）。testing.md 8.2：EVAL の時間の伝え方（回数と1回の上限）。
+8. hearing.md 11章の「クリエイターの版」：Issue の案の言葉を「plugin-creator の版」にそろえる（統括の決定）。
