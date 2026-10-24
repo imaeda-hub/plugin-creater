@@ -1,6 +1,6 @@
 # V1 本物の Copilot CLI での読み込みの確かめ（偽物のモデルで）
 
-状態：完了（1〜7 の節まで書いた。7 節は 2026-10-24 の追加の確かめ）
+状態：完了（1〜9 の節まで書いた。7・9 節は 2026-10-24 の追加の確かめ、8 節は統括の追記）
 
 担当の指示：`wip/implementation/briefs/V1.md`。作業のメモ：`wip/implementation/tasks/V1.md`。
 リポジトリのファイルは変えていない。スクリプトと結果の生データはスクラッチ（`/tmp/claude-0/-home-user-plugin-creater/f6e65e0d-9c94-5351-8ee1-475927b3b43e/scratchpad/v1/`、以下 `v1/`）にある。
@@ -258,3 +258,83 @@
 
 - X3 が V1 の生データ（`scratchpad/v1/out/gen-a/requests.jsonl` の `bash` の定義）で確かめた。Copilot CLI 1.0.102 のシェルのツール `bash` は `initial_wait`（30〜600秒）を持つ。それまでに終わらないコマンドは、途中の出力を返して動き続け、終わると知らせが来る。
 - test-plugin の EVAL のように数十分かかるコマンドは、この知らせを待ち、同じコマンドを動かし直さない（B3 が test-plugin の手順7に入れた。X2-05）。
+
+## 9. 直しの後の確かめ直し（2026-10-24）
+
+統括の依頼で、直しが入った今のリポジトリ（`git pull` は「Already up to date」。ひな形は `template/` に移った後、統括の定義に `tools:` なし、`adapter.mjs` の統括のツールの許可の一覧、断りは失敗の結果、担当は `task` の `description`）を、本物の Copilot CLI 1.0.102 と偽物のモデルで確かめ直した。リポジトリのファイルは変えていない。`COPILOT_HOME` は、すべて `sethome`（`v1/home-*` の絶対パスだけを受け付ける）を通した。`tests/dev-eval/heldout/` は写さず、読んでいない。
+
+### 9.0 やり方
+
+- 今の作業ツリー（heldout・`.git`・`node_modules`・`__pycache__`・`*.mutbak` を除く）を `v1/v2/repo/` に写し、本物の `scaffold.py build` で見本（`tests/creator/scaffold/sample/`）から `weekly-report` を組み立てた（`ok: true`、`warnings: []`。統括の定義に `tools:` はない）。
+- 組み立てた `weekly-report` の写しを 3 つ作り（`v1/v2/wr-a|wr-b|wr-c/`）、手元のフォルダのマーケットプレイスから入れた。写しの違いは、エージェントの定義の `model:` の先頭のモデルだけ（自前のモデルの窓口では選べるモデルの一覧が空で、画面の選択肢が「定義の先頭のモデル＋今のモデル」になるため）と、確かめのための記録（フックの入力、イベント、`tasks.list` を `v1/debug-*.log` に書く行）。
+  - `wr-a`：統括 `claude-sonnet-5.5`、作業 `gpt-6-luna`、検証 `claude-sonnet-5.5`（既定）
+  - `wr-b`：統括 `gpt-6.1-sol`（GPT の族）、作業 `gpt-6-luna`、検証 `claude-sonnet-5.5`
+  - `wr-c`：統括 `claude-sonnet-5.5`、作業 `claude-haiku-5.5`（Claude の族）、検証 `claude-sonnet-5.5`
+- 偽物のモデルの台本（`v1/behavior.mjs`、`v1/mode.json` で切り替え）：統括が `plan → task(作業) → task(検証) → review → finish`。作業が編集のツール（Claude の族は `create`、GPT の族は `apply_patch`＝`type: "custom"`）と `bash` を呼んでから `show`。検証が `verdict`。確かめ 2 では、統括が許されないはずのツールを順に呼ぶ。起動は `--experimental --allow-all-tools`（組み立てた実行が確認で止まらないように）。`--allow-all-tools` を付けると、対話モードでも読み込みの確認が出ず、エクステンションが読み込まれた。
+
+### 9.1 通し（統括 → 作業 → 検証）： 通った（3 通りとも）
+
+| | (a) 統括 Claude・作業 GPT（既定） | (b) 統括 GPT・作業 GPT | (c) 統括 Claude・作業 Claude |
+| --- | --- | --- | --- |
+| 実行の終わり | `all_passed`（3 体とも `completed`、まとめ「1回の試行で、2つの基準を満たしました。」） | 同じ | 同じ |
+| 作業が受け取ったツール | `view, apply_patch, bash, read_bash, stop_bash, list_bash, rg, glob, weekly-report_show` | 同じ | `view, create, edit, bash, read_bash, stop_bash, list_bash, grep, glob, weekly-report_show` |
+| 作業が編集のツールと `bash` を実際に動かせたか | `apply_patch`：「Added 1 file(s): …/v1-worker.txt」。`bash`：「hi <shellId: 0 completed with exit code 0>」 | 同じ（`apply_patch`、`bash`） | `create`：「Created file … with 6 characters」。`bash`：同じ |
+| 検証が受け取ったツール | `view, grep, glob, weekly-report_verdict` | 同じ | 同じ |
+| 合否の記録 | 試行 1 の 2 基準とも合格が画面の状態に入った | 同じ | 同じ |
+
+- 統括が Claude の族で作業が GPT の族の組み合わせでも、作業は `apply_patch` を受け取れた（前回は、統括に `tools:` を書くと受け取れなかった）。不具合 1 は直っている。
+- 統括が受け取ったツール（確かめ 2 に使う）。(a)・(c)：`bash, read_bash, stop_bash, list_bash, view, create, edit, fetch_copilot_cli_documentation, skill, list_canvas_capabilities, open_canvas, invoke_canvas_action, sql, session_store_sql, read_agent, list_agents, write_agent, manage_schedule, tool_search_tool, update_todo, grep, glob, task, extensions_reload, extensions_manage, <名前>_open, _plan, _verdict, _show, _review, _issue, _finish`（32 個）。(b)：`create`・`edit`・`grep` の代わりに `apply_patch`・`rg`（31 個）。`web_fetch`・`web_search` などの Web のツールは、自前のモデルの窓口では、メインのセッションにもサブエージェントにも載らない。
+
+### 9.2 統括の許す一覧： 通った（足りないものはなかった）
+
+- 統括に許されないはずのツールを呼ばせた（`--allow-all-tools` なので、拒まれなければそのまま動く）。
+  - (a)：`create, edit, bash, update_todo, skill, sql, session_store_sql, fetch_copilot_cli_documentation, tool_search_tool, list_canvas_capabilities, open_canvas, invoke_canvas_action, manage_schedule, read_bash, stop_bash, list_bash, weekly-report_verdict, extensions_manage, extensions_reload` の 19 個すべてが拒まれた。
+  - (b)：`bash, apply_patch, update_todo, skill, sql, session_store_sql, fetch_copilot_cli_documentation, tool_search_tool, list_canvas_capabilities, open_canvas, invoke_canvas_action, manage_schedule, read_bash, stop_bash, list_bash, weekly-report_verdict, extensions_manage, extensions_reload` の 18 個すべてが拒まれた。`apply_patch`（GPT の族の `type: "custom"` のツール）も拒まれた。
+  - モデルには、どれも「Denied by preToolUse hook: 統括エージェントは、ツール「<名前>」を使えません。使えるのは、ファイルを読む・探すツール、作業エージェントと検証エージェントを呼ぶツール（task など）、記録のツール（weekly-report_plan、…）だけです。成果物を作る・直す仕事は、…」と、理由の文が届いた。拒んだあとも、統括は手順を続け、実行は `all_passed` で終わった。
+  - 拒まれた呼び出しは、`weekly-report_review` が返す「機械的に洗い出した課題」に「ツール「create」が失敗しました（統括エージェント）」のように並ぶ（設計どおり）。
+  - 確かめられなかった：Web 系（`web_fetch`、`web_search`）。この環境では、そもそもツールの一覧に載らない。一覧にないものを拒む形なので、載っても拒まれるはずだが、実機では見ていない。`<名前>_open` は呼ばせていない（一覧にないので、コードの上では拒まれる）。
+- 許されているツールが拒まれないこと：`view`、`grep`、`glob`、`list_agents`、`task`、`weekly-report_plan`・`_show`・`_issue`・`_review`・`_finish` は、統括から呼んで拒まれなかった（`view` が存在しないパスで失敗する、`_issue` が「まだ繰り返しの途中」と断る、のように、中身の理由で返った）。統括の定義の手順（`task`、`_plan`、`_review`、`_issue`、`_finish`、`_show`）で使うツールは、すべて許可の一覧に入っている。一覧が足りなくて、手順に要るのに拒まれたものは、見つからなかった。
+- **`onPreToolUse` の `toolName` は、`apply_patch` では `apply_patch` で届く。** 統括（GPT の族）の拒まれた呼び出しも、作業（GPT の族）の許された呼び出しも、`toolName: "apply_patch"`、`agentType: "weekly-report:orchestrator"`／`"weekly-report:worker"` で届き、`toolArgs` はパッチの文字列そのもの（JSON ではない）。`create` も `toolName: "create"`、`bash` も `"bash"`。
+
+### 9.3 断りの文： 通った
+
+| 場面 | モデルに届いた文 |
+| --- | --- |
+| 生成プラグイン：計画の前に検証が `_verdict`（統括が、計画の前に検証を呼ぶ台本） | 「まだ計画が記録されていません。（やり直しは、あと 3 回までです）」。その後の呼び直しは成功し、実行は `all_passed` |
+| 生成プラグイン：実行がないときに、メインのエージェントが `_show`・`_verdict`・`_plan`・`_finish` | どれも「画面とのつながりが切れたので、作業を終えてください。」 |
+| クリエイター：確認がないまま `plugin-creator_progress` で段階を「生成」に進める | 「段階を「生成」に進める前に、作る前の確認で示すものを plugin-creator_confirm で知らせて、ユーザーによいと答えてもらってください。」 |
+| クリエイター：存在しない番号 `K-99` の `plugin-creator_record` | 「仕事のやり方や決まり K-99 は見つかりません。まだありません。番号を付けずに渡すと、新しく追加されます。」 |
+| クリエイター：存在しないファイルの `plugin-creator_doc_text` | 「ファイルが見つかりません：/nonexistent/x.docx」 |
+| フックの拒み（統括） | 9.2 のとおり（「Denied by preToolUse hook: …」） |
+
+- 確かめられなかった：「止めた後の show の『作業を終えてください』」。作業の返事を遅らせて、その間に `POST /api/stop` を送った。実行は `user_stopped`（統括・作業とも `stopped`、`tasks.list` で `cancelled`、`unstopped` は空）。取り消されたエージェントの遅れた返事は捨てられ、そのあとツールは呼ばれなかった（フックも呼ばれなかった）ので、止められた実行の `STOPPED_MESSAGE`（フック）も、止まっている最中の `show` の断りも、モデルには届かなかった。この文が届くのは、取り消しがきかないエージェントが残った場合だけで、この環境では作れなかった。実行がないときの同じ形の断り（「画面とのつながりが切れたので、作業を終えてください。」）は、上の表のとおり届く。
+- `plugin-creator_issue` は、確認なしでは動かず、チャットの許可の確認が出る（設計どおり。この確かめでは許可に答えていない）。
+
+### 9.4 画面の担当の欄： 通った
+
+- 状態の `agents[].task` が、作業は「週報を書く」、検証は「週報を確かめる」（統括の `task` 呼び出しの `description`）になった（前回は `worker`・`verifier`）。(a)・(b)・(c) のすべてで同じ。統括の欄は、頼みの文を渡さなかったので空（設計では頼みの要約）。画面は `agent.task` を「担当している作業」の欄にそのまま出す（`ui/static/app.js`）。実ブラウザーの画面は見ていない。
+
+### 9.5 make-plugin を読んだときの Related files（ひな形を移した後の本物のリポジトリ）： 前回の予測どおり
+
+- 件数 **16**（`references/` 15、`scripts/` 1）、一覧 **2,311 バイト**、メッセージ全体 **20,350 バイト**（SKILL.md が 18,206 バイトに増えたため、全体は 7.1 の 19,707 より大きい）。マーケットプレイスでも `--plugin-dir` でも同じ。移す前の 97 件・17,432 バイトに比べて、一覧が 81 件・約 15KB 減った。
+- 読み込みは変わらない：`skill list` は make-plugin と test-plugin だけ、エクステンションは plugin-creator だけ（確認も 1 つ）、`task` の選択肢はクリエイターの reader と worker だけ、MCP は 0 件。
+
+### 9.6 案内のとおりに動くか： 1 点だけ合わない
+
+| README・入口のスキルの記述 | 実機 |
+| --- | --- |
+| `copilot --experimental`：一度付けると設定に残り、次からは付けなくても有効 | 合う（7.2 で確かめ済み。`settings.json` が `{"experimental": true}`） |
+| `/settings experimental on`：Copilot CLI が自動で再起動し、今の会話は終わる | 合う（「Set experimental = true. Restarting...」、再起動のあと会話は空） |
+| 再起動のあと、まだ信頼していないフォルダでは、フォルダの信頼の確認が出て、続けて読み込みの確認が出る。読み込みの確認は続けて 2 回出ることがある | 合う（信頼の確認 → 読み込みの確認が 2 回） |
+| 再起動のあとで「always allow」を選べば、2 回目は出ない（README に書かれているのは、いつでも確認が出なくなること） | 合う（1 回目に「Yes, and always allow …」を選ぶと、2 回目は出ず、`extensions_manage` の `list` に `running`） |
+| 読み込みの確認の題 `Extension "plugin:<名前>:<名前>" wants elevated permissions` と本文（クリエイター：`skip tool permission prompts, register hooks.`。生成プラグイン：`…, register hooks, handle permission requests.`）、`Denying will prevent this extension from loading.` | 合う |
+| 選択肢「Yes」「No (Esc)」 | 合う |
+| 選択肢「Yes, and always allow "…" in this directory（後ろにフォルダの場所が付きます）」 | **一部だけ合う。** フォルダが Git のリポジトリの中のとき、文は「Yes, and always allow "…" **in this repo** (<場所>)」になる（`cwd` が `git init` したフォルダのとき。それ以外のフォルダでは `in this directory (<場所>)`）。README（クリエイターとひな形の 2 つ）と入口のスキルは `in this directory` だけを書いている |
+| 選択肢「Yes, and don't ask again for "…" this session」：フォルダが分からないときに、上の選択肢の代わりに出る | 文は合う（Copilot CLI のコードにある文字列と同じ）。**出す条件は、実機では作れなかった。** 作業フォルダが Git のリポジトリのとき・ふつうのフォルダ・ホーム・`/`・`/tmp`・`/proc`・`/dev/shm` のどれでも、2 番目の選択肢が出て、この選択肢は出なかった。コードでは、Copilot CLI がフォルダの場所を解決できていない間（または解決に失敗したとき）に出る作り |
+| 読み込みの確認は、Assisted の許可を使っていても自動では許可されない | 見ていない（Assisted の許可は試していない）。なお、`--allow-all-tools` を付けた対話モードでは、読み込みの確認が出ず、エクステンションが読み込まれた |
+
+### 9.7 直す必要のあること
+
+1. **（軽）README とひな形の README、入口のスキルの「in this directory」の記述に、Git のリポジトリの中では「in this repo」と出ることを足す。** 該当：`README.md`（クリエイター）、`template/README.md`、`template/skills/_entry_/SKILL.md`（選び方の説明）。「Yes, and always allow "…" in this directory／in this repo（後ろにフォルダの場所が付きます）」のように、2 つの文をそのまま書くのが確か。
+2. （任意）「`--allow-all-tools` を付けて起動すると、読み込みの確認は出ない」を、README の注意に足すかは判断。ふつうの利用者には要らない。
+3. 上に挙げた以外に、落ちた項目はなかった。前回見つけた不具合 1（子のツールが親の範囲に絞られる）・不具合 2（断りの理由が届かない）・不具合 3（担当の欄）は、3 つとも直っていた。
