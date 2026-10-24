@@ -1,0 +1,330 @@
+// 外側の EVAL の流れ（outer-run.mjs）の試験。実際のモデルは使わない（偽物の Agent SDK）。
+// 動かし方（リポジトリの根で）：node --test "tests/dev-eval/runner/*.test.mjs"
+// 本物のクリエイターのエクステンションの記録のツールと、本物の組み立てのスクリプト（scaffold.py）は動かす。
+
+import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import test from 'node:test';
+import { fileURLToPath } from 'node:url';
+
+import { ITEMS } from '../../../com.github.copilot/extensions/plugin-creator/names.mjs';
+import { loadPersona } from '../personas/validate.mjs';
+import { createFakeSdk } from './outer-fake-sdk.mjs';
+import { conversationOf, createRecorder, findGeneratedPlugins, placePersonaFiles, runOuterOnce } from './outer-run.mjs';
+
+const here = path.dirname(fileURLToPath(import.meta.url));
+const REPO = path.resolve(here, '..', '..', '..');
+const PERSONAS = path.join(here, '..', 'personas');
+const SAMPLE_PARTS = path.join(REPO, 'tests', 'creator', 'scaffold', 'sample', 'parts');
+const SCAFFOLD = path.join(REPO, 'skills', 'make-plugin', 'scripts', 'scaffold.py');
+const tmp = (prefix) => fs.mkdtempSync(path.join(os.tmpdir(), `outer-run-${prefix}-`));
+const SETTABLE = ITEMS.filter((i) => !i.computed && !i.rebuildOnly).map((i) => i.name);
+const T = (name) => `mcp__plugin-creator__${name}`;
+
+const loadedWeekly = await loadPersona(path.join(PERSONAS, 'weekly-report'), { allStyles: true });
+
+/** 変換の代わり。置き換えた版の入れ物と変換レポートだけを作る（変換そのものは D1a の試験） */
+function fakeConvert(src, out) {
+  fs.mkdirSync(path.join(out, '.eval'), { recursive: true });
+  const report = {
+    plugin: path.basename(src),
+    model_map: { 'claude-haiku-5.5': 'claude-haiku-5-5', 'gpt-6-luna': 'claude-haiku-5-5', 'claude-sonnet-5.5': 'claude-sonnet-5-5', 'gpt-6.1-sol': 'claude-sonnet-5-5', 'claude-opus-5.5': 'claude-opus-5-5' },
+    extension_tools: ['open', 'state', 'progress', 'record', 'confirm', 'results', 'doc_text', 'issue'].map((tool) => ({ from: `plugin-creator_${tool}`, to: T(tool), server: 'plugin-creator', tool, where: 'skills/make-plugin/SKILL.md' })),
+    warnings: [],
+  };
+  fs.writeFileSync(path.join(out, '.eval', 'conversion-report.json'), JSON.stringify(report));
+  return { root: out, report, summary: { ok: true } };
+}
+
+const baseOptions = (runRoot) => ({ runRoot, sandbox: false, convert: fakeConvert, runStages: async () => ({ skipped: false, ok: true, stage1: { ok: true }, stage2: { ok: true } }) });
+
+test('REQ-037 作業フォルダに、模擬ユーザーの示すファイルが置かれ、生成プラグインは直下に plugin.json があるフォルダとして見つかる', () => {
+  const work = tmp('place');
+  placePersonaFiles(work, loadedWeekly.files);
+  for (const f of loadedWeekly.files) {
+    assert.ok(fs.existsSync(path.join(work, f.place)), f.place);
+    assert.deepEqual(fs.readFileSync(path.join(work, f.place)), fs.readFileSync(f.src));
+  }
+  assert.throws(() => placePersonaFiles(work, [{ src: loadedWeekly.files[0].src, place: '../外.docx', role: 'output' }]), /作業フォルダの外/);
+  assert.deepEqual(findGeneratedPlugins(work), []);
+  fs.mkdirSync(path.join(work, 'out', 'weekly'), { recursive: true });
+  fs.writeFileSync(path.join(work, 'out', 'weekly', 'plugin.json'), '{}');
+  fs.mkdirSync(path.join(work, '.plugin-creator-work', 'x'), { recursive: true });
+  fs.writeFileSync(path.join(work, '.plugin-creator-work', 'x', 'plugin.json'), '{}');
+  assert.deepEqual(findGeneratedPlugins(work), [path.join(work, 'out', 'weekly')]);
+  fs.rmSync(work, { recursive: true, force: true });
+});
+
+test('REQ-037 会話の全文の組み立て：クリエイターの発言（質問を含む）とユーザー役の答えが、順に全文で残る', () => {
+  const r = createRecorder();
+  r.add('user.request', { text: '作ってください' });
+  r.add('creator.text', { text: 'はじめに説明します。'.repeat(100), turn: 1 });
+  r.add('creator.question', { header: '成果物', question: '成果物は？', options: [{ label: 'A', description: 'a' }], multiSelect: false });
+  r.add('user.answer', { index: 0, via: 'AskUserQuestion', question: '成果物は？', answer: 'weekly_report.md', signal: false });
+  r.add('creator.question-text', { text: '重複させない', turn: 1 });
+  r.add('tool.use', { name: 'Bash', input: {} });
+  const c = conversationOf(r.items);
+  assert.deepEqual(c.map((x) => [x.role, x.via]), [['user', 'request'], ['creator', 'text'], ['creator', 'AskUserQuestion'], ['user', 'AskUserQuestion']]);
+  assert.equal(c[1].text.length, 'はじめに説明します。'.length * 100, '文章の発言は切らない（試作は最後の 300 文字だけだった）');
+  assert.deepEqual(c[2].options, [{ label: 'A', description: 'a' }]);
+});
+
+test('REQ-015 流れ：質問のツールにも、文章の問いにも、ユーザー役が答える。続きの会話に答えが渡り、問答が qa.jsonl に残る', async () => {
+  const runRoot = tmp('flow');
+  const prompts = [];
+  const sdk = createFakeSdk({
+    userRole: ({ prompt }) => (prompt.includes('成果物') ? '成果物は weekly_report.md です' : '特に決まっていません'),
+    agent: async (ctx) => {
+      prompts.push(ctx.prompt);
+      if (ctx.turn === 1) {
+        await ctx.say('お話を聞かせてください。');
+        const answers = await ctx.ask([{ question: '成果物は何ですか？', header: '成果物', options: [{ label: 'Markdown', description: 'md' }, { label: 'Word', description: 'docx' }], multiSelect: false }]);
+        assert.equal(answers['成果物は何ですか？'], '成果物は weekly_report.md です');
+        const r = await ctx.tool(T('progress'), { items: SETTABLE.map((item) => ({ item, status: '聞いた', quote: '成果物は weekly_report.md です' })) });
+        assert.equal(r.isError, false, r.text);
+        return 'ほかに伝えたいことはありますか？';
+      }
+      await ctx.say('分かりました。');
+      return '終わりました。';
+    },
+  });
+  const record = await runOuterOnce({ ...baseOptions(runRoot), loaded: loadedWeekly, query: sdk.query, maxExchanges: 2, model: 'claude-opus-5-5' });
+
+  assert.equal(record.stopped.reason, 'max_exchanges');
+  assert.equal(record.exchanges, 2);
+  // 2 回目の query は、同じセッションの続きで、ユーザー役の答えを渡す
+  const agentCalls = sdk.calls.filter((c) => c.kind === 'agent');
+  assert.equal(agentCalls.length, 2);
+  assert.equal(agentCalls[0].options.resume, undefined);
+  assert.equal(agentCalls[1].options.resume, agentCalls[0].sessionId);
+  assert.equal(prompts[0], loadedWeekly.persona.request);
+  assert.equal(prompts[1], '特に決まっていません');
+  // 隔離：クリエイターのモデルは ID、ユーザー設定は読まない、置き換えた版だけを読み込む、MCP サーバーを渡す
+  const o = agentCalls[0].options;
+  assert.equal(o.model, 'claude-opus-5-5');
+  assert.deepEqual(o.settingSources, []);
+  assert.equal(o.plugins.length, 1);
+  assert.ok(o.plugins[0].path.endsWith('/plugin-creator') || o.plugins[0].path.includes('converted'));
+  assert.ok(Object.keys(o.mcpServers).includes('plugin-creator'));
+  assert.ok(o.allowedTools.includes('mcp__plugin-creator__progress'));
+  assert.equal(o.env.CLAUDE_CODE_DISABLE_BACKGROUND_TASKS, '1');
+  assert.equal(o.sandbox, undefined, 'sandbox: false のときは付けない');
+  assert.equal(o.env.HOME.includes('agent-home'), true);
+  // 会話の全文
+  assert.deepEqual(record.conversation.map((c) => `${c.role}:${c.via}`), ['user:request', 'creator:text', 'creator:AskUserQuestion', 'user:AskUserQuestion', 'creator:text', 'user:text', 'creator:text']);
+  assert.equal(record.conversation[2].question, '成果物は何ですか？');
+  assert.equal(record.conversation[5].text, '特に決まっていません');
+  // 問答の記録（qa.jsonl）：質問のツールの問答と、文章の問いへの返事。記録ができた後の分だけ（本物のフックと同じ）
+  assert.deepEqual(record.qa.map((e) => e.type), ['user_prompt']);
+  assert.equal(record.qa[0].text, '特に決まっていません');
+  // 全項目の記録は、答えの中の抜き書きで通る
+  const heard = record.grading.grades.find((g) => g.id === 'all-items-heard');
+  assert.equal(heard.ok, true, heard.detail);
+  assert.equal(record.grading.grades.find((g) => g.id === 'one-plugin-generated').ok, false);
+  assert.ok(fs.existsSync(record.recordFile));
+  assert.equal(JSON.parse(fs.readFileSync(record.recordFile, 'utf8')).schema, 'outer-record/1');
+  assert.ok(fs.existsSync(path.join(record.dirs.work, '資料', '先週の週報.docx')));
+  assert.ok(record.costUsd.userRole > 0);
+  fs.rmSync(runRoot, { recursive: true, force: true });
+});
+
+test('REQ-015 流れ：質問のツールの問答は、ヒアリングの記録ができた後に qa.jsonl に残る', async () => {
+  const runRoot = tmp('qa');
+  const sdk = createFakeSdk({
+    userRole: () => '月曜に集計します',
+    agent: async (ctx) => {
+      await ctx.tool(T('progress'), { stage: '始まり' });
+      await ctx.ask([{ question: '進め方は？', header: '進め方', options: [{ label: 'A', description: '' }, { label: 'B', description: '' }] }]);
+      return '以上です';
+    },
+  });
+  const record = await runOuterOnce({ ...baseOptions(runRoot), loaded: loadedWeekly, query: sdk.query, maxExchanges: 1 });
+  assert.deepEqual(record.qa.map((e) => e.type), ['ask_user']);
+  assert.equal(record.qa[0].question.message, '進め方は？');
+  assert.equal(record.qa[0].answer, 'User responded: 月曜に集計します');
+  fs.rmSync(runRoot, { recursive: true, force: true });
+});
+
+test('REQ-015 話し方 hurry：合図が足され、位置が記録に残る', async () => {
+  const runRoot = tmp('hurry');
+  const sdk = createFakeSdk({
+    userRole: () => '短い答え',
+    agent: async (ctx) => {
+      await ctx.tool(T('progress'), { stage: '始まり' });
+      for (let i = 0; i < 8; i += 1) await ctx.ask([{ question: `問い${i}`, header: 'h', options: [{ label: 'A', description: '' }, { label: 'B', description: '' }] }]);
+      return 'おわり';
+    },
+  });
+  const record = await runOuterOnce({ ...baseOptions(runRoot), loaded: loadedWeekly, query: sdk.query, styleName: 'hurry', maxExchanges: 1 });
+  const n = loadedWeekly.persona.styles.hurry.signal.afterAnswers;
+  assert.equal(record.userRole.signals.length, 1);
+  assert.equal(record.userRole.signals[0].answerIndex, n);
+  assert.equal(record.style, 'hurry');
+  const answerItem = record.items.find((i) => i.kind === 'user.answer' && i.index === n);
+  assert.equal(answerItem.signal, true);
+  assert.ok(answerItem.answer.endsWith(loadedWeekly.persona.styles.hurry.signal.text));
+  // 合図の後に進め方の問いがないので、この観点は不合格
+  assert.equal(record.grading.grades.find((g) => g.id === 'hurry-options').ok, false);
+  fs.rmSync(runRoot, { recursive: true, force: true });
+});
+
+test('REQ-015 流れ：利用枠の上限のエラーで止まったら、理由 usage_limit で終わる。ほかの失敗は、その種類で終わる', async () => {
+  const runRoot = tmp('limit');
+  const limited = createFakeSdk({ agent: async () => { throw new Error("You've hit your session limit. Resets at 3pm"); }, userRole: () => 'x' });
+  const r1 = await runOuterOnce({ ...baseOptions(runRoot), loaded: loadedWeekly, query: limited.query });
+  assert.equal(r1.stopped.reason, 'usage_limit');
+  const failing = createFakeSdk({ agent: async () => { throw new Error('boom'); }, userRole: () => 'x' });
+  const r2 = await runOuterOnce({ ...baseOptions(runRoot), loaded: loadedWeekly, query: failing.query });
+  assert.equal(r2.stopped.reason, 'error_during_execution');
+  fs.rmSync(runRoot, { recursive: true, force: true });
+});
+
+test('REQ-015 サンドボックスの道具がなければ、始めずに断る（黙って外で動かさない）', async () => {
+  const runRoot = tmp('sandbox');
+  await assert.rejects(
+    () => runOuterOnce({ ...baseOptions(runRoot), sandbox: true, sandboxCheck: () => ({ available: false, missing: ['bwrap', 'socat'] }), loaded: loadedWeekly, query: createFakeSdk({ agent: async () => 'x', userRole: () => 'x' }).query }),
+    /bwrap、socat/,
+  );
+  fs.rmSync(runRoot, { recursive: true, force: true });
+});
+
+test('REQ-015 置き換えた版が使うエクステンションのツールを、EVAL の仕組みが出していなければ、始めずに断る', async () => {
+  const runRoot = tmp('mismatch');
+  const convert = (src, out) => {
+    const r = fakeConvert(src, out);
+    r.report.extension_tools.push({ server: 'plugin-creator', tool: 'unknown_tool' });
+    fs.writeFileSync(path.join(out, '.eval', 'conversion-report.json'), JSON.stringify(r.report));
+    return r;
+  };
+  await assert.rejects(() => runOuterOnce({ ...baseOptions(runRoot), convert, loaded: loadedWeekly, query: createFakeSdk({ agent: async () => 'x', userRole: () => 'x' }).query }), /plugin-creator\/unknown_tool/);
+  fs.rmSync(runRoot, { recursive: true, force: true });
+});
+
+// ---- 本物の記録のツールと本物の組み立てのスクリプトで、生成までたどる -----------------------------------------------
+
+/** 見本の parts を、この会話で記録した 4 つのナレッジ（K-01〜K-04）に合わせて写す */
+function copySampleParts(workDir) {
+  const to = path.join(workDir, '.plugin-creator-work', 'parts');
+  fs.cpSync(SAMPLE_PARTS, to, { recursive: true });
+  const worker = path.join(to, 'slots', 'worker-task.worker.md');
+  fs.writeFileSync(worker, `${fs.readFileSync(worker, 'utf8').replace('K-06', 'K-04')}\n- 成果物は weekly_report.md（K-02）。\n`);
+}
+
+test('REQ-020 生成までたどる：本物の記録のツールで承認まで進め、承認の後に本物の組み立てのスクリプトで作ると、生成で止まり、採点が通る', async () => {
+  const runRoot = tmp('e2e');
+  const persona = JSON.parse(JSON.stringify(loadedWeekly.persona));
+  persona.files = [];
+  persona.knowledge = persona.knowledge.filter((k) => k.id === 'output');
+  const loaded = { ...loadedWeekly, persona, files: [] };
+  const answers = [];
+  let statePath;
+  const sdk = createFakeSdk({
+    userRole: ({ prompt }) => {
+      const a = prompt.includes('作ってよいですか') ? '作ってください' : '成果物は weekly_report.md です';
+      answers.push(a);
+      return a;
+    },
+    agent: async (ctx) => {
+      const work = ctx.options.cwd;
+      await ctx.say('お話を聞きます。');
+      await ctx.ask([{ question: '成果物と、週報に書くことを教えてください', header: '成果物', options: [{ label: 'A', description: '' }, { label: 'B', description: '' }] }]);
+      await ctx.tool(T('progress'), { stage: '始まり' });
+      await ctx.tool(T('progress'), { items: SETTABLE.map((item) => ({ item, status: '聞いた', quote: '成果物は weekly_report.md です' })) });
+      const k = (kind, item, text) => ({ kind, item, text, source: 'ヒアリングの答え', quote: '成果物は weekly_report.md です', status: '決まった' });
+      const rec = await ctx.tool(T('record'), {
+        knowledge: [
+          k('合否の決め方', '合否の決め方', '成果物は weekly_report.md で、見出し「今週やったこと」があれば合格とする。'),
+          k('それ以外', '決まった書き方やルール', '宛先は部長。です・ます調の敬語で書く。'),
+          k('合否の決め方', '決まった書き方やルール', '数字は半角で書く（例：3件）。'),
+          k('それ以外', '守らないと困ること', '社外の人の名前は書かない。'),
+        ],
+      });
+      assert.equal(rec.isError, false, rec.text);
+      // 作業の定義の案（承認の前に書いてよい唯一のファイル）
+      const draft = path.join(work, '.plugin-creator-work', 'draft', 'task.json');
+      await ctx.tool('Write', { file_path: draft, content: '{}' }, {
+        run: () => {
+          fs.mkdirSync(path.dirname(draft), { recursive: true });
+          fs.copyFileSync(path.join(SAMPLE_PARTS, 'task.json'), draft);
+          return 'ok';
+        },
+      });
+      const conf = await ctx.tool(T('confirm'), {
+        knowledgeIds: ['K-01', 'K-02', 'K-03', 'K-04'],
+        behavior: '週報を作る。',
+        taskPath: '.plugin-creator-work/draft/task.json',
+        evalTasks: [{ prompt: '週報を作ってください。', inputs: [{ path: 'inputs/memo.txt', provisional: true }], criteria: ['K-01', 'K-03'] }],
+      });
+      assert.equal(conf.isError, false, conf.text);
+      await ctx.ask([{ question: 'この内容で作ってよいですか？', header: '承認', options: [{ label: '作る', description: '' }, { label: '直す', description: '' }] }]);
+      const gen = await ctx.tool(T('progress'), { stage: '生成', approvalQuote: '作ってください' });
+      assert.equal(gen.isError, false, gen.text);
+      statePath = path.join(ctx.options.env.HOME, '..', 'copilot-home');
+      await ctx.tool('Bash', { command: `python3 -I ${SCAFFOLD} build --hearing STATE --work ${work}/.plugin-creator-work --out ${work}/weekly-report` }, {
+        run: () => {
+          copySampleParts(work);
+          const state = findState(path.join(ctx.options.env.HOME, '..', 'copilot-home'));
+          const r = spawnSync('python3', ['-I', SCAFFOLD, 'build', '--hearing', state, '--work', path.join(work, '.plugin-creator-work'), '--out', path.join(work, 'weekly-report')], { encoding: 'utf8', cwd: work });
+          if (r.status !== 0) throw new Error(`組み立てに失敗しました：${r.stdout}${r.stderr}`);
+          return r.stdout.slice(0, 200);
+        },
+      });
+      return '作りました。';
+    },
+  });
+  const record = await runOuterOnce({ ...baseOptions(runRoot), loaded, query: sdk.query, model: 'claude-opus-5-5' });
+  assert.equal(record.stopped.reason, 'generated', JSON.stringify(record.stopped));
+  assert.equal(record.exchanges, 0, '1 回の手番で生成まで進んだので、文章の返事は返さない');
+  assert.deepEqual(record.generated.plugins, ['weekly-report']);
+  assert.equal(record.state.stage, 'generate');
+  assert.ok(record.state.approvedAt);
+  const byId = Object.fromEntries(record.grading.grades.map((g) => [g.id, g]));
+  assert.equal(byId['all-items-heard'].ok, true, byId['all-items-heard'].detail);
+  assert.equal(byId['no-generation-before-approval'].ok, true, byId['no-generation-before-approval'].detail);
+  assert.equal(byId['one-plugin-generated'].ok, true);
+  assert.equal(byId['embedded:output'].ok, true, byId['embedded:output'].detail);
+  assert.equal(byId['task:output'].ok, true, byId['task:output'].detail);
+  assert.equal(record.grading.verdict.ok, true, JSON.stringify(record.grading.verdict));
+  assert.equal(record.grading.exampleCandidate, true);
+  // 記録のツールの呼び出しは、順番つきで残る。承認の記録は、組み立ての前
+  const approval = record.toolEvents.find((e) => e.type === 'tool.call' && e.args?.stage === '生成');
+  const build = record.items.find((i) => i.kind === 'tool.use' && i.name === 'Bash');
+  assert.ok(approval.seq < build.seq);
+  assert.ok(statePath);
+  fs.rmSync(runRoot, { recursive: true, force: true });
+});
+
+function findState(copilotHome) {
+  const base = path.join(copilotHome, 'plugin-data', 'plugin-creator', 'hearings');
+  const dir = fs.readdirSync(base)[0];
+  return path.join(base, dir, 'state.json');
+}
+
+test('REQ-020 承認の前に組み立てのスクリプトが動いた会話は、採点で不合格になる', async () => {
+  const runRoot = tmp('early');
+  const sdk = createFakeSdk({
+    userRole: () => 'はい',
+    agent: async (ctx) => {
+      await ctx.tool('Bash', { command: 'python3 -I /x/scaffold.py build --out o' }, { run: () => 'ok' });
+      return '作りました';
+    },
+  });
+  const record = await runOuterOnce({ ...baseOptions(runRoot), loaded: loadedWeekly, query: sdk.query, maxExchanges: 1 });
+  assert.equal(record.grading.grades.find((g) => g.id === 'no-generation-before-approval').ok, false);
+  fs.rmSync(runRoot, { recursive: true, force: true });
+});
+
+test('REQ-015 プラグインなしの腕：何も読み込まず、エクステンションのツールも渡さない', async () => {
+  const runRoot = tmp('without');
+  const sdk = createFakeSdk({ userRole: () => 'x', agent: async () => '作れません' });
+  const record = await runOuterOnce({ ...baseOptions(runRoot), loaded: loadedWeekly, query: sdk.query, arm: 'without', maxExchanges: 1 });
+  const o = sdk.calls.find((c) => c.kind === 'agent').options;
+  assert.deepEqual(o.plugins, []);
+  assert.equal(o.mcpServers, undefined);
+  assert.equal(record.creator.converted, null);
+  assert.ok(!record.grading.grades.some((g) => g.id === 'all-items-heard'));
+  fs.rmSync(runRoot, { recursive: true, force: true });
+});

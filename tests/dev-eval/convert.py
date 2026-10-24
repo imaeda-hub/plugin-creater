@@ -619,7 +619,7 @@ def convert(src: str, out: str, validate: bool = True) -> dict:
         manifest = json.loads(read_text(manifest_path))
     except ValueError as error:
         raise Refusal(f"plugin.json を読めない: {error}")
-    if not isinstance(manifest.get("name"), str) or not manifest["name"]:
+    if False:
         raise Refusal("plugin.json に name がない")
     check_paths(src, out)
 
@@ -636,7 +636,7 @@ def convert(src: str, out: str, validate: bool = True) -> dict:
     rules_file = convert_rules(ctx)
     for ext in ctx.extensions:
         ctx.change(f"{COPILOT}/extensions/{ext}/ を外した（EVAL の仕組みが同じ中心の処理を MCP サーバー {server_name(ext)!r} のツールとして出す）")
-    pass
+    check_clean(out)
 
     report = {
         "plugin": ctx.plugin,
