@@ -1,6 +1,6 @@
 # V1 本物の Copilot CLI での読み込みの確かめ（偽物のモデルで）
 
-状態：完了（1〜6 の節まで書いた）
+状態：完了（1〜7 の節まで書いた。7 節は 2026-10-24 の追加の確かめ）
 
 担当の指示：`wip/implementation/briefs/V1.md`。作業のメモ：`wip/implementation/tasks/V1.md`。
 リポジトリのファイルは変えていない。スクリプトと結果の生データはスクラッチ（`/tmp/claude-0/-home-user-plugin-creater/f6e65e0d-9c94-5351-8ee1-475927b3b43e/scratchpad/v1/`、以下 `v1/`）にある。
@@ -191,3 +191,65 @@
 9. 偽物のモデルの確かめの限界：自前のモデルの窓口（BYOK）の経路だけを見ている。ツールの名前の族（`rg`・`apply_patch`）の分かれ方は、モデルの名前で決まるので、本物のモデルでも同じ見込みだが、確かめていない。
 10. 作業の途中で、`COPILOT_HOME` に空の変数を渡して、ファイルシステムの根に `/home-gen-a/`（Copilot CLI の設定とログ、約 600KB）ができてしまった。消そうとしたが、安全の検査に止められたので、残っている。中身はこの確かめのものだけで、消してよい。
 11. 作業のはじめに、写しのフォルダの `git status` を見て、`tests/dev-eval/heldout/h1/` の 3 つのファイル名（`NOTES.md`、`files/a.docx`、`files/b.xlsx`）が出力に出てしまった（読まない決まりの「ファイルの一覧を見ること」に当たる）。中身は読んでいない。以後は `heldout` を写さず、写しで `git init` し直して見ていない。
+
+## 7. 追加の確かめ（2026-10-24）
+
+統括の依頼で、リポジトリのファイルを変えずに、スクラッチの写しで確かめた。Copilot CLI 1.0.102、偽物のモデル、1 節と同じ道具（`v1/`）。`COPILOT_HOME` は、`v1/home-*` の絶対パスだけを受け付ける関数（`sethome`。空の変数や `v1/` の外を断る）で必ず渡した。
+
+### 7.1 ひな形（`skills/make-plugin/assets/template/`）をクリエイターの直下の `template/` に移してよいか
+
+#### やったこと
+
+1. `git fetch` で、ローカルのブランチが `origin/claude/multi-agent-implementation-rules-7pfoww` と同じ（遅れなし）ことを確かめた。
+2. 今の作業ツリーを、`tests/dev-eval/heldout/`・`.git`・`node_modules`・`__pycache__`・`*.mutbak` を除いて、2 つ写した。`v1/cp-before/`（今の配置）、`v1/cp-after/`（`skills/make-plugin/assets/template/` を `template/` に移しただけ。スクリプトの参照は直していない）。
+3. 2 つを、それぞれ「手元のフォルダのマーケットプレイス」（`marketplace add` → `install plugin-creator@plugin-creator`）と `--plugin-dir` で動かし、`plugin list --json`、`marketplace list`・`browse`、`skill list --json`、対話モード（`--experimental`）での読み込みの確認、`extensions_manage` の `list`、メインの `task` の `agent_type` の選択肢、`<available_skills>`、「MCP Servers reloaded: N server(s) connected」の行を見た。`/plugin-creator:make-plugin 週報を自動化したい` を実行して、偽物のモデルに届いた「Related files」を測った（`v1/chk.sh`）。
+4. 読み込まれないことの確かめを強めるため、`cp-after` に「見つかったら分かる」ファイルを `template/` の中に足した写し 2 つを作った。`cp-canary`：`.mcp.json`・`mcp.json`・`.github/mcp.json`（MCP）、`.github/agents/*.agent.md`・`agents/*.agent.md`、`.github/skills/*/SKILL.md`・`skills/*/SKILL.md`、`hooks/hooks.json`、`AGENTS.md`。`cp-canary2`：本物に動く最小の MCP サーバー（`v1/mini-mcp.mjs`）を指す `template/mcp.json`（Agent Plugins の形）・`template/.mcp.json`・`template/.github/mcp.json`（以前の形）。陽性対照として、`cp-mcp`（同じ MCP サーバーをクリエイターの直下の `mcp.json` に置いたもの）も動かした。
+
+#### 結果
+
+| 確かめること | 移す前（`cp-before`） | 移した後（`cp-after`） |
+| --- | --- | --- |
+| `skill list --json`（組み込みを除く）。マーケットプレイスでも `--plugin-dir` でも | `make-plugin`、`test-plugin` だけ | 同じ。ひな形の `skills/_entry_/` は出ない |
+| `plugin list --json` | マーケットプレイス：`plugin-creator`（`live`）だけ。`--plugin-dir`：`plugin-creator`（`external`）だけ | 同じ |
+| `marketplace list` と `browse plugin-creator` | 登録は `plugin-creator` 1 つ、プラグインも `plugin-creator` 1 つ。ひな形の `.github/plugin/marketplace.json` や `plugin.json` は読まれない | 同じ |
+| `--experimental` で読み込まれるエクステンション | `plugin-creator:plugin-creator` だけ（`extensions_manage` の `list`：「Discovered extensions (1)」）。ひな形の `_plugin_` は読み込まれない | 同じ |
+| 読み込みの確認の画面 | 1 つだけ（題：`Extension "plugin:plugin-creator:plugin-creator" wants elevated permissions`）。2 つ目は 8 秒待っても出ない | 同じ |
+| メインの `task` の `agent_type` の選択肢 | `explore, task, general-purpose, code-review, research, security-review, plugin-creator:reader, plugin-creator:worker` | 同じ。ひな形の統括・作業・検証は出ない |
+| `<available_skills>` | `make-plugin`、`test-plugin`（と組み込みの 2 つ）。ひな形の入口のスキルは出ない | 同じ |
+| MCP | 「MCP Servers reloaded: 0 servers connected」 | 同じ |
+| **make-plugin を読んだときの「Related files」** | **97 件**（`assets/template/` 81、`references/` 15、`scripts/` 1）、一覧 **17,432 バイト**、メッセージ全体 **34,797 バイト** | **16 件**（`references/` 15、`scripts/` 1）、一覧 **2,343 バイト**、メッセージ全体 **19,707 バイト** |
+
+- 「Related files」の減り：81 件、一覧 15,089 バイト、メッセージ全体 15,090 バイト（約 43%）。マーケットプレイスでも `--plugin-dir` でも同じ数だった。この環境のパスは長く（1 行あたり約 180 バイト）、実際のインストール先のパスはもっと短いので、バイト数の減りはこれより小さい。件数の減り（81 件）は、パスの長さに依らない。
+- **`template/` は、何としても読み込まれなかった。** `cp-canary`（`template/` の中の MCP の設定 3 つ、エージェント 2 つ、スキル 2 つ、フック、`AGENTS.md`）でも、`cp-canary2`（本物に動く MCP サーバーを指す `template/mcp.json`・`.mcp.json`・`.github/mcp.json`）でも、`skill list`、`task` の選択肢、エクステンションの一覧、MCP の行、`plugin list` は `cp-after` と同じで、足したものは 1 つも現れなかった（`cp-canary2` のリクエストに `v1-` で始まるツールは 0 件）。ほかの名前の候補（`assets/` の下など）を試す必要はなかった。
+- 陽性対照：クリエイターの直下に `mcp.json`（`$schema` つき、`type: "stdio"`、`${PLUGIN_ROOT}/mini-mcp.mjs`）を置いた写しでは、「MCP Servers reloaded: 1 server connected」と出て、ツール `v1-root-mcp-v1_ping` がモデルに届いた。つまり、上の読み込みの見分け方は働いている。なお、`copilot mcp list --json` はプラグインの MCP サーバーを出さない（この陽性対照でも `{"mcpServers": {}}`）。プラグインの MCP は、起動した画面の「MCP Servers reloaded: N server(s) connected」の行と、モデルに届くツールの一覧で見る。
+- 移す前の配置でも、ひな形は何としても読み込まれていなかった。移しても読み込みの結果は変わらず、変わるのは「Related files」だけである。
+
+#### 結論
+
+`template/` を直下に移してよい。読み込みに影響はなく（ひな形の入口のスキル、エージェント、エクステンション、MCP、`plugin.json`、`marketplace.json` のどれも、クリエイターの設定として読まれない）、make-plugin を読むたびに届く「Related files」が 97 件から 16 件になり、メッセージが約 15KB（約 4 割）減る。移すと、`skills/make-plugin/assets/template` を指している次の場所を直す必要がある（この確かめでは直していない。`grep` で見つけたもの）：`com.github.copilot/extensions/plugin-creator/screen.mjs`、`skills/make-plugin/SKILL.md`、`skills/make-plugin/references/confirm.md`・`generate.md`、`skills/make-plugin/scripts/scaffold.py`（`DEFAULT_TEMPLATE`）、`tests/creator/check_creator.py`、`tests/creator/extension/helpers.mjs`、`tests/creator/scaffold/test_scaffold.py`、`tests/creator/test-plugin/helpers.mjs`・`test_run_tools.py`、`tests/dev-eval/convert.py`（`assets/` を置き換えない決まり）・`test_convert.py`。ほかに、設計書（creator-structure.md など）と README の配置の説明がある。
+
+### 7.2 `/experimental` が非推奨なので、案内を直すための確かめ
+
+#### やったこと
+
+`v1/home-set-*`・`home-flag2` の空の `COPILOT_HOME` で、対話モードの `/settings`、`/settings experimental on`、`/settings experimental off`、`copilot --experimental`、`copilot --no-experimental` を動かし、画面の文、`settings.json`、再起動、エクステンションの確認、そのあとの起動での有効・無効を見た。
+
+#### 結果
+
+| 確かめること | 結果 |
+| --- | --- |
+| `/settings`（引数なし） | 設定の画面が開く。題「Settings」、タブ「[User]  Repo  Repo (local)  Problems」、「Configure your Copilot CLI preferences.」、見出し「General」の下に設定が 178 件（「Allowed URLs  (default)」「Ask user」…「Experimental  (default)」…）。下の説明：「1 of 178」「allowedUrls · URLs or domains allowed without prompting. (list of strings)」「/ search · ↑/↓ navigate · tab switch scope · enter edit · ctrl+r reset · ctrl+e editor · esc close」。`/` で検索できる |
+| `/settings experimental`（`on` なし） | 同じ画面が開き、カーソルが「Experimental」に合う（「33 of 178」「experimental · Enable experimental features. (boolean)」「enter toggle」）。画面を開いたまま `/settings experimental on` と打つと、検索の欄に入ってしまい、「No settings match」になる |
+| **`/settings experimental on`**（チャットの入力から） | 動く。チャットに「**Set experimental = true. Restarting...**」と出て、Copilot CLI がすぐ再起動する（`COPILOT_HOME` に `restart` というファイルができる）。再起動のあと、ロゴの横に「/experimental」と出る。フォルダの信頼の確認がもう一度出る（そのフォルダを覚えさせていないとき）。続いて、エクステンションの読み込みの確認が出る（題・本文・選択肢は 2 節と同じ）。**この確認は、再起動のあと続けて 2 回出た**（1 回目に Yes と答えても、同じ確認がもう一度出て、2 回目に答えると読み込まれる。Copilot CLI のログに「Session changed (A → B), reloading extensions」があり、再起動のあとでセッションが切り替わるため）。`settings.json` は、なければ作られ、`{ "experimental": true }` だけが書かれる。答えたあと、`extensions_manage` の `list` に `plugin-creator:plugin-creator — running` が出た |
+| `/settings experimental off` | 「Set experimental = false. Restarting...」と出て再起動し、`settings.json` は `{ "experimental": false }` になる |
+| `copilot --experimental` で一度起動したあと、付けずに起動 | **有効のまま。** 空の `COPILOT_HOME` で、`--experimental` で起動 → 確認に答えて読み込まれる → 終了 → 付けずに起動 → 読み込みの確認が出て、読み込まれた（`extensions_manage` の `list` に `running`）。`settings.json` は `{ "experimental": true }`（`-p --experimental` でも同じ）。前回の確かめのとおり |
+| `copilot --no-experimental` | その起動はエクステンションが読み込まれず（確認も出ない）、`settings.json` が `{ "experimental": false }` になり、そのあと付けずに起動しても無効のまま。`--experimental` と同じく、設定に残る |
+| `/experimental on`（前の確かめ） | 動く（再起動し、`settings.json` に `"experimental": true`）が、`copilot help config` が「`/experimental` (deprecated)」と書く。`copilot help config` は、有効にする方法として「Can be enabled with --experimental flag, /settings experimental on, or /experimental (deprecated)」を挙げる |
+
+#### 見立て（利用者への案内の書き方）
+
+- **`copilot --experimental` を第一にするのが、確かで短い。** 理由：（1）起動の引数を 1 つ足すだけで、再起動もやり直しもない。（2）一度付けると `settings.json` に残り、次からは付けなくても有効になる（実機で 2 回確かめた。ただし公式の説明に「残る」とは書かれていない。`copilot help config` が書くのは「Can be enabled with --experimental flag」まで）。（3）`-p` でも同じ。（4）`/settings experimental on` は、再起動のたびにフォルダの信頼の確認とエクステンションの確認（2 回続くことがある）が出て、手数が多い。
+- 起動してしまったあとで切り替えるときは、`/settings experimental on`（Copilot CLI が自動で再起動する）。公式の `copilot help config` にある書き方で、非推奨の `/experimental on` より確か。再起動で今の会話は終わるので、「有効にしたら、Copilot CLI を起動し直します」とは書かず、「自動で再起動します」と書く。
+- 案内の文の例：「Copilot CLI を `copilot --experimental` で起動します（一度付けると設定に残るので、次からは付けなくても有効です）。すでに起動しているときは、チャットで `/settings experimental on` と打つと、自動で再起動して有効になります。」
+- 再起動のあとは、読み込みの確認が続けて 2 回出ることがある、と添えるとよい（README の「この確認が 2 回出ることがあります」の記述と合う）。「always allow」を選べば、2 回目は出ない見込み（この再起動の流れでは確かめていない）。
+- 無効に戻すときは `/settings experimental off` か `copilot --no-experimental`（どちらも設定に残る）。
