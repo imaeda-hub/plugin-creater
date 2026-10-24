@@ -9,14 +9,14 @@ plugin-creator は、GitHub Copilot CLI のプラグインです。チャット�
 このリポジトリをマーケットプレイス（プラグインの一覧を配る場所）として登録してから、プラグインを入れます。
 
 ```shell
-copilot plugin marketplace add imaeda-hub/plugin-creator
+copilot plugin marketplace add xclang-brain/plugin-creator
 copilot plugin install plugin-creator@plugin-creator
 ```
 
 `plugin-creator@plugin-creator` は、@ の前がプラグインの名前、後ろがマーケットプレイスの名前です。
 
-- Copilot CLI の中では、`/plugin marketplace add imaeda-hub/plugin-creator` と `/plugin install plugin-creator@plugin-creator` でも入れられます。
-- GitHub からダウンロードしたフォルダから入れるときは、1行目の `imaeda-hub/plugin-creator` の代わりに、そのフォルダの場所（`/` や `~` から始まる絶対パス）を書きます。
+- Copilot CLI の中では、`/plugin marketplace add xclang-brain/plugin-creator` と `/plugin install plugin-creator@plugin-creator` でも入れられます。
+- GitHub からダウンロードしたフォルダから入れるときは、1行目の `xclang-brain/plugin-creator` の代わりに、そのフォルダの場所（`/` や `~` から始まる絶対パス）を書きます。
 - フォルダを直接指定する入れ方（`copilot plugin install ./フォルダ`）は、Copilot CLI 1.0.102 が「廃止予定」と表示するので、マーケットプレイスを通す入れ方にしています。
 
 ## 使うための準備

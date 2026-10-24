@@ -67,4 +67,4 @@
 
 ## 9. 生成プラグインの登録
 
-- クリエイターで作った生成プラグインは、手作業で https://github.com/imaeda-hub/plugin-market-place に登録する。
+- クリエイターで作った生成プラグインは、手作業で https://github.com/xclang-brain/plugin-market-place に登録する。
