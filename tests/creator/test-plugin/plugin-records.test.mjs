@@ -107,6 +107,8 @@ describe('記録の一覧と最初の行', () => {
     assert.equal(isRecordOfRun(begin(), { workDir: work, sessionId: undefined }), false, 'こちらがセッションの番号を知らなければ、確かめられない');
     assert.equal(isRecordOfRun(begin(), { workDir: '', sessionId: 'session-1' }), false);
     assert.equal(isRecordOfRun(begin({ cwd: '', sessionId: '' }), { workDir: '', sessionId: '' }), false, '空どうしで合ったことにしない');
+    assert.equal(isRecordOfRun({ t: 'begin', cwd: work }, { workDir: work, sessionId: undefined }), false, 'どちらにもセッションの番号がないときは、合ったことにしない');
+    assert.equal(isRecordOfRun({ t: 'begin', cwd: work, sessionId: '' }, { workDir: work, sessionId: '' }), false, 'セッションの番号が空どうしでも、合ったことにしない');
   });
 
   test('REQ-041 作業フォルダは、シンボリックリンクを通した書き方でも、同じフォルダなら合う', () => {
