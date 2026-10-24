@@ -28,7 +28,7 @@ describe('エージェントのイベント（REQ-008）', () => {
     const { p, seen } = await spy();
     const event = sdkEvent.subagentStarted(
       'ag-1',
-      { agentName: 'orchestrator', agentType: 'orchestrator', agentDescription: '計画する', model: 'claude-opus-5-5', executionMode: 'background', parentId: 'ag-0' },
+      { agentName: 'worker', agentType: 'worker', agentDisplayName: '週報の下書きを書く', agentDescription: '作業エージェントの定義の説明', model: 'claude-opus-5-5', executionMode: 'sync', parentId: 'ag-0' },
       { timestamp: iso(5) },
     );
     event.parentId = 'ev-1つ前のイベント'; // イベントの鎖の1つ前。親のエージェントではない
@@ -39,12 +39,26 @@ describe('エージェントのイベント（REQ-008）', () => {
         at: T(5),
         agentId: 'ag-1',
         parentAgentId: 'ag-0',
-        agentType: `${PLUGIN}:orchestrator`,
+        agentType: `${PLUGIN}:worker`,
         model: 'claude-opus-5-5',
-        executionMode: 'background',
-        description: '計画する',
+        executionMode: 'sync',
+        description: '週報の下書きを書く',
       },
     ]);
+  });
+
+  test('REQ-008 「担当」は、task を呼んだときの説明（agentDisplayName）を使う。なければエージェントの定義の説明。親のない統括には付けない', async () => {
+    const { p, seen } = await spy();
+    const started = (agentId, data) => p.fake.emit(sdkEvent.subagentStarted(agentId, { agentType: 'worker', ...data }));
+    started('ag-1', { parentId: 'ag-0', agentDisplayName: '先週の記録を3行にまとめる', agentDescription: '定義の説明' });
+    started('ag-2', { parentId: 'ag-0', agentDisplayName: '  ', agentDescription: '定義の説明' }); // 空の表示名は使わない
+    started('ag-3', { parentId: 'ag-0', agentDisplayName: undefined, agentDescription: '定義の説明' });
+    started('ag-4', { parentId: 'ag-0', agentDisplayName: undefined, agentDescription: undefined });
+    started('ag-5', { agentDisplayName: `統括 20261022-abc`, agentDescription: '定義の説明', agentType: 'orchestrator' }); // tasks.startAgent で起動した統括（親がない）
+    assert.deepEqual(
+      seen.map((e) => e.description),
+      ['先週の記録を3行にまとめる', '定義の説明', '定義の説明', undefined, undefined],
+    );
   });
 
   test('REQ-008 agentType は <プラグイン>:<エージェント> の形にそろえる（このプラグインのエージェントだけ。ほかはそのまま）', async () => {

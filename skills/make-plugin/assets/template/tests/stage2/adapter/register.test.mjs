@@ -51,6 +51,13 @@ describe('セッションに加わるときに登録するもの（REQ-005）', 
     }
   });
 
+  test('REQ-005 記録のツールは、ツール検索の裏に回さない（defer: never）。回されると、入口のスキルや統括が「ツールがない」と取り違えるおそれがある', async () => {
+    const p = await startPlugin();
+    assert.ok(p.fake.config.tools.length > 0);
+    for (const tool of p.fake.config.tools) assert.equal(tool.defer, 'never', `${tool.name} は先に読み込ませる`);
+    assert.equal(p.fake.config.tools.find((t) => t.name === `${PLUGIN}_open`).defer, 'never', '画面を開くツールは特に必要');
+  });
+
   test('REQ-005 プラグインの名前は plugin.json の name から読む。同じ土台のファイルで、名前だけが変わる', async () => {
     const a = await startPlugin();
     const b = await startPlugin({ name: 'minutes-taker' });

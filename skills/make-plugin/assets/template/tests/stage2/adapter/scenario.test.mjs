@@ -78,6 +78,15 @@ describe('頼んでから終わるまで（REQ-005、REQ-008、REQ-010、REQ-011
     assert.equal(p.fake.overrides, null, '終わったらモデルの上書きを外す');
   });
 
+  test('REQ-008 各エージェントの「担当」は、作業は task を呼んだときの説明、統括は頼まれた作業の要約になる（統括の表示名に置き換わらない）', async () => {
+    const p = await startPlugin();
+    const root = await beginRun(p);
+    await startChild(p, { agentId: 'ag-w', parentAgentId: root, agent: 'worker', description: '先週の記録を3行にまとめる' });
+    await startChild(p, { agentId: 'ag-v', parentAgentId: root, agent: 'verifier', description: '3行以内かを確かめる' });
+    const tasks = Object.fromEntries(p.core.getState().run.agents.map((a) => [a.slot, a.task]));
+    assert.deepEqual(tasks, { orchestrator: '週報を作る', worker: '先週の記録を3行にまとめる', verifier: '3行以内かを確かめる' });
+  });
+
   test('REQ-012 最後の返事は、終わりのフック（onSubagentStop）で届き、画面の窓口（/api/agents/<番号>/reply）から全文が読める', async () => {
     const p = await startPlugin();
     const root = await beginRun(p);
