@@ -106,6 +106,16 @@ describe('画面の操作', () => {
     });
   });
 
+  test('REQ-041 チェックボックスの設定は、値のとおりに入れる（偽なら入れない）', async () => {
+    await withApp(async ({ core, app }) => {
+      const done = operate(app, { settings: { maxIterations: 2, task: { week: '2026-W42', attach: false } } });
+      await until(() => core.callsOf('start').length === 1, '開始');
+      core.set(fake.finishedState());
+      await done;
+      assert.equal(core.callsOf('start')[0].args[0].task.attach, false);
+    });
+  });
+
   test('REQ-012 途中で終わったときは、その理由の文を読む', async () => {
     await withApp(async ({ core, app }) => {
       const done = operate(app);
@@ -269,6 +279,8 @@ describe('チャットに出た URL', () => {
     assert.equal(find('`http://localhost:9000/?k=tok`'), 'http://localhost:9000/?k=tok');
     assert.equal(find('1つ目 http://127.0.0.1:1/?k=a と 2つ目 http://127.0.0.1:2/?k=b'), 'http://127.0.0.1:1/?k=a');
     assert.equal(find('http://example.com/?k=a'), null, '手元の画面だけ');
+    assert.equal(find('http://example.com:8080/?k=a'), null, 'ポートがあっても、手元以外の host の URL は使わない');
+    assert.equal(find('http://127.0.0.1.example.com:8080/?k=a'), null, '手元の host で始まるだけの別の host も使わない');
     assert.equal(find('http://127.0.0.1:8731/'), null, '合言葉のない URL は使えない');
     assert.equal(find(undefined), null);
   });

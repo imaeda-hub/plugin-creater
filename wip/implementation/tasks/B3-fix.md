@@ -5,9 +5,9 @@ B3 の後に決まったこと：RESUME.md のユーザーの答え18（直し�
 
 ## 状態
 
-- [ ] 読む（指摘4つ、B3 の書いたもの、根拠の文書）
-- [ ] 指摘をまとめる（重なり）
-- [ ] 直す
+- [x] 読む（指摘4つ、B3 の書いたもの、根拠の文書：憲章、hearing.md、creator-structure.md、generated-plugin-structure.md 4.1・4.7・4.9・6.4・9章、testing.md 8.2・10章、BLUEPRINT 4・7〜9章、RESUME.md、R1、C1 の descriptions.mjs・report.mjs・creator.mjs、C2 の scaffold.py とメモ、C3 の check_tools.py・eval.mjs、ひな形の入口のスキル）
+- [x] 指摘をまとめる（重なり。下の表の「まとめ」の列）
+- [ ] 直す（make-plugin の SKILL.md → references → test-plugin → エージェント2つ → README → 説明の文の案）
 - [ ] 機械的な確かめ
 - [ ] 指摘の扱いの表を仕上げる
 
