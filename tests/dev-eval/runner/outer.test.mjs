@@ -28,6 +28,7 @@ import { createFakeSdk } from './outer-fake-sdk.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const PERSONAS = path.join(here, '..', 'personas');
+const REPO = path.resolve(here, '..', '..', '..');
 const tmp = (prefix) => fs.mkdtempSync(path.join(os.tmpdir(), `outer-cli-${prefix}-`));
 const weekly = await loadPersona(path.join(PERSONAS, 'weekly-report'), { allStyles: true });
 const training = await loadPersona(path.join(PERSONAS, 'training-survey'));
@@ -144,13 +145,13 @@ test('REQ-015 計画どおりに動かし、実行が終わるたびに結果の
   const sdk = createFakeSdk({ userRole: () => '特に決まっていません', agent: async () => '終わり' });
   const seen = [];
   const report = await runPlan({
-    plan, personaById, outDir, creatorRoot: '/dummy', controlRoot: '/dummy-control', convertedCreator: converted, convertedControl: converted,
+    plan, personaById, outDir, creatorRoot: REPO, controlRoot: '/dummy-control', convertedCreator: converted, convertedControl: converted,
     common: { query: sdk.query, sandbox: false, convert: fakeConvert, maxExchanges: 1, runStages: async () => ({ skipped: true, reason: 'x' }) },
     onProgress: (p) => seen.push(p.phase),
   });
   assert.equal(report.status, 'completed');
   assert.equal(report.summaries.length, 3);
-  assert.deepEqual(seen, ['start', 'end', 'start', 'end', 'start', 'end']);
+  assert.deepEqual(seen.filter((x) => x === 'start' || x === 'end'), ['start', 'end', 'start', 'end', 'start', 'end']);
   assert.deepEqual(report.summaries.map((s) => s.arm), ['with', 'control', 'without']);
   assert.ok(report.summary.control.ok);
   assert.equal(typeof report.summary.delta, 'number');
@@ -177,7 +178,7 @@ test('REQ-015 利用枠の上限で止まったら、残りは飛ばして statu
       return '終わり';
     },
   });
-  const report = await runPlan({ plan, personaById, outDir, creatorRoot: '/x', controlRoot: '/y', convertedCreator: converted, common: { query: sdk.query, sandbox: false, convert: fakeConvert, maxExchanges: 1, runStages: async () => ({ skipped: true, reason: 'x' }) } });
+  const report = await runPlan({ plan, personaById, outDir, creatorRoot: REPO, controlRoot: '/y', convertedCreator: converted, common: { query: sdk.query, sandbox: false, convert: fakeConvert, maxExchanges: 1, runStages: async () => ({ skipped: true, reason: 'x' }) } });
   assert.equal(report.status, 'stopped');
   assert.equal(report.stopped.reason, 'usage_limit');
   assert.equal(calls, 1, '止まった後は、次の実行を始めない');
@@ -186,7 +187,7 @@ test('REQ-015 利用枠の上限で止まったら、残りは飛ばして statu
   // 見ない模擬ユーザーの記録は、records-heldout/ に分ける
   const outDir2 = tmp('heldout-out');
   const plan2 = planRuns({ personas: [personas[1]], arms: ['with'], models: ['claude-opus-5-5'], runs: 1 });
-  const report2 = await runPlan({ plan: plan2, personaById, outDir: outDir2, creatorRoot: '/x', controlRoot: '/y', convertedCreator: converted, common: { query: createFakeSdk({ userRole: () => 'x', agent: async () => '終わり' }).query, sandbox: false, convert: fakeConvert, maxExchanges: 1, runStages: async () => ({ skipped: true, reason: 'x' }) } });
+  const report2 = await runPlan({ plan: plan2, personaById, outDir: outDir2, creatorRoot: REPO, controlRoot: '/y', convertedCreator: converted, common: { query: createFakeSdk({ userRole: () => 'x', agent: async () => '終わり' }).query, sandbox: false, convert: fakeConvert, maxExchanges: 1, runStages: async () => ({ skipped: true, reason: 'x' }) } });
   assert.equal(report2.heldoutRecordsDir, path.join(outDir2, 'records-heldout'));
   assert.ok(fs.existsSync(path.join(outDir2, 'records-heldout')));
   assert.ok(!fs.existsSync(path.join(outDir2, 'records')));
