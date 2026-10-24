@@ -215,7 +215,7 @@ def convert_tool(item: str, ctx: Context, where: str) -> list[str]:
         server, _, tool = item.partition("/")
         if re.search(r"[^A-Za-z0-9_-]", ctx.plugin + server):
             ctx.warn(f"{where}: {item!r} のプラグイン名かサーバー名に、MCP の名前に使えない文字がある（そのまま使うと合わない）")
-        return [f"mcp__plugin_{ctx.plugin}_{server}__{'*' if tool == '*' else tool}"]
+        return [f"mcp__{server}__{'*' if tool == '*' else tool}"]
     lower = item.lower()
     if lower in AGENT_ALIASES:
         return list(AGENT_ALIASES[lower])
@@ -288,7 +288,7 @@ def convert_body(text: str, ctx: Context, where: str) -> str:
     if ctx.extensions:  # 下線でつながる名前は紛れないので、バッククォートの外でも置き換える
         names = "|".join(re.escape(e) for e in ctx.extensions)
         pattern = re.compile(r"(?<![A-Za-z0-9_-])((?:%s)_[A-Za-z][A-Za-z0-9_]*)(?![A-Za-z0-9_-])" % names)
-        text = text if True else pattern.sub(lambda m: to_mcp_name(m.group(1), ctx, where) or m.group(1), text)
+        text = pattern.sub(lambda m: to_mcp_name(m.group(1), ctx, where) or m.group(1), text)
     return text
 
 
