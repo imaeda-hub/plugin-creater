@@ -7,6 +7,8 @@
 //                                   エージェントの定義の tools と本文のツール名は、変換スクリプトが mcp__<サーバー名>__<ツール名> にしてある。
 //   統括を起動する（port.startAgent）… 置き換えた版の統括を、別の query()（Agent SDK の実行）で始める。agent: '<プラグイン>:orchestrator'。
 //                                   作業・検証のモデルは、置き換えた版のコピーのエージェントの定義の model を、画面で選んだモデルに書き換えて効かせる。
+//   統括の使えるツール … 生成プラグインの統括の定義には tools がない（Copilot CLI では、統括は全ツールを持ち、一覧にないツールを adapter.mjs の
+//                                   onPreToolUse が拒む）。このつなぎ口は、実行用のコピーの統括の定義に、同じ範囲の tools を書いて効かせる（下の orchestratorTools）。
 //   止める（port.cancelAgent）… 統括の query() だけを閉じる。メインの実行は中断しない（設計書 4.4 と同じ範囲）。
 //   状態 … Agent SDK のフック（SubagentStart・SubagentStop・PreToolUse・PostToolUse）と、メッセージ（assistant・result）から作る。
 //   記録のツールを呼んだエージェント … フック PreToolUse の tool_use_id と agent_id から知り、MCP の呼び出しの _meta の claudecode/toolUseId と結び付ける。
@@ -24,6 +26,14 @@ import { createToolServer, mcpToolName } from './mcp-tools.mjs';
 import { modelMapOf, readConversionReport, toClaudeModelId, toCopilotName, copilotModelList } from './model-map.mjs';
 
 const AGENT_TOOL_NAMES = new Set(['Agent', 'Task']);
+/**
+ * 統括が使ってよいツールのうち、Claude Code の組み込みのもの。生成プラグインの adapter.mjs の ORCHESTRATOR_BUILTIN_TOOLS
+ * （view、grep・glob・rg、task・read_agent・list_agents・write_agent）に当たる範囲。
+ * view→Read、grep・rg→Grep、glob→Glob、task→Agent。read_agent・list_agents・write_agent に当たるツールは、統括が task を
+ * 前面（run_in_background: false）で1体ずつ呼ぶ決まりなので要らない。同じ範囲かは inner-adapter.test.mjs が adapter.mjs と突き合わせる。
+ * 記録のツール（plan・review・issue・finish・show）は、core/tools.mjs の TOOL_DEFS で caller に orchestrator を持つものから作る。
+ */
+export const ORCHESTRATOR_BUILTIN_TOOLS = Object.freeze(['Agent', 'Read', 'Grep', 'Glob']);
 /** 統括の query() の最大の手番の数（サブエージェントの手番は別に数える） */
 const ORCHESTRATOR_MAX_TURNS = 300;
 const GH_STUB = '#!/bin/sh\necho "gh は開発の試験では使えません" >&2\nexit 1\n';
@@ -54,6 +64,17 @@ export function rewriteModel(markdown, modelId) {
   if (!match) throw new Error('エージェントの定義にフロントマターがありません。');
   const body = /^model:.*$/m.test(match[2]) ? match[2].replace(/^model:.*$/m, `model: ${modelId}`) : `${match[2]}\nmodel: ${modelId}`;
   return `${match[1]}${body}${match[3]}${markdown.slice(match[0].length)}`;
+}
+
+/**
+ * エージェントの定義（Markdown）のフロントマターに tools を足す。すでに tools があれば、何も変えない（null）。
+ * 変換スクリプトは、tools のないエージェントには tools を書かない（Claude Code では全ツールを継ぐ）。
+ */
+export function addTools(markdown, tools) {
+  const match = /^(---\r?\n)([\s\S]*?)(\r?\n---)/.exec(markdown);
+  if (!match) throw new Error('エージェントの定義にフロントマターがありません。');
+  if (/^tools:/m.test(match[2])) return null;
+  return `${match[1]}${match[2]}\ntools: ${tools.join(', ')}${match[3]}${markdown.slice(match[0].length)}`;
 }
 
 /** フックの入力などの全文を記録に残すと大きいので、要点だけにする */
@@ -119,6 +140,8 @@ export async function createInnerAdapter(options) {
   const { createCore } = await importModule(path.join(extDir, 'core', 'index.mjs'));
   // core が投げる断り。同じファイルの同じクラスなので instanceof で見分けられる
   const { RecordRefusal } = await importModule(path.join(extDir, 'core', 'records.mjs'));
+  // 統括が呼ぶ記録のツール（名前の後ろの部分）。adapter.mjs と同じく TOOL_DEFS の caller から作る
+  const { TOOL_DEFS } = await importModule(path.join(extDir, 'core', 'tools.mjs'));
   const startUi = options.startUi ?? (await (async () => {
     const { startApp } = await importModule(path.join(extDir, 'ui', 'app.mjs'));
     return (core) => startApp({ core, cwd: workDir });
@@ -341,7 +364,16 @@ export async function createInnerAdapter(options) {
   }
 
   // ---- 統括の起動と取り消し ----------------------------------------------------------------------------
-  /** 置き換えた版のコピーを作り、エージェントの定義の model を画面で選んだものに書き換える */
+  /** 統括が使ってよいツール（Claude Code の名前）：組み込みの読む・探す・エージェントを呼ぶツールと、統括が呼ぶ記録のツール */
+  const orchestratorTools = () => [
+    ...ORCHESTRATOR_BUILTIN_TOOLS,
+    ...TOOL_DEFS.filter((def) => String(def.caller).split(',').includes('orchestrator')).map((def) => mcpToolName(serverName, def.name)),
+  ];
+
+  /**
+   * 置き換えた版のコピーを作り、エージェントの定義の model を画面で選んだものに書き換える。
+   * 統括の定義に tools がなければ、使ってよいツールだけを tools に書く（上の orchestratorTools）。作業・検証の tools は、統括の tools に絞られない。
+   */
   function prepareRunPlugin(id, orchestratorCopilotName) {
     const dest = path.join(runDir, `plugin-${id}`);
     fs.cpSync(convertedRoot, dest, { recursive: true });
@@ -359,7 +391,19 @@ export async function createInnerAdapter(options) {
       if (plugin === pluginName) rewrite(rest.join(':'), copilotName);
     }
     rewrite('orchestrator', orchestratorCopilotName);
-    return { dest, applied };
+    let tools = null;
+    const orchestratorEntry = reportAgents.get('orchestrator');
+    if (orchestratorEntry) {
+      const file = path.join(dest, orchestratorEntry.file);
+      const allowed = orchestratorTools();
+      const written = addTools(fs.readFileSync(file, 'utf8'), allowed);
+      if (false) {
+        fs.writeFileSync(file, written);
+        tools = allowed;
+        record({ t: 'orchestrator_tools', run: id, tools });
+      }
+    }
+    return { dest, applied, tools };
   }
 
   function cancelRoot(root) {
@@ -479,7 +523,7 @@ export async function createInnerAdapter(options) {
     agents: () => [...agents.values()].map((a) => ({ ...a })),
     runs: () => [...runs.values()].map((r) => ({
       id: r.id, name: r.name, cancelled: r.cancelled, ended: r.ended, init: r.init, skillsUsed: [...r.skillsUsed], costUsd: r.costUsd,
-      numTurns: r.numTurns, lastText: r.lastText, appliedModels: r.plugin?.applied ?? {},
+      numTurns: r.numTurns, lastText: r.lastText, appliedModels: r.plugin?.applied ?? {}, orchestratorTools: r.plugin?.tools ?? null,
     })),
     chatLog: () => [...chatLog],
     limitHit: () => state.limitHit,

@@ -329,3 +329,55 @@ test('REQ-011 記録のツールの処理が予期しない例外を投げても
   assert.doesNotMatch(returned[0].text, /内部の詳細|TypeError/);
   assert.notEqual(returned[0].text, OPEN_FAILED);
 });
+
+// ---- 統括の tools をなくしたことへの合わせ：統括には使ってよいツールだけが渡り、作業・検証は自分の tools を持つ ----------------------
+
+test('REQ-010 REQ-011 統括は、使ってよいツールだけを持つ（書き込み・コマンド・スキルは持たない）。作業・検証は、統括の tools に絞られず、自分の定義のツールを持つ', { skip: SKIP, timeout: 240_000 }, async (t) => {
+  const fixture = buildSamplePlugin();
+  const toolsByRole = new Map(); // 役割 → 最初の呼び出しで届いたツールの名前
+  const api = await startFakeAnthropic(scriptedModel({
+    workerDelayMs: 300,
+    verifierDelayMs: 300,
+    onRequest: (role, body) => {
+      if (!toolsByRole.has(role)) toolsByRole.set(role, (body.tools ?? []).map((tool) => tool.name));
+    },
+  }));
+  const sdk = guardSdk(realSdk, api); // 守り：偽の API につながっていない query は断る（実際のモデルを呼ばない）
+  const screen = createScreen({ chromium, env: { ...process.env, PLUGIN_TEST_BROWSER_CHANNEL: 'chromium' } });
+  t.after(async () => {
+    await screen.close();
+    await api.close();
+  });
+  const runDir = tmpDir('run-orch-tools');
+  const result = await runInnerArm({
+    arm: 'with', task: fixture.task, runDir, sdk, userRole: async () => 'はい', judge, screen, pluginRoot: fixture.pluginRoot, convertedRoot: fixture.convertedRoot,
+    envExtra: { ...FAKE_ENV, ANTHROPIC_BASE_URL: api.url }, timeoutMs: 180_000, pollMs: 300,
+  });
+  assert.equal(result.status, 'completed', `${result.reason} / ${result.screenError}`);
+
+  const mcp = (name) => `mcp__weekly-report__${name}`;
+  const orchestrator = toolsByRole.get('orchestrator');
+  assert.ok(orchestrator, '統括の呼び出しが届いていない');
+  // 統括が持つもの：Agent、読む・探す、統括の記録のツール
+  for (const name of ['Agent', 'Read', 'Grep', 'Glob', mcp('plan'), mcp('review'), mcp('issue'), mcp('finish'), mcp('show')]) {
+    assert.ok(orchestrator.includes(name), `統括のツールに ${name} がない：${orchestrator.join(', ')}`);
+  }
+  // 統括が持たないもの：書き込み・コマンド・スキル・質問・Web、メインと検証の記録のツール
+  for (const name of ['Write', 'Edit', 'Bash', 'Skill', 'AskUserQuestion', 'WebFetch', 'WebSearch', 'NotebookEdit', mcp('open'), mcp('verdict')]) {
+    assert.ok(!orchestrator.includes(name), `統括のツールに ${name} がある：${orchestrator.join(', ')}`);
+  }
+  // 作業・検証は、統括の tools に絞られず、自分の定義のツールを持つ（統括は Write を持たないが、作業は Write で成果物を作れる）
+  const worker = toolsByRole.get('worker');
+  for (const name of ['Write', 'Edit', 'Bash', 'Read', mcp('show')]) assert.ok(worker.includes(name), `作業のツールに ${name} がない：${worker.join(', ')}`);
+  const verifier = toolsByRole.get('verifier');
+  for (const name of ['Read', 'Grep', 'Glob', mcp('verdict')]) assert.ok(verifier.includes(name), `検証のツールに ${name} がない：${verifier.join(', ')}`);
+  for (const name of ['Write', 'Edit', 'Bash']) assert.ok(!verifier.includes(name), `検証のツールに ${name} がある：${verifier.join(', ')}`);
+  assert.ok(fs.existsSync(path.join(result.workDir, 'out', 'weekly.md')));
+
+  // 書いた tools は、実行の記録に残る
+  const events = fs.readFileSync(path.join(runDir, 'events.jsonl'), 'utf8').split('\n').filter(Boolean).map((line) => JSON.parse(line));
+  const written = events.find((e) => e.t === 'orchestrator_tools');
+  assert.ok(written, 'orchestrator_tools の記録がない');
+  assert.deepEqual(written.tools.slice(0, 4), ['Agent', 'Read', 'Grep', 'Glob']);
+  assert.deepEqual(written.tools.slice(4).sort(), ['finish', 'issue', 'plan', 'review', 'show'].map(mcp).sort());
+});

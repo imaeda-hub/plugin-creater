@@ -8,7 +8,7 @@ import test from 'node:test';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 
-import { createInnerAdapter, describeOpened, OPEN_FAILED, RECORD_FAILED, rewriteModel } from './inner-adapter.mjs';
+import { addTools, createInnerAdapter, describeOpened, OPEN_FAILED, ORCHESTRATOR_BUILTIN_TOOLS, RECORD_FAILED, rewriteModel } from './inner-adapter.mjs';
 import { buildSamplePlugin, pythonHasModules, tmpDir } from './inner-test-support.mjs';
 
 const SKIP = !pythonHasModules() ? 'Python に PyYAML と jsonschema がありません' : false;
@@ -445,4 +445,71 @@ test('V1 の直しへの合わせ：Copilot CLI 用のつなぎ口（adapter.mjs
   for (const input of [{ url: 'http://127.0.0.1:1/?k=a', notices: [] }, { url: 'u', notices: ['A', '', 'B'] }, { url: 'u' }, { url: 'u', notices: 'x' }]) {
     assert.equal(describeOpened(input), theirDescribe(input), JSON.stringify(input));
   }
+});
+
+// ---- 統括の tools をなくしたことへの合わせ（統括は全ツールを持つ決まり。使ってよいツールだけを、実行用のコピーの定義に書いて効かせる） ----
+
+const toolsLine = (root, name) => /^tools: (.*)$/m.exec(fs.readFileSync(path.join(root, 'agents', `${name}.md`), 'utf8'))?.[1];
+
+test('REQ-010 REQ-011 統括の起動：統括の定義に tools がなければ、使ってよいツールだけを、実行用のコピーの定義に書く。元の置き換えた版と、作業・検証の tools は変えない', { skip: SKIP }, async (t) => {
+  const { fixture, adapter, queries, events } = await setup(t);
+  assert.equal(toolsLine(fixture.convertedRoot, 'orchestrator'), undefined); // 変換は、tools のない統括に tools を書かない（全ツールを継ぐ）
+  await startRun(adapter);
+  const copy = queries[0].options.plugins[0].path;
+  const mcp = (name) => `mcp__weekly-report__${name}`;
+  // 組み込みの4つの後ろに、統括が呼ぶ記録のツール（core/tools.mjs の並び順）
+  const written = toolsLine(copy, 'orchestrator').split(', ');
+  assert.deepEqual(written.slice(0, 4), ['Agent', 'Read', 'Grep', 'Glob']);
+  assert.deepEqual(written.slice(4).sort(), ['finish', 'issue', 'plan', 'review', 'show'].map(mcp).sort());
+  assert.deepEqual(adapter.runs()[0].orchestratorTools, written);
+  assert.deepEqual(events.find((e) => e.t === 'orchestrator_tools'), { t: 'orchestrator_tools', run: 'orch-1', tools: written });
+  // 元の置き換えた版は変えない。作業・検証の tools は、統括の tools に絞らない（そのまま）
+  assert.equal(toolsLine(fixture.convertedRoot, 'orchestrator'), undefined);
+  for (const name of ['worker', 'verifier']) assert.equal(toolsLine(copy, name), toolsLine(fixture.convertedRoot, name), name);
+  assert.match(toolsLine(copy, 'worker'), /Write/);
+  // 本文は変えない
+  const body = (root) => fs.readFileSync(path.join(root, 'agents', 'orchestrator.md'), 'utf8').replace(/^---[\s\S]*?\n---/, '');
+  assert.equal(body(copy), body(fixture.convertedRoot));
+});
+
+test('REQ-010 REQ-011 統括の定義にすでに tools があれば、そのまま使う（書き足さない）', { skip: SKIP }, async (t) => {
+  const fixture = buildSamplePlugin();
+  const file = path.join(fixture.convertedRoot, 'agents', 'orchestrator.md');
+  fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace(/^model:/m, 'tools: Agent, Read\nmodel:'));
+  const { sdk, queries } = fakeSdk();
+  const events = [];
+  const adapter = await createInnerAdapter({
+    sdk, pluginRoot: fixture.pluginRoot, convertedRoot: fixture.convertedRoot, workDir: tmpDir('adapter-work'), runDir: tmpDir('adapter-run'), record: (entry) => events.push(entry),
+  });
+  t.after(() => adapter.shutdown());
+  await startRun(adapter);
+  assert.equal(toolsLine(queries[0].options.plugins[0].path, 'orchestrator'), 'Agent, Read');
+  assert.equal(adapter.runs()[0].orchestratorTools, null);
+  assert.equal(events.some((e) => e.t === 'orchestrator_tools'), false);
+});
+
+test('REQ-010 REQ-011 エージェントの定義に tools を足す：なければ足し、あれば何も変えない（null）。本文は変えない', () => {
+  const text = '---\nname: orchestrator\nmodel: claude-sonnet-5-5\n---\n本文の tools: 変えない\n';
+  assert.equal(addTools(text, ['Agent', 'Read']), '---\nname: orchestrator\nmodel: claude-sonnet-5-5\ntools: Agent, Read\n---\n本文の tools: 変えない\n');
+  assert.equal(addTools('---\nname: w\ntools: Read\n---\nx', ['Agent']), null);
+  assert.throws(() => addTools('本文だけ', ['Agent']), /フロントマター/);
+});
+
+test('REQ-010 REQ-011 統括の使ってよいツール：Copilot CLI 用のつなぎ口（adapter.mjs）の一覧と、同じ範囲（組み込みは Claude Code の名前に当てる）', { skip: SKIP }, async (t) => {
+  const fixture = buildSamplePlugin();
+  const source = fs.readFileSync(path.join(fixture.pluginRoot, 'com.github.copilot', 'extensions', 'weekly-report', 'adapter.mjs'), 'utf8');
+  const list = /const ORCHESTRATOR_BUILTIN_TOOLS = Object\.freeze\(\[([\s\S]*?)\]\)/.exec(source)?.[1];
+  if (list === undefined) {
+    t.skip('adapter.mjs が、統括の許す一覧（ORCHESTRATOR_BUILTIN_TOOLS）をまだ含まない');
+    return;
+  }
+  const theirs = [...list.replace(/\/\/.*$/gm, '').matchAll(/'([^']+)'/g)].map((m) => m[1]);
+  // Copilot CLI のツール → Claude Code のツール。当たるツールがないもの（null）は、統括が task を前面で1体ずつ呼ぶので要らない
+  const toClaude = { view: 'Read', grep: 'Grep', rg: 'Grep', glob: 'Glob', task: 'Agent', read_agent: null, list_agents: null, write_agent: null };
+  for (const name of theirs) {
+    assert.ok(name in toClaude, `adapter.mjs の統括の一覧に、内側の EVAL がまだ知らないツール「${name}」がある。inner-adapter.mjs の ORCHESTRATOR_BUILTIN_TOOLS と、この表に足す（足さない理由も添える）`);
+  }
+  assert.deepEqual([...new Set(theirs.map((name) => toClaude[name]).filter(Boolean))].sort(), [...ORCHESTRATOR_BUILTIN_TOOLS].sort());
+  // 記録のツールは、どちらも core/tools.mjs の TOOL_DEFS で caller に orchestrator を持つもの
+  assert.match(source, /TOOL_DEFS\.filter\(\(def\) => String\(def\.caller\)\.split\(','\)\.includes\('orchestrator'\)\)/);
 });

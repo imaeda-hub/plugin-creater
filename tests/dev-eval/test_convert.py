@@ -855,7 +855,6 @@ class RealPlugins(unittest.TestCase):
     def test_4_the_generated_orchestrator_calls_agent_in_the_foreground_with_claude_code_arguments(self):
         out, _ = self.convert_real(self.generated, "generated-agent", validate=False)
         meta, body = frontmatter_of(os.path.join(out, "agents", "orchestrator.md"))
-        self.assertEqual(meta["tools"].split(", ")[0], "Agent")
         self.assertIn("`subagent_type`", body)
         self.assertIn("`run_in_background`", body)
         self.assertIn("`false`", body)
@@ -870,12 +869,25 @@ class RealPlugins(unittest.TestCase):
         used = {row["tool"] for row in report["extension_tools"]}
         self.assertTrue({"plan", "verdict", "open"} <= used)
         self.assertLessEqual(used, set(registered))
-        # 統括・作業・検証の定義の tools は、すべて MCP のツール名か Claude Code の名前になっている
-        for name in ("orchestrator", "worker", "verifier"):
+        # 作業・検証の定義の tools は、すべて MCP のツール名か Claude Code の名前になっている
+        # （統括の定義には tools がない。下の別の試験）
+        for name in ("worker", "verifier"):
             meta, _ = frontmatter_of(os.path.join(self.tmp, "generated-tools", "agents", name + ".md"))
-            for tool in meta.get("tools", "").split(", "):
+            self.assertTrue(meta.get("tools"), name)
+            for tool in meta["tools"].split(", "):
                 self.assertTrue(tool.startswith("mcp__weekly-report__") or tool in
                                 {"Agent", "Read", "Edit", "Write", "Grep", "Glob", "Bash", "WebFetch", "WebSearch"}, tool)
+
+    def test_4_the_generated_orchestrator_has_no_tools_and_the_converter_adds_none(self):
+        """生成プラグインの統括の定義には tools がない（Copilot CLI では全ツールを持ち、使ってよいツールの絞りは adapter.mjs のフックがする）。
+        変換は、tools のないエージェントに tools を足さない（Claude Code では全ツールを継ぐ）。内側の EVAL で統括を絞るのは、内側のつなぎ口
+        （tests/dev-eval/runner/inner-adapter.mjs。実行用のコピーの統括の定義に tools を書く）で、変換ではない。"""
+        src_meta, _ = frontmatter_of(os.path.join(self.generated, "com.github.copilot", "agents", "orchestrator.agent.md"))
+        self.assertNotIn("tools", src_meta)
+        out, report = self.convert_real(self.generated, "generated-no-tools", validate=False)
+        meta, _ = frontmatter_of(os.path.join(out, "agents", "orchestrator.md"))
+        self.assertNotIn("tools", meta)
+        self.assertFalse([w for w in report["warnings"] if "orchestrator" in w and "tools" in w], report["warnings"])
 
 
 if __name__ == "__main__":
