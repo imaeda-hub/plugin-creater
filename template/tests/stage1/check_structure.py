@@ -59,7 +59,8 @@ CATALOG: Dict[str, Tuple[List[str], str]] = {
     "symlinks": (["REQ-004"], "根の外に出るシンボリックリンクがない"),
     "task": (["REQ-011"], "作業の定義（task.json）が task.schema.json に合う"),
     "eval": (["REQ-011"], "EVAL の課題の基準の番号と文が作業の定義の写しと同じ"),
-    "knowledge": (["REQ-039"], "ナレッジの番号がそれぞれの置き場所にある"),
+    # ナレッジの番号の突き合わせは、生成プラグインの要件ではなく設計書 7章の試験なので、要件の番号の代わりに節を付ける
+    "knowledge": ([], "ナレッジの番号がそれぞれの置き場所にある（設計書 7章）"),
     "agent-tools": (["REQ-010"], "統括・作業・検証の定義がそろい、作業と検証に tools があり、統括に tools がなく、検証エージェントに書き込みとコマンドがない"),
     "tool-names": (["REQ-010"], "記録のツールの名前の頭がプラグインの名前"),
     "trace": (["REQ-003"], "要件の追跡の表がそろっている"),
@@ -909,12 +910,11 @@ def requirement_numbers_in(text: str) -> List[str]:
 
 
 def collect_test_requirements(ctx: Context) -> Set[str]:
-    """テストの名前（node:test の test/it/describe の第1引数、Python の test 関数の名前と docstring）に入っている要件の番号。
-    tests/stage1/（この検査自身の試験と見本）は、生成プラグインの要件の試験ではないので数えない。"""
+    """テストの名前（node:test の test/it/describe の第1引数、Python の test 関数の名前と docstring）に入っている要件の番号。"""
     found: Set[str] = set()
     base = os.path.join(ctx.root, "tests")
     for directory, dirs, files in os.walk(base):
-        dirs[:] = [d for d in dirs if d not in SKIP_DIRS and not (directory == base and d == "stage1")]
+        dirs[:] = [d for d in dirs if d not in SKIP_DIRS]
         for file in files:
             path = os.path.join(directory, file)
             try:

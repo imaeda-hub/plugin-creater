@@ -109,7 +109,14 @@
     "knowledgeIds": ["K-01", "K-02", "K-03", "K-06"],
     "behavior": "先週の記録から週報を書く",
     "taskPath": ".plugin-creator-work/draft/task.json",
-    "evalTasks": [{ "id": "T-01", "prompt": "先週の記録をもとに、今週の週報を書いてください。" }],
+    "evalTasks": [
+      {
+        "prompt": "先週の記録をもとに、今週の週報を書いてください。",
+        "inputs": [{ "path": "tests/eval/T-01/inputs/memo.txt", "provisional": true }],
+        "criteria": ["K-01", "K-03"],
+        "settings": { "maxIterations": 3, "task": { "week": "2026-W42" } }
+      }
+    ],
     "rebuild": null
   },
   "approvedAt": "2026-10-22T02:00:00.000Z",

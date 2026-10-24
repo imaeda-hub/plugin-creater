@@ -1,8 +1,10 @@
-"""試験の入口（tests/run.py）の試験。
+"""試験の入口（template/tests/run.py）の試験。
 
-動かし方（この selftest フォルダで）:  python3 -m unittest discover -s . -p "test_*.py"
+クリエイターの開発の試験であり、ひな形（生成プラグイン）には入れない。
+動かし方（リポジトリの根で）:  python3 -m unittest discover -s tests/creator/stage1 -p "test_*.py"
 node が入っていない環境では、node を使う試験は飛ばす。
 """
+import importlib.util
 import json
 import os
 import shutil
@@ -12,15 +14,18 @@ import tempfile
 import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-STAGE1 = os.path.dirname(HERE)
-TESTS = os.path.dirname(STAGE1)
-TASK_SCHEMA = os.path.join(os.path.dirname(TESTS), "com.github.copilot", "extensions", "_plugin_", "core", "task.schema.json")
+REPO = os.path.dirname(os.path.dirname(os.path.dirname(HERE)))
+TEMPLATE = os.path.join(REPO, "template")
+TASK_SCHEMA = os.path.join(TEMPLATE, "com.github.copilot", "extensions", "_plugin_", "core", "task.schema.json")
 GOOD = os.path.join(HERE, "samples", "good")
-CHECK = os.path.join(STAGE1, "check_structure.py")
-RUN = os.path.join(TESTS, "run.py")
+CHECK = os.path.join(TEMPLATE, "tests", "stage1", "check_structure.py")
+RUN = os.path.join(TEMPLATE, "tests", "run.py")
 
-sys.path.insert(0, TESTS)
-import run as entry  # noqa: E402
+# ひな形の run.py を、ファイルの場所から読み込む（tests/creator/run.py と名前がぶつからないように）
+_spec = importlib.util.spec_from_file_location("template_run", RUN)
+entry = importlib.util.module_from_spec(_spec)
+sys.modules["template_run"] = entry
+_spec.loader.exec_module(entry)
 
 HAS_NODE = entry.node_version()[0]
 

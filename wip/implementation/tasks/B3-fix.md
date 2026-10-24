@@ -219,3 +219,18 @@ C1 の今の返り値の文は、report.mjs の stateText、hearing.mjs の rema
 - 1段目の構造の検査 `python -I tests/creator/check_creator.py .`：合格 7、対象外 1（mcp.json がない）、不合格 1（会話例がまだない。直す前と同じ）。references 15個がすべて本文で名指しされている（setup.md を含む）。
 - `python -I -m unittest discover -s tests/creator -p "test_check_creator.py"`：25件が通る。
 - plugin.json と marketplace.json は変えていない（JSON として読めることを確かめた）。
+
+## X の直し（全体の突き合わせの点検の指摘。X3-triage.md 2.2 の B3 の束と、答え27・29、会話例の版の呼び方）
+
+指示：briefs/X-fix.md、統括の頼み（2026-10-24）。tests/dev-eval/heldout/ は読まない。
+
+### 状態
+
+- [x] 読む（X1-10、X2-01・02・04〜07・11・13・14・16・17・20・22、X3-triage.md、RESUME.md の答え24〜29、V1 2節・7.2、V1 の生データの bash の定義、tasks/C1.md と C3.md の X の直し、estimate.mjs・eval.mjs・run.mjs の出力、creator.mjs の parseSettings）
+- [ ] test-plugin の SKILL.md（X1-10/X2-04 の(1)、X2-05、X2-06、X2-16、答え27）
+- [ ] make-plugin の SKILL.md（X2-11、X2-20）
+- [ ] references：confirm.md（X2-02、X2-17）、generate.md（X2-02、X2-07、X2-16、X2-22）、screen.md（X2-01、X2-11）、items.md・assets.md（X2-11）、improve.md（版の呼び方）、setup.md（答え29、X2-14）
+- [ ] worker.agent.md（X2-07、X2-13）
+- [ ] descriptions.mjs（X2-02 の【仮】3つ、X2-16）
+- [ ] README.md（答え29、X2-14）
+- [ ] 数える、試験、コミットと push

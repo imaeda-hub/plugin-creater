@@ -11,6 +11,10 @@ import { EXTENSION_DIR, tempDir, withRun } from './helpers.mjs';
 const { fileIssue, runGh, ghArguments, IssueError } = await import(pathToFileURL(path.join(EXTENSION_DIR, 'issue.mjs')).href);
 const { GH_TIMEOUT_MS, ISSUE_REPOSITORY } = await import(pathToFileURL(path.join(EXTENSION_DIR, 'constants.mjs')).href);
 
+// 偽物の gh は、拡張子のない shebang の実行ファイル（#!/usr/bin/env node、#!/bin/sh）なので、Windows の spawn では動かせない。
+// 偽物の gh を使う試験は、Windows では理由を書いて飛ばす。偽物の gh なしで動く確かめ（gh がない〔ENOENT〕、引数の配列を覚える偽物の関数など）は、Windows でも動かす
+const FAKE_GH_SKIP = process.platform === 'win32' ? '偽物の gh（拡張子のない実行ファイル）は Windows の spawn で動かせないため、飛ばす' : false;
+
 const ISSUE_URL = 'https://github.com/imaeda-hub/plugin-creator/issues/7';
 const ok = (stdout = `${ISSUE_URL}\n`) => ({ code: 0, stdout, stderr: '', timedOut: false, notFound: false });
 
@@ -50,7 +54,7 @@ describe('質問の改善案の起票', () => {
     assert.ok(!fs.existsSync('/tmp/never'));
   });
 
-  test('REQ-049 実際にプロセスを起こしても、シェルを通らない：引数の配列と標準入力のまま gh に届く', { skip: process.platform === 'win32' }, async () => {
+  test('REQ-049 実際にプロセスを起こしても、シェルを通らない：引数の配列と標準入力のまま gh に届く', { skip: FAKE_GH_SKIP }, async () => {
     const dir = tempDir('fakegh');
     try {
       const log = path.join(dir, 'log.json');
@@ -125,7 +129,7 @@ process.stdin.on('end', () => {
     );
   });
 
-  test('REQ-049 60秒の上限を付け、超えたら gh を止める', { skip: process.platform === 'win32' }, async () => {
+  test('REQ-049 60秒の上限を付け、超えたら gh を止める', { skip: FAKE_GH_SKIP }, async () => {
     assert.equal(GH_TIMEOUT_MS, 60_000);
     const dir = tempDir('slowgh');
     try {

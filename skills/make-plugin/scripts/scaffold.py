@@ -17,6 +17,8 @@ build がすること（creator-structure.md 2章・4.1、BLUEPRINT 8章・9章�
   5. ナレッジの一覧（tests/knowledge.json）を書く。
   6. parts/files/ をそのまま写し、manifest.json の eval_inputs（EVAL の課題の入力の実物のファイル）を指定の場所に写す。
      EVAL の課題（tests/eval/*/eval.json）の基準の番号と文を、作業の定義の写しで埋める。
+     eval.json が、ユーザーが生成前の確認で確かめた課題（ヒアリングの記録の confirmation.evalTasks）と同じかを確かめる
+     （課題の数、頼むときの言葉、基準にするナレッジの番号の組、入力のファイル、設定の値）。違えば断る。
   7. 土台がひな形と同じかを確かめる（check-base と同じ）。
   8. git のリポジトリにして、最初のコミットをする。
   9. 作業用の一時フォルダ（.plugin-creator-work/）を消す。
@@ -46,6 +48,7 @@ import datetime  # noqa: E402
 import importlib.util  # noqa: E402
 import json  # noqa: E402
 import os  # noqa: E402
+import posixpath  # noqa: E402
 import re  # noqa: E402
 import shutil  # noqa: E402
 import subprocess  # noqa: E402
@@ -55,6 +58,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 DEFAULT_TEMPLATE = os.path.normpath(os.path.join(HERE, "..", "..", "..", "template"))   # skills/make-plugin/scripts/ から見て、クリエイターの直下の template/
 CHECKS_PATH = os.path.join(DEFAULT_TEMPLATE, "tests", "stage1", "check_structure.py")   # task.json の形の誤りを日本語で示すのに使う
 
+CREATOR_NAME = "plugin-creator"                       # クリエイター自身の名前。生成プラグインの名前にはできない（記録のツールの名前が重なる）
 WORK_NAME = ".plugin-creator-work"                    # 作業用の一時フォルダの名前（ユーザーの答え7）
 EXT_PARENT = ("com.github.copilot", "extensions")
 EXT_PLACEHOLDER = "_plugin_"                          # ひな形のエクステンションのフォルダ。生成プラグインの名前にする
@@ -189,6 +193,8 @@ def load_state(path: str) -> Dict[str, Any]:
     approved = state.get("approvedAt")
     if not isinstance(approved, str) or not approved.strip():
         raise Refusal("ヒアリングの記録に承認の時刻（approvedAt）がありません。ユーザーが生成前の確認でよいと答える前には、組み立てられません。")
+    if not isinstance(state.get("confirmation"), dict):
+        raise Refusal("ヒアリングの記録に、生成前の確認で示したもの（confirmation）がありません。生成前の確認を受け付けてから、組み立ててください。")
     return state
 
 
@@ -326,6 +332,10 @@ def load_manifest(work: str, problems: List[str]) -> Optional[Dict[str, Any]]:
     name = data.get("plugin_name")
     if not isinstance(name, str) or not NAME_RE.match(name) or len(name) > 64:
         problems.append("%s の plugin_name は、小文字の英数字とハイフンだけの64文字以内の名前にしてください（今は %s）。" % (label, show(name)))
+        name = None
+    elif name == CREATOR_NAME:
+        problems.append("%s の plugin_name を %s にはできません。クリエイター自身の名前で、記録のツールの名前（%s_open など）と"
+                        "マーケットプレイスの名前が重なります。別の名前にしてください。" % (label, CREATOR_NAME, CREATOR_NAME))
         name = None
     check_description(data.get("plugin_description"), "%s の plugin_description" % label, problems)
 
@@ -574,17 +584,20 @@ def resolve_criterion(item: Dict[str, Any], by_id: Dict[str, Dict[str, str]], by
     return None
 
 
-def prepare_eval(base: str, rels: List[str], criteria: List[Dict[str, str]], problems: List[str], warnings: List[str]) -> Dict[str, str]:
+def prepare_eval(base: str, rels: List[str], criteria: List[Dict[str, str]], problems: List[str], warnings: List[str]) \
+        -> Tuple[Dict[str, str], Dict[str, Dict[str, Any]]]:
     """EVAL の課題（tests/eval/*/eval.json）の criteria に、作業の定義の基準の番号と文の写しを入れる（BLUEPRINT 4.3）。
     作業エージェントは、基準ごとの採点のしかた（grading と check）と、どの基準かを示す knowledge（か id）だけを書く。
-    返すのは、書き直した eval.json の中身（生成プラグインの中のパス -> 文）。"""
+    返すのは、(書き直した eval.json の中身〔生成プラグインの中のパス -> 文〕,
+              確かめた課題と突き合わせるための、eval.json から読んだもの〔パス -> {prompt, knowledge, inputs, settings}〕)。"""
     by_id = {c["id"]: c for c in criteria}
     by_knowledge = {c["knowledge"]: c for c in criteria}
     filled: Dict[str, str] = {}
+    read: Dict[str, Dict[str, Any]] = {}
     covered: Set[str] = set()
-    eval_rels = [r for r in rels if EVAL_REL.match(r)]
-    for rel in eval_rels:
+    for rel in [r for r in rels if EVAL_REL.match(r)]:
         label = "parts/files/" + rel
+        before = len(problems)
         data = read_json(os.path.join(base, *rel.split("/")), label, problems)
         if data is None:
             continue
@@ -595,7 +608,13 @@ def prepare_eval(base: str, rels: List[str], criteria: List[Dict[str, str]], pro
         if not isinstance(items, list) or not items:
             problems.append("%s に criteria（基準ごとの採点のしかた）がありません。" % label)
             continue
+        inputs, settings = data.get("inputs", []), data.get("settings", {})
+        if not isinstance(inputs, list) or not all(isinstance(i, str) and i.strip() for i in inputs):
+            problems.append("%s の inputs は、課題のフォルダからの入力のファイルの場所（例：inputs/前回の週報.docx）の一覧にしてください。" % label)
+        if not isinstance(settings, dict):
+            problems.append("%s の settings は、maxIterations と task を持つ項目の集まりにしてください。" % label)
         new_items = []
+        knowledge_ids = []
         for number, item in enumerate(items, 1):
             where = "%s の criteria の %d 番目" % (label, number)
             if not isinstance(item, dict):
@@ -605,17 +624,115 @@ def prepare_eval(base: str, rels: List[str], criteria: List[Dict[str, str]], pro
             if found is None:
                 continue
             covered.add(found["id"])
+            knowledge_ids.append(found["knowledge"])
             rest = {k: v for k, v in item.items() if k not in ("id", "text", "knowledge")}
             new_items.append(dict([("id", found["id"]), ("text", found["text"])] + list(rest.items())))
         data["criteria"] = new_items
         filled[rel] = json_text(data)
-    if not eval_rels:
-        warnings.append("EVAL の課題（tests/eval/<課題>/eval.json）が1つもありません。構造の検査で不合格になります。")
-    else:
+        if len(problems) == before:   # 読み取れた課題だけを、確かめた課題と突き合わせる
+            prompt = data.get("prompt")
+            read[rel] = {"prompt": prompt.strip() if isinstance(prompt, str) else None, "knowledge": knowledge_ids,
+                         "inputs": list(inputs), "settings": dict(settings)}
+    if filled:
         for c in criteria:
             if c["id"] not in covered:
                 warnings.append("基準 %s（ナレッジ %s）が、どの EVAL の課題にも入っていません。構造の検査で不合格になります。" % (c["id"], c["knowledge"]))
-    return filled
+    return filled, read
+
+
+def confirmed_eval_tasks(confirmation: Dict[str, Any], problems: List[str]) -> List[Dict[str, Any]]:
+    """ヒアリングの記録の confirmation.evalTasks（ユーザーが生成前の確認で見て、よいと答えた課題）を読む。"""
+    tasks = confirmation.get("evalTasks")
+    if not isinstance(tasks, list) or not tasks:
+        problems.append("ヒアリングの記録に、生成前の確認で示した EVAL の課題（confirmation.evalTasks）がありません。")
+        return []
+    found: List[Dict[str, Any]] = []
+    for number, task in enumerate(tasks, 1):
+        where = "ヒアリングの記録の EVAL の課題（%d 件目）" % number
+        if not isinstance(task, dict) or not isinstance(task.get("prompt"), str) or not task["prompt"].strip():
+            problems.append("%sに、頼むときの言葉（prompt）がありません。" % where)
+            continue
+        inputs = []
+        for item in task.get("inputs") or []:
+            path = item.get("path") if isinstance(item, dict) else item
+            if not isinstance(path, str) or not path.strip():
+                problems.append("%sの入力のファイルに、場所（path）がありません。" % where)
+                continue
+            inputs.append({"path": path.strip(), "provisional": isinstance(item, dict) and item.get("provisional") is True})
+        settings = task.get("settings")
+        found.append({"prompt": task["prompt"].strip(), "inputs": inputs, "criteria": [str(k) for k in task.get("criteria") or []],
+                      "settings": settings if isinstance(settings, dict) else {}})
+    return found
+
+
+def eval_differences(task: Dict[str, Any], info: Dict[str, Any], rel: str) -> List[str]:
+    """確かめた課題 task と、作業エージェントが書いた eval.json（rel）の違い（criteria、inputs、settings）。"""
+    label = "parts/files/%s" % rel
+    out: List[str] = []
+    want, have = sorted(task["criteria"]), sorted(info["knowledge"])
+    if want != have:
+        out.append("%s の criteria（基準にするナレッジ）が、確かめた課題と違います（確かめた課題：%s／eval.json：%s）。"
+                   % (label, "、".join(want) or "なし", "、".join(have) or "なし"))
+    folder = rel.rsplit("/", 1)[0]
+    have_inputs = sorted({posixpath.normpath(folder + "/" + i.replace("\\", "/")) for i in info["inputs"]})
+    want_inputs = sorted(set(task["places"]))
+    if want_inputs != have_inputs:
+        lost, extra = [p for p in want_inputs if p not in have_inputs], [p for p in have_inputs if p not in want_inputs]
+        out.append("%s の inputs（入力のファイル）が、確かめた課題と違います：%s%s。"
+                   % (label, ("確かめたのに入っていない：" + "、".join(lost)) if lost else "",
+                      ("%s入っているのに確かめていない：%s" % ("／" if lost else "", "、".join(extra))) if extra else ""))
+    if task["settings"] != info["settings"]:
+        out.append("%s の settings（作業の画面に入れる設定の値）が、確かめた課題と違います（確かめた課題：%s／eval.json：%s）。"
+                   % (label, json.dumps(task["settings"], ensure_ascii=False), json.dumps(info["settings"], ensure_ascii=False)))
+    return out
+
+
+def check_confirmed_evals(confirmation: Dict[str, Any], evals: Dict[str, Dict[str, Any]], eval_inputs: List[Dict[str, str]],
+                          parts_files: List[str], problems: List[str]) -> None:
+    """作業エージェントが書いた eval.json が、ユーザーが生成前の確認でよいと答えた課題と同じかを確かめる（REQ-038、X2-03）。
+    課題の数、頼むときの言葉（prompt）、基準にするナレッジの番号の組、入力のファイル、設定の値。
+    課題は prompt で結びつける（記録の課題に番号はない）。確かめていない入力のファイルは、リポジトリに入れない。"""
+    tasks = confirmed_eval_tasks(confirmation, problems)
+    if not tasks:
+        return
+    places = {os.path.normpath(i["from"]): i["to"] for i in eval_inputs}   # 実物のファイル -> 生成プラグインの中の場所
+    expected: Set[str] = set()
+    for task in tasks:
+        task["places"] = []
+        for item in task["inputs"]:
+            if item["provisional"]:   # 仮のファイルの path は、生成プラグインの中の場所
+                place = posixpath.normpath(item["path"].replace("\\", "/"))
+            else:                       # 実物のファイルの path は、ユーザーの手元の絶対パス。eval_inputs で写す
+                place = places.get(os.path.normpath(item["path"]))
+                if place is None:
+                    problems.append("確かめた課題「%s」の入力の実物 %s が、parts/manifest.json の eval_inputs の from にありません。"
+                                    "実物のファイルは eval_inputs で指定してください。" % (clip(task["prompt"]), item["path"]))
+                    continue
+            task["places"].append(place)
+        expected.update(task["places"])
+
+    unused = dict(evals)
+    for task in tasks:
+        candidates = [rel for rel, info in unused.items() if info["prompt"] == task["prompt"]]
+        if not candidates:
+            problems.append("確かめた課題「%s」（頼むときの言葉）に当たる EVAL の課題が、parts/files/tests/eval/<課題>/eval.json にありません。"
+                            "頼むときの言葉（prompt）は、確かめた課題と同じにしてください。" % clip(task["prompt"]))
+            continue
+        chosen = next((rel for rel in candidates if not eval_differences(task, unused[rel], rel)), candidates[0])
+        problems.extend(eval_differences(task, unused.pop(chosen), chosen))
+    for rel, info in sorted(unused.items()):
+        problems.append("parts/files/%s の課題（頼むときの言葉「%s」）は、ユーザーが生成前の確認で確かめた課題にありません。"
+                        "確かめていない課題は入れられません。" % (rel, clip(info["prompt"] or "")))
+
+    inputs_dir = re.compile(r"^tests/eval/[^/]+/inputs/")
+    for place in sorted({r for r in parts_files if inputs_dir.match(r)} | {i["to"] for i in eval_inputs}):
+        if place not in expected:
+            problems.append("EVAL の課題の入力のファイル %s は、ユーザーが生成前の確認で確かめた入力にありません。確かめていないファイルは入れられません。" % place)
+
+
+def clip(text: str, limit: int = 40) -> str:
+    flat = " ".join(text.split())
+    return flat if len(flat) <= limit else flat[: limit - 1] + "…"
 
 
 def check_output_path(work: str, out: str, problems: List[str]) -> None:
@@ -987,11 +1104,14 @@ def build(hearing: str, work: str, out: str, template: Optional[str] = None, tod
     task = load_task(work, template, manifest, criteria, problems, warnings)
     slots = load_slots(work, problems)
     parts_files = list_parts_files(work, problems)
-    filled_eval = prepare_eval(os.path.join(work, "parts", "files"), parts_files, criteria, problems, warnings)
+    before = len(problems)
+    filled_eval, read_evals = prepare_eval(os.path.join(work, "parts", "files"), parts_files, criteria, problems, warnings)
     if manifest is not None:
         for item in manifest["eval_inputs"]:
             if item["to"] in parts_files:
                 problems.append("EVAL の課題の入力 %s が、parts/files/ と manifest.json の eval_inputs の両方にあります。どちらか一方にしてください。" % item["to"])
+        if len(problems) == before:   # eval.json や eval_inputs の読み取りの誤りがなければ、確かめた課題と突き合わせる
+            check_confirmed_evals(state["confirmation"], read_evals, manifest["eval_inputs"], parts_files, problems)
     check_output_path(work, out, problems)
     if problems or manifest is None or task is None:
         raise Refusal(problems or ["組み立ての設定を読めませんでした。"])

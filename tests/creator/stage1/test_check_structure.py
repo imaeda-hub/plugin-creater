@@ -1,7 +1,8 @@
-"""1段目の構造の検査（check_structure.py）そのものの試験。
+"""1段目の構造の検査（template/tests/stage1/check_structure.py）そのものの試験。
 
+クリエイターの開発の試験であり、ひな形（生成プラグイン）には入れない（生成プラグインの中では動かないため）。
 合格する見本（samples/good）を一時フォルダに写し、わざと壊して、正しく不合格になるかを見る。
-動かし方（この selftest フォルダで）:  python3 -m unittest discover -s . -p "test_*.py"
+動かし方（リポジトリの根で）:  python3 -m unittest discover -s tests/creator/stage1 -p "test_*.py"
 試験の名前には、確かめる要件の番号を入れる。
 """
 import json
@@ -13,9 +14,10 @@ import tempfile
 import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-STAGE1 = os.path.dirname(HERE)
-TEMPLATE_TESTS = os.path.dirname(STAGE1)
-TASK_SCHEMA = os.path.join(os.path.dirname(TEMPLATE_TESTS), "com.github.copilot", "extensions", "_plugin_", "core", "task.schema.json")
+REPO = os.path.dirname(os.path.dirname(os.path.dirname(HERE)))
+TEMPLATE = os.path.join(REPO, "template")
+STAGE1 = os.path.join(TEMPLATE, "tests", "stage1")
+TASK_SCHEMA = os.path.join(TEMPLATE, "com.github.copilot", "extensions", "_plugin_", "core", "task.schema.json")
 GOOD = os.path.join(HERE, "samples", "good")
 EXT = "com.github.copilot/extensions/sample-plugin"
 
@@ -105,6 +107,16 @@ class GoodSample(Sandbox):
         for check_id, (reqs, _) in cs.CATALOG.items():
             for req in reqs:
                 self.assertIn(req, cs.check_title(check_id))
+
+    def test_REQ_039_no_check_title_carries_a_number_missing_from_the_generated_plugin_requirements(self):
+        # 試験の名前の番号は、生成プラグインの仕様書（template/docs/specs/requirements.md）にある番号だけにする。
+        # ナレッジの番号の突き合わせは、生成プラグインの要件ではなく設計書 7章の試験なので、番号の代わりに節を付ける
+        with open(os.path.join(TEMPLATE, "docs", "specs", "requirements.md"), encoding="utf-8") as f:
+            spec = f.read()
+        for check_id in cs.CATALOG:
+            for req in cs.CATALOG[check_id][0]:
+                self.assertIn("### %s " % req, spec, "%s の試験の名前の %s が、生成プラグインの仕様書にない" % (check_id, req))
+        self.assertIn("設計書 7章", cs.check_title("knowledge"))
 
 
 class Manifest(Sandbox):
@@ -771,12 +783,6 @@ class Trace(Sandbox):
         self.write(self.SPEC, self.read(self.SPEC) + "\n### REQ-007 設定\n\n### REQ-008 別\n")
         self.write(self.DESIGN, self.read(self.DESIGN) + "| REQ-007 | 4.3 | `plugin.json` | 自動のテスト | x |\n| REQ-008 | 4.3 | `plugin.json` | 自動のテスト | y |\n")
         self.assertPasses("trace")
-
-    def test_REQ_003_tests_of_the_check_itself_do_not_count(self):
-        self.write("tests/stage1/selftest/test_x.py", "def test_REQ_007_x():\n    pass\n")
-        self.write(self.SPEC, self.read(self.SPEC) + "\n### REQ-007 設定\n")
-        self.write(self.DESIGN, self.read(self.DESIGN) + "| REQ-007 | 4.3 | `plugin.json` | 自動のテスト | x |\n")
-        self.assertFailsWith("trace", "REQ-007")
 
     def test_REQ_003_eval_and_human_rows_need_no_named_test(self):
         self.write(self.SPEC, self.read(self.SPEC) + "\n### REQ-007 a\n\n### REQ-008 b\n")
