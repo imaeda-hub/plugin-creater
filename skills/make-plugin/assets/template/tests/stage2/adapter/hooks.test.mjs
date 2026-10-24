@@ -240,6 +240,7 @@ describe('統括エージェントが使ってよいツール（フック onPreT
       assert.ok(result.permissionDecisionReason.includes(`「${toolName}」`), `${toolName}：理由にツールの名前が入る`);
       assert.match(result.permissionDecisionReason, /作業エージェントに頼んでください/);
       assert.doesNotMatch(result.permissionDecisionReason, /undefined|\[object|Error/);
+      assert.equal(hook(asOrchestrator(toolName, 'orchestrator')).permissionDecision, 'deny', `${toolName}（種類が名前だけで届いたとき）`);
     }
   });
 
