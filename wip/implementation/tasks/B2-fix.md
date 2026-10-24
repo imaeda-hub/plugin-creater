@@ -7,8 +7,8 @@
 ## 状態
 
 - [x] 指摘4つを読む
-- [ ] 根拠（core、設計書、仕様書、RESUME.md）を読んで確かめる
-- [ ] 直す
+- [x] 根拠（core の records・index・constants・lifecycle の buildInstruction・events、adapter の onPreToolUse・taskDescriptionOf・defer、設計書 3.1・4.1〜4.10、README のひな形、R1 の (1)・(3-3)、RESUME.md、scaffold.py の置き換え、1.0.102 の runtime.node の文字列）を読んで確かめた
+- [ ] 直す（SKILL.md → orchestrator → worker → verifier → tools.mjs → tasks/B2.md の古い記述）
 - [ ] 機械的な確かめ
 - [ ] 指摘の扱いの表を仕上げる
 

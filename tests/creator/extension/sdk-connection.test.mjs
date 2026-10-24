@@ -68,13 +68,13 @@ describe('本物の Copilot SDK とのつなぎ目', { skip: skipReason }, () =>
   test('REQ-015 本物の SDK 経由でツールを呼べる：記録のツールの返り値、断る文、状態取得ツール。記録は COPILOT_HOME の下にできる', async () => {
     await withProcess(async ({ peer, home, sessionId }) => {
       const progress = await peer.callTool(sessionId, 'plugin-creator_progress', { stage: '始まり' });
-      assert.match(progress.result, /^記録しました（段階：始まり）。まだ聞いていない項目：作業の目的、/);
+      assert.match(progress.result, /^記録しました（段階：始まり）。まだ聞いていないこと：作業の目的、/);
       assert.equal(progress.error, undefined);
       assert.ok(fs.existsSync(path.join(home, 'plugin-data', 'plugin-creator', 'hearings', sessionId, 'state.json')));
 
       const refused = await peer.callTool(sessionId, 'plugin-creator_progress', { items: [{ item: '成果', status: '聞いた', quote: 'x' }] });
       assert.equal(refused.result, undefined);
-      assert.match(refused.error, /^項目の名前が違います：「成果」。使える名前：作業の目的、/);
+      assert.match(refused.error, /^聞くことの名前が違います：「成果」。使える名前：作業の目的、/);
 
       const state = await peer.callTool(sessionId, 'plugin-creator_state', {});
       assert.match(state.result, /^段階：始まり$/m);

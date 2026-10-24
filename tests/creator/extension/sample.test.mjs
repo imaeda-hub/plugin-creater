@@ -65,7 +65,7 @@ describe('作業の定義の決まりの確かめ（schema-check）', () => {
     assert.match(text, /task\.json\.settings\[1\]\.default：数で書いてください（今は文字）/);
     assert.match(text, /task\.json\.settings\[2\]\.options：1個以上入れてください/);
     assert.match(text, /task\.json\.displays\[0\]\.when：使える値は "running"、"finished"、"both" です/);
-    assert.match(text, /task\.json：決まりにない項目「extra」があります/);
+    assert.match(text, /task\.json：決まりにない名前「extra」があります/);
     assert.match(text, /task\.json\.settings\[3\]：「label」がありません/);
     assert.ok(errors.every((e) => !/[{}]/.test(e) || /まとまり（\{ \}）/.test(e)), 'JSON の記号だらけの文を返していない');
   });
@@ -250,7 +250,7 @@ describe('Web管理画面の見本', () => {
       assert.equal(typeof r.displays.draft, 'string');
       assert.match(r.displays.draft, /^（見本）/);
       assert.deepEqual(Object.keys(r.displays).sort(), ['chart', 'draft', 'facts', 'rate', 'report', 'table']);
-      assert.deepEqual(Object.keys(r.displays.facts), ['項目1', '項目2', '項目3']);
+      assert.deepEqual(Object.keys(r.displays.facts), ['見出し1', '見出し2', '見出し3']);
       assert.deepEqual(r.displays.table.columns, ['列1', '列2', '列3']);
       assert.equal(r.displays.table.rows.length, 2);
       assert.deepEqual(r.displays.rate, { value: 60, max: 100, label: '進み具合' });

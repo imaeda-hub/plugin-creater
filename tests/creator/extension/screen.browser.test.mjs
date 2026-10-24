@@ -125,8 +125,8 @@ describe('クリエイターの画面（ブラウザー）', { skip: skipReason 
         const asked = await view.page.locator('#asked li').allTextContents();
         assert.deepEqual(notAsked.map((t) => t.trim()), ['頼む場面と言い方未着手', '受け取るもの未着手', '進め方未着手', '合否の決め方未着手', '決まった書き方やルール未着手', '守らないと困ること未着手', '使う道具と環境未着手']);
         assert.deepEqual(asked.map((t) => t.trim()), ['作業の目的聞いた', '成果物保留知っている人：経理の田中さん', 'いつもと違うとき決まりなし']);
-        assert.match(await view.page.locator('#not-asked h3').textContent(), /まだ聞いていない項目（7）/);
-        assert.match(await view.page.locator('#asked h3').textContent(), /聞いた項目（3）/);
+        assert.match(await view.page.locator('#not-asked h3').textContent(), /まだ聞いていないこと（7）/);
+        assert.match(await view.page.locator('#asked h3').textContent(), /聞いたこと（3）/);
         assert.match(await view.page.locator('#knowledge').textContent(), /まだありません/);
 
         await run.call('record', { knowledge: [knowledge({ text: '毎週金曜日の17時までに提出する' })] });
@@ -139,6 +139,11 @@ describe('クリエイターの画面（ブラウザー）', { skip: skipReason 
         assert.deepEqual(second.slice(0, 7), ['K-02', '合否の決め方', '合否の決め方', '見出しが順に並んでいれば合格', 'ヒアリングの答え', '実績、予定の順', '祝日の週は予定を省く']);
 
         assert.equal(await view.page.evaluate(() => window.__notReloaded), 'same-page', 'ページが読み込み直されている');
+        // 見出しや札で「項目」と言わず、「聞くこと」と言う（references/words.md の表。段階の名前「項目の点検」は、そのまま）
+        const pageText = (await view.page.locator('body').innerText()).replaceAll('項目の点検', '');
+        assert.ok(!pageText.includes('項目'), '画面に「項目」と出ている');
+        assert.match(pageText, /そのほかの聞くこと/);
+        assert.deepEqual(await view.page.locator('#knowledge thead th').allTextContents(), ['番号', '種類', '聞くこと', '文', '出どころ', '例', '例外', 'ユーザーの言葉']);
         assert.deepEqual(view.problems, []);
         await shot(view.page, 'creator-hearing');
       } finally {
@@ -287,7 +292,7 @@ describe('クリエイターの画面（ブラウザー）', { skip: skipReason 
         assert.match(await page.locator('#s-iterations').textContent(), /見出しが「今週の実績」「来週の予定」の順に並んでいれば合格/);
         assert.match(await page.locator('#s-iterations').textContent(), /ユーザーと確かめた基準/);
         assert.match(await page.locator('#s-displays').textContent(), /下書き.*（見本）ここに「下書き」の文章が出ます/);
-        assert.match(await page.locator('#s-displays').textContent(), /要点.*項目1.*（見本）仮の値/);
+        assert.match(await page.locator('#s-displays').textContent(), /要点.*見出し1.*（見本）仮の値/);
         assert.match(await page.locator('#s-displays').textContent(), /進み具合.*60%/);
         assert.equal(await page.locator('#s-displays .display[data-key="table"]').count(), 0, '終わった後に見せる表示は、実行中には出ない');
         assert.equal(await page.locator('#stop').count(), 1);

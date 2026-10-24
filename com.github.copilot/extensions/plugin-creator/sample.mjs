@@ -52,7 +52,7 @@ export function readDraft(file) {
 function sampleValue(def) {
   switch (def.type) {
     case 'kv':
-      return { 項目1: '（見本）仮の値', 項目2: '（見本）仮の値', 項目3: '（見本）仮の値' };
+      return { 見出し1: '（見本）仮の値', 見出し2: '（見本）仮の値', 見出し3: '（見本）仮の値' };
     case 'table':
       return {
         columns: ['列1', '列2', '列3'],

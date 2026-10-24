@@ -15,7 +15,7 @@ import { INJECTION_MAX_BYTES } from './constants.mjs';
  * 繰り返しの指示は不要な確認を増やすので、1回だけにする。
  */
 export const COMPACTION_NOTICE =
-  '会話が自動で要約されました。いまの手順が消えているかもしれません。skill ツールで make-plugin を読み直し、plugin-creator_state を呼んで、段階と聞いていない項目を確かめてから続けてください。';
+  '会話が自動で要約されました。いまの手順が消えているかもしれません。skill ツールで make-plugin を読み直し、plugin-creator_state を呼んで、段階と、まだ聞いていないことを確かめてから続けてください。';
 
 if (Buffer.byteLength(COMPACTION_NOTICE, 'utf8') >= INJECTION_MAX_BYTES) {
   throw new Error('コンパクションの後の差し込みが 1KB を超えています');

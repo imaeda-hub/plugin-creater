@@ -78,10 +78,10 @@ export function clip(value, max) {
 
 const SHOWN_REMAINING = 6;
 
-/** 名前の並びを、長ければ「ほか N 項目」でまとめる */
+/** 名前の並びを、長ければ「ほか N 件」でまとめる */
 function nameList(names, shown = SHOWN_REMAINING) {
   if (names.length <= shown) return names.join('、');
-  return `${names.slice(0, shown).join('、')}、ほか${names.length - shown}項目`;
+  return `${names.slice(0, shown).join('、')}、ほか${names.length - shown}件`;
 }
 
 /**
@@ -137,7 +137,7 @@ export function createHearing({ store, sessionId, clock }) {
 
   const remainingLine = (s) => {
     const names = remainingNames(s);
-    return names.length ? `まだ聞いていない項目：${nameList(names)}` : 'まだ聞いていない項目はありません。';
+    return names.length ? `まだ聞いていないこと：${nameList(names)}` : 'まだ聞いていないことはありません。';
   };
 
   // ---- progress ---------------------------------------------------------------
@@ -148,7 +148,7 @@ export function createHearing({ store, sessionId, clock }) {
     const stageName = input.stage;
     const itemsInput = input.items;
     if (stageName === undefined && itemsInput === undefined) {
-      throw new Refusal('段階（stage）か項目（items）のどちらかを渡してください。');
+      throw new Refusal('段階（stage）か聞くこと（items）のどちらかを渡してください。');
     }
 
     const next = working();
@@ -163,13 +163,13 @@ export function createHearing({ store, sessionId, clock }) {
     const touched = [];
     if (itemsInput !== undefined) {
       if (!Array.isArray(itemsInput) || itemsInput.length === 0) {
-        throw new Refusal('項目（items）は、項目の名前・状態・ユーザーの言葉の抜き書きを持つものの一覧で渡してください。');
+        throw new Refusal('聞くこと（items）は、聞くことの名前・状態・ユーザーの言葉の抜き書きを持つものの一覧で渡してください。');
       }
       for (const entry of itemsInput) {
         const e = isObject(entry) ? entry : {};
         const item = itemIndex.byName.get(e.item);
         if (!item) {
-          throw new Refusal(`項目の名前が違います：「${String(e.item ?? '')}」。使える名前：${listNames(ITEMS.filter((i) => !i.computed))}`);
+          throw new Refusal(`聞くことの名前が違います：「${String(e.item ?? '')}」。使える名前：${listNames(ITEMS.filter((i) => !i.computed))}`);
         }
         if (item.computed) {
           throw new Refusal(
@@ -223,7 +223,7 @@ export function createHearing({ store, sessionId, clock }) {
 
   // ---- record -----------------------------------------------------------------
 
-  const KNOWLEDGE_FIELDS_JA = { kind: '種類', item: '項目', text: '文', source: '出どころ', quote: 'ユーザーの言葉', status: '状態' };
+  const KNOWLEDGE_FIELDS_JA = { kind: '種類', item: '聞くこと', text: '文', source: '出どころ', quote: 'ユーザーの言葉', status: '状態' };
 
   function checkKnowledgeFields(e, label) {
     const out = {};
@@ -234,7 +234,7 @@ export function createHearing({ store, sessionId, clock }) {
     }
     if (e.item !== undefined) {
       const item = MAIN_ITEMS.find((i) => i.name === e.item);
-      if (!item) throw new Refusal(`${label}の項目が違います：「${String(e.item)}」。使える名前：${listNames(MAIN_ITEMS)}`);
+      if (!item) throw new Refusal(`${label}の聞くことが違います：「${String(e.item)}」。使える名前：${listNames(MAIN_ITEMS)}`);
       out.item = item.key;
     }
     if (e.text !== undefined) {
@@ -363,7 +363,7 @@ export function createHearing({ store, sessionId, clock }) {
     assertWritable();
     const names = remainingNames(state);
     if (names.length) {
-      throw new Refusal(`まだ聞いていない項目があるので、生成前の確認はできません：${names.join('、')}。聞いてから、もう一度知らせてください。`);
+      throw new Refusal(`まだ聞いていないことがあるので、生成前の確認はできません：${names.join('、')}。聞いてから、もう一度知らせてください。`);
     }
   }
 
@@ -429,7 +429,7 @@ export function createHearing({ store, sessionId, clock }) {
     for (const k of state?.knowledge ?? []) {
       if (k.status !== 'decided') continue;
       if (k.source === 'volunteered' && k.itemTouchedAtRecord) {
-        out.push({ id: k.id, itemName: itemIndex.nameOf(k.item), reason: 'その項目を聞いた後に、ユーザーが自分から話した' });
+        out.push({ id: k.id, itemName: itemIndex.nameOf(k.item), reason: 'そのことを聞いた後に、ユーザーが自分から話した' });
       } else if (k.source === 'added_at_confirmation') {
         out.push({ id: k.id, itemName: itemIndex.nameOf(k.item), reason: '生成前の確認で足した' });
       }

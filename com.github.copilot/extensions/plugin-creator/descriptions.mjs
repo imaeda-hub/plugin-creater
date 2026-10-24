@@ -62,7 +62,7 @@ export const PARAM_DESCRIPTIONS = Object.freeze({
     evalTasks: 'EVAL の課題の案の一覧。',
     'evalTasks.prompt': '課題の、頼むときの言葉',
     'evalTasks.inputs': '課題の入力のファイルの一覧',
-    'evalTasks.inputs.path': '入力のファイルの場所',
+    'evalTasks.inputs.path': '入力のファイルの場所。実物のファイルは、その絶対パス。仮のファイル（`provisional` が true）は、生成プラグインの中の置き場所（`tests/eval/<課題の番号>/inputs/<名前>`）。',
     'evalTasks.inputs.provisional': '仮のファイルなら true',
     'evalTasks.criteria': '課題の合否の基準にするナレッジの番号の一覧。種類が「合否の決め方」のナレッジだけを入れる。',
     rebuild: '作り直しのときだけ。引き継ぐことと、変わること。',

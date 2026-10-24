@@ -70,7 +70,7 @@ export function stateText(hearing, context, include) {
   lines.push(`段階：${state ? stageIndex.nameOf(state.stage) : '（ヒアリングの記録はまだありません）'}`);
 
   if (state) {
-    lines.push('項目の状態：');
+    lines.push('聞くことの状態：');
     for (const item of hearing.applicableItems()) {
       const status = itemStatusIndex.nameOf(hearing.itemStatus(item.key));
       const extra = item.computed ? `（確かめていない候補 ${hearing.candidates().length}件）` : '';
@@ -82,7 +82,7 @@ export function stateText(hearing, context, include) {
     if (candidates.length) {
       lines.push('確かめていない候補：');
       // 出どころも示す。段階「決まりの確かめ」は、ファイルから読んだ候補だけを確かめる。コンパクションの後に見分けるため
-      for (const k of candidates.slice(0, LIST_LIMIT)) lines.push(`  ${k.id}（項目：${itemIndex.nameOf(k.item)}、出どころ：${sourceIndex.nameOf(k.source)}）：${clip(k.text, STATE_LINE_CLIP)}`);
+      for (const k of candidates.slice(0, LIST_LIMIT)) lines.push(`  ${k.id}（聞くこと：${itemIndex.nameOf(k.item)}、出どころ：${sourceIndex.nameOf(k.source)}）：${clip(k.text, STATE_LINE_CLIP)}`);
       if (candidates.length > LIST_LIMIT) lines.push(`  ほか${candidates.length - LIST_LIMIT}件`);
     }
 
@@ -128,7 +128,7 @@ export function stateText(hearing, context, include) {
       const targets = hearing.retrospectiveTargets();
       lines.push('質問の改善案の対象のナレッジ（ヒアリングで引き出せなかったもの）：');
       if (targets.length === 0) lines.push('  ありません。');
-      for (const t of targets) lines.push(`  ${t.id}（項目：${t.itemName}）：${t.reason}`);
+      for (const t of targets) lines.push(`  ${t.id}（聞くこと：${t.itemName}）：${t.reason}`);
       lines.push(`問答の記録のすべて（${qa.length}件。1行が1件の JSON）：`);
       let body = qa.map((e) => JSON.stringify(e)).join('\n');
       if (body.length > RETROSPECTIVE_MAX_CHARS) {

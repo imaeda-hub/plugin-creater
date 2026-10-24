@@ -141,6 +141,16 @@ describe('ツールの登録', () => {
     });
   });
 
+  test('REQ-038 EVAL の課題の入力のファイルの説明に、実物は絶対パス、仮のファイルは生成プラグインの中の置き場所と書く（B3 の案）', async () => {
+    await withRun(async (run) => {
+      const path_ = run.fake.tool(T('confirm')).parameters.properties.evalTasks.items.properties.inputs.items.properties.path;
+      assert.equal(
+        path_.description,
+        '入力のファイルの場所。実物のファイルは、その絶対パス。仮のファイル（`provisional` が true）は、生成プラグインの中の置き場所（`tests/eval/<課題の番号>/inputs/<名前>`）。',
+      );
+    });
+  });
+
   test('REQ-015 状態取得ツールの説明に、コンパクションの後、再開の後、段階の始めにまず呼ぶと書く（hearing.md 7.5）', async () => {
     await withRun(async (run) => {
       const description = run.fake.tool(T('state')).description;

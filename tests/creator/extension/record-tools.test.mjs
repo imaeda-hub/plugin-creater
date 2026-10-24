@@ -27,7 +27,7 @@ describe('進み具合（plugin-creator_progress）', () => {
     await withRun(async (run) => {
       const r = await run.callSafe('progress', { items: [{ item: '成果', status: '聞いた', quote: 'はい' }] });
       assert.equal(r.ok, false);
-      assert.match(r.error, /項目の名前が違います：「成果」/);
+      assert.match(r.error, /聞くことの名前が違います：「成果」/);
       assert.ok(r.error.includes(ALL_ITEM_NAMES_JA));
       assert.ok(r.error.includes('合否の決め方'));
       assert.deepEqual(internalSymbolsIn(r.error), []);
@@ -101,7 +101,7 @@ describe('進み具合（plugin-creator_progress）', () => {
 
       const none = await run.callSafe('progress', {});
       assert.equal(none.ok, false);
-      assert.match(none.error, /段階（stage）か項目（items）のどちらかを渡してください/);
+      assert.match(none.error, /段階（stage）か聞くこと（items）のどちらかを渡してください/);
     });
   });
 
@@ -135,14 +135,14 @@ describe('進み具合（plugin-creator_progress）', () => {
       const first = await run.call('progress', { stage: '始まり' });
       assert.ok(!first.includes('\n'));
       assert.ok(first.length < 120, `長すぎる：${first.length}文字`);
-      assert.match(first, /まだ聞いていない項目：作業の目的、頼む場面と言い方、受け取るもの、進め方、成果物、合否の決め方、ほか10項目/);
+      assert.match(first, /まだ聞いていないこと：作業の目的、頼む場面と言い方、受け取るもの、進め方、成果物、合否の決め方、ほか10件/);
       assert.deepEqual(internalSymbolsIn(first), []);
 
       const some = await run.call('progress', answers(SETTABLE_ITEMS.filter((n) => n !== '成果物' && n !== '合否の決め方')));
-      assert.equal(some, '記録しました。まだ聞いていない項目：成果物、合否の決め方');
+      assert.equal(some, '記録しました。まだ聞いていないこと：成果物、合否の決め方');
 
       const done = await run.call('progress', answers(['成果物', '合否の決め方']));
-      assert.equal(done, '記録しました。まだ聞いていない項目はありません。');
+      assert.equal(done, '記録しました。まだ聞いていないことはありません。');
     });
   });
 
@@ -150,10 +150,10 @@ describe('進み具合（plugin-creator_progress）', () => {
     await withRun(async (run) => {
       await answerEverything(run);
       const normal = await run.call('progress', { stage: '項目の点検' });
-      assert.match(normal, /まだ聞いていない項目はありません/);
+      assert.match(normal, /まだ聞いていないことはありません/);
 
       const rebuild = await run.call('progress', { stage: 'できていたことの確認' });
-      assert.match(rebuild, /まだ聞いていない項目：できていたことの確認/);
+      assert.match(rebuild, /まだ聞いていないこと：できていたことの確認/);
       assert.equal(run.readState().rebuild, true);
 
       const refused = await run.callSafe('confirm', confirmArgs());
@@ -161,7 +161,7 @@ describe('進み具合（plugin-creator_progress）', () => {
       assert.match(refused.error, /できていたことの確認/);
 
       const answered = await run.call('progress', { items: [{ item: 'できていたことの確認', status: '聞いた', quote: '全部引き継ぐ' }] });
-      assert.match(answered, /まだ聞いていない項目はありません/);
+      assert.match(answered, /まだ聞いていないことはありません/);
     });
   });
 
@@ -205,6 +205,42 @@ describe('進み具合（plugin-creator_progress）', () => {
   });
 });
 
+describe('ユーザーに話す言葉', () => {
+  test('REQ-024 ユーザーに見える返り値と断る文は、「項目」と言わず、「聞くこと」と言う（references/words.md の表。段階の名前「項目の点検」は、そのまま）', async () => {
+    await withRun(async (run) => {
+      const seen = [];
+      const take = (r) => seen.push(r.ok === undefined ? r : r.ok ? r.text : r.error);
+      const call = async (tool, args) => take(await run.callSafe(tool, args));
+      await call('progress', { stage: '始まり' });
+      await call('progress', {});
+      await call('progress', { items: [] });
+      await call('progress', { items: [{ item: '成果', status: '聞いた', quote: 'x' }] });
+      await call('progress', { items: [{ item: '成果物', status: '聞いた' }] });
+      await call('progress', { items: [{ item: '成果物', status: '保留', quote: '分からない' }] });
+      await call('progress', { items: [{ item: '候補の確かめ', status: '聞いた', quote: 'x' }] });
+      await call('record', { knowledge: [{ quote: 'x' }] });
+      await call('record', { knowledge: [knowledge({ item: '前回の1回' })] });
+      await call('record', { knowledge: [knowledge({ status: '候補', source: 'ファイルから読んで確かめた' })] });
+      await call('confirm', confirmArgs());
+      await answerEverything(run, { except: ['成果物', '合否の決め方'] });
+      await call('confirm', confirmArgs());
+      await call('progress', answers(['成果物', '合否の決め方']));
+      await call('state', {});
+      await call('state', { include: '振り返りの材料' });
+      await call('record', { knowledge: [{ id: 'K-01', item: '成果物', quote: 'x' }] });
+      assert.ok(seen.length >= 15);
+      for (const text of seen) {
+        const withoutStageName = String(text).replaceAll('項目の点検', '');
+        assert.ok(!withoutStageName.includes('項目'), `「項目」と出ている：${text}`);
+      }
+      // 話す言葉は、聞くこと
+      assert.ok(seen.some((t) => /まだ聞いていないこと：/.test(t)));
+      assert.ok(seen.some((t) => /聞くことの名前が違います/.test(t)));
+      assert.ok(seen.some((t) => /^聞くことの状態：$/m.test(t)));
+    });
+  });
+});
+
 describe('決まったこと（plugin-creator_record）', () => {
   test('REQ-049 ナレッジの欄を確かめる：足りない欄、種類・項目・出どころ・状態の名前、文、ユーザーの言葉', async () => {
     await withRun(async (run) => {
@@ -215,11 +251,11 @@ describe('決まったこと（plugin-creator_record）', () => {
         assert.deepEqual(internalSymbolsIn(r.error), []);
         return r.error;
       };
-      await refuse({ quote: 'x' }, /新しいナレッジに足りない欄：種類、項目、文、出どころ、状態/);
+      await refuse({ quote: 'x' }, /新しいナレッジに足りない欄：種類、聞くこと、文、出どころ、状態/);
       await refuse(knowledge({ quote: undefined }), /ユーザーの言葉の抜き書き（quote）を添えてください/);
       await refuse(knowledge({ quote: '  ' }), /ユーザーの言葉の抜き書き（quote）を添えてください/);
       assert.ok((await refuse(knowledge({ kind: '基準' }), /種類が違います：「基準」/)).includes('合否の決め方、それ以外'));
-      const itemError = await refuse(knowledge({ item: '前回の1回' }), /項目が違います：「前回の1回」/);
+      const itemError = await refuse(knowledge({ item: '前回の1回' }), /聞くことが違います：「前回の1回」/);
       assert.ok(itemError.includes('作業の目的') && itemError.includes('いつもと違うとき') && !itemError.includes('候補の確かめ'));
       assert.ok((await refuse(knowledge({ source: '推測' }), /出どころが違います：「推測」/)).includes('AI の判断（ユーザーが任せた）'));
       assert.ok((await refuse(knowledge({ status: '済み' }), /状態が違います：「済み」/)).includes('候補、決まった、外した'));
@@ -304,21 +340,21 @@ describe('決まったこと（plugin-creator_record）', () => {
   test('REQ-017 確かめていない候補が残っていると、項目「候補の確かめ」が未着手になる。確かめると聞いたになる', async () => {
     await withRun(async (run) => {
       await answerEverything(run);
-      assert.match(await run.call('progress', { stage: '決まりの確かめ' }), /まだ聞いていない項目はありません/);
+      assert.match(await run.call('progress', { stage: '決まりの確かめ' }), /まだ聞いていないことはありません/);
 
       const added = await run.call('record', { knowledge: [knowledge({ status: '候補', source: 'ファイルから読んで確かめた', quote: '週報.docx の1ページ' })] });
       assert.match(added, /確かめていない候補：1件/);
-      assert.match(await run.call('progress', { stage: '決まりの確かめ' }), /まだ聞いていない項目：候補の確かめ/);
+      assert.match(await run.call('progress', { stage: '決まりの確かめ' }), /まだ聞いていないこと：候補の確かめ/);
       assert.match(await run.call('state'), /候補の確かめ：未着手（確かめていない候補 1件）/);
 
       const refused = await run.callSafe('confirm', confirmArgs());
       assert.equal(refused.ok, false);
-      assert.match(refused.error, /まだ聞いていない項目があるので、生成前の確認はできません：候補の確かめ/);
+      assert.match(refused.error, /まだ聞いていないことがあるので、生成前の確認はできません：候補の確かめ/);
 
       // 「外した」でも、確かめたことになる
       const checked = await run.call('record', { knowledge: [{ id: 'K-01', status: '外した', quote: '決まりではなく、たまたま' }] });
       assert.match(checked, /確かめていない候補はありません/);
-      assert.match(await run.call('progress', { stage: '項目の点検' }), /まだ聞いていない項目はありません/);
+      assert.match(await run.call('progress', { stage: '項目の点検' }), /まだ聞いていないことはありません/);
       assert.match(await run.call('state'), /候補の確かめ：聞いた/);
     });
   });
@@ -360,7 +396,7 @@ describe('生成前の確認（plugin-creator_confirm）と、段階「生成」
       await run.call('progress', answers(SETTABLE_ITEMS.filter((n) => !['成果物', '合否の決め方'].includes(n))));
       const r = await run.callSafe('confirm', confirmArgs());
       assert.equal(r.ok, false);
-      assert.equal(r.error, 'まだ聞いていない項目があるので、生成前の確認はできません：成果物、合否の決め方。聞いてから、もう一度知らせてください。');
+      assert.equal(r.error, 'まだ聞いていないことがあるので、生成前の確認はできません：成果物、合否の決め方。聞いてから、もう一度知らせてください。');
       assert.deepEqual(internalSymbolsIn(r.error), []);
       assert.equal(run.readState().confirmation, null);
     });
@@ -370,7 +406,7 @@ describe('生成前の確認（plugin-creator_confirm）と、段階「生成」
     await withRun(async (run) => {
       const r = await run.callSafe('confirm', confirmArgs());
       assert.equal(r.ok, false);
-      assert.match(r.error, /まだ聞いていない項目があるので、生成前の確認はできません：作業の目的、頼む場面と言い方/);
+      assert.match(r.error, /まだ聞いていないことがあるので、生成前の確認はできません：作業の目的、頼む場面と言い方/);
     });
   });
 
@@ -515,7 +551,7 @@ describe('生成前の確認（plugin-creator_confirm）と、段階「生成」
       assert.match(r.error, /task\.json\.settings\[0\]\.key：書き方が決まりに合いません/);
       assert.match(r.error, /task\.json\.settings\[0\]\.type：使える値は/);
       assert.match(r.error, /task\.json\.displays\[0\]：「when」がありません/);
-      assert.match(r.error, /決まりにない項目「extra」があります/);
+      assert.match(r.error, /決まりにない名前「extra」があります/);
       assert.equal(run.readState().confirmation, null, '断ったときは、確認を受け付けたことにしない');
     });
   });

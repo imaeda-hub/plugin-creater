@@ -98,7 +98,7 @@ export function checkSchema(value, schema, rootName = 'task.json') {
       if (sch.additionalProperties !== undefined) {
         for (const name of Object.keys(val)) {
           if (name in props) continue;
-          if (sch.additionalProperties === false) errors.push(`${where}：決まりにない項目「${name}」があります`);
+          if (sch.additionalProperties === false) errors.push(`${where}：決まりにない名前「${name}」があります`);
           else walk(val[name], sch.additionalProperties, `${where}.${name}`);
         }
       }

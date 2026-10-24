@@ -50,7 +50,7 @@
   function knowledgeTable(rows, label) {
     if (rows.length === 0) return none('まだありません');
     return table(
-      ['番号', '種類', '項目', '文', '出どころ', '例', '例外', 'ユーザーの言葉'],
+      ['番号', '種類', '聞くこと', '文', '出どころ', '例', '例外', 'ユーザーの言葉'],
       rows.map((k) => [k.id, k.kind, k.item, textCell(k.text), k.source, k.example ?? '', k.exception ?? '', textCell(k.quote ?? '')]),
       label,
       'knowledge-table',
@@ -104,7 +104,7 @@
 
   function renderItems(view) {
     const hearing = view.hearing;
-    if (!hearing.exists) return [h('h2', null, 'ヒアリングの進み具合'), none('ヒアリングが始まると、聞く項目の進み具合がここに出ます。')];
+    if (!hearing.exists) return [h('h2', null, 'ヒアリングの進み具合'), none('ヒアリングが始まると、聞くことの進み具合がここに出ます。')];
     const main = hearing.items.filter((i) => i.main);
     const asked = main.filter((i) => i.done);
     const notAsked = main.filter((i) => !i.done);
@@ -117,17 +117,17 @@
         h(
           'section',
           { class: 'item-column', id: 'not-asked' },
-          h('h3', null, `まだ聞いていない項目（${notAsked.length}）`),
+          h('h3', null, `まだ聞いていないこと（${notAsked.length}）`),
           notAsked.length ? h('ul', { class: 'item-list' }, notAsked.map(itemRow)) : none('ありません'),
         ),
         h(
           'section',
           { class: 'item-column', id: 'asked' },
-          h('h3', null, `聞いた項目（${asked.length}）`),
+          h('h3', null, `聞いたこと（${asked.length}）`),
           asked.length ? h('ul', { class: 'item-list' }, asked.map(itemRow)) : none('まだありません'),
         ),
       ),
-      h('h3', { class: 'sub' }, 'そのほかの項目'),
+      h('h3', { class: 'sub' }, 'そのほかの聞くこと'),
       others.length ? h('ul', { class: 'item-list', id: 'other-items' }, others.map(itemRow)) : none('ありません'),
     ];
   }
