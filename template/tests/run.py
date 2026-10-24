@@ -41,7 +41,7 @@ import sys
 import tempfile
 import traceback
 import unittest
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 TIMEOUT_SECONDS = 900   # 1つの段階の上限。超えたら不合格にする
@@ -153,6 +153,11 @@ def browser_found(directory: str) -> Tuple[bool, str]:
     return (True, "Playwright の Chromium") if node_import_works(directory, script) else (False, "")
 
 
+def imports_playwright(path: str) -> bool:
+    with open(path, encoding="utf-8", errors="ignore") as f:
+        return re.search(r"""(from\s+|import\s*\(\s*)['"]playwright['"]""", f.read()) is not None
+
+
 def gather_needs(stage2_dir: str, extra: List[str]) -> Tuple[List[str], str]:
     """要る道具の名前の並びと、Playwright を確かめるフォルダ。"""
     needs = ["python", "pyyaml", "jsonschema"]
@@ -161,11 +166,10 @@ def gather_needs(stage2_dir: str, extra: List[str]) -> Tuple[List[str], str]:
     if node_files:
         needs.append("node")
         for path in node_files:
-            with open(path, encoding="utf-8", errors="ignore") as f:
-                if re.search(r"""(from\s+|import\s*\(\s*)['"]playwright['"]""", f.read()):
-                    needs += ["playwright", "browser"]
-                    probe_dir = os.path.dirname(path)
-                    break
+            if imports_playwright(path):
+                needs += ["playwright", "browser"]
+                probe_dir = os.path.dirname(path)
+                break
     for name in extra:
         if name not in needs:
             needs.append(name)
@@ -301,7 +305,10 @@ def parse_tap(text: str) -> List[Dict[str, str]]:
                 detail = next((c for c in comments if "Error" in c), "")
                 reason = "試験のファイルが動かなかった（終了コード %s）%s" % (info["exitCode"], ": " + detail[:250] if detail else "")
         if info.get("type") != "suite" or status == "failed":
-            tests.append({"name": path, "status": status, "reason": reason})
+            test = {"name": path, "status": status, "reason": reason}
+            if status == "failed" and info.get("location"):
+                test["location"] = info["location"]   # 落ちた試験のファイルと行（run_node_tests が根からの相対にする）
+            tests.append(test)
         comments = []
         i += 1
     return tests
@@ -319,9 +326,13 @@ def run_node_tests(root: str, files: List[str]) -> List[Dict[str, str]]:
     except subprocess.TimeoutExpired:
         return [{"name": "node --test", "status": "failed", "reason": "%d 秒たっても終わらない" % TIMEOUT_SECONDS}]
     tests = parse_tap(proc.stdout.decode("utf-8", "replace"))
-    for t in tests:   # 試験のファイルの名前は、プラグインの根からの相対にして見やすくする
+    for t in tests:   # 試験のファイルの名前と落ちた場所は、プラグインの根からの相対にして見やすくする
         if os.path.isabs(t["name"]):
             t["name"] = os.path.relpath(t["name"], root).replace(os.sep, "/")
+        if t.get("location"):
+            m = re.match(r"^(.*?)(:\d+(?::\d+)?)?$", t["location"])
+            file = m.group(1) if m else t["location"]
+            t["location"] = (os.path.relpath(file, root).replace(os.sep, "/") if os.path.isabs(file) else file) + (m.group(2) or "" if m else "")
     if proc.returncode != 0 and not any(t["status"] == "failed" for t in tests):
         detail = proc.stderr.decode("utf-8", "replace").strip()[-400:]
         tests.append({"name": "node --test", "status": "failed", "reason": "終了コード %d%s" % (proc.returncode, "（%s）" % detail if detail else "")})
@@ -398,23 +409,31 @@ def run_python_tests(root: str, start_dir: str) -> List[Dict[str, str]]:
             pass
 
 
-def run_stage2(root: str, stage2_dir: str) -> Dict[str, Any]:
+def run_stage2_tests(root: str, node_files: List[str], python_dirs: List[str], note: str = "") -> Dict[str, Any]:
+    """探した場所の試験を動かして、2段目の結果にまとめる。python_dirs は、unittest（test_*.py）を動かすフォルダ。"""
     stage: Dict[str, Any] = {"id": "stage2", "name": "部品の試験", "status": "none", "failures": [], "warnings": [], "tests": []}
-    node_files = find_node_tests(stage2_dir)
-    py_dir, py_files = find_python_tests(stage2_dir)
+    if not (node_files or python_dirs):
+        stage["note"] = note
+        return stage
     tests: List[Dict[str, str]] = []
     if node_files:
         tests += [dict(t, runner="node") for t in run_node_tests(root, node_files)]
-    if py_files:
-        tests += [dict(t, runner="unittest") for t in run_python_tests(root, py_dir)]
-    if not (node_files or py_files):
-        stage["note"] = "試験なし（%s に *.test.mjs も task/test_*.py もない）" % os.path.relpath(stage2_dir, root)
-        return stage
+    for directory in python_dirs:
+        prefix = os.path.relpath(directory, root).replace(os.sep, "/") + ": " if len(python_dirs) > 1 else ""
+        tests += [dict(t, name=prefix + t["name"], runner="unittest") for t in run_python_tests(root, directory)]
     stage["tests"] = tests
     stage["counts"] = count_statuses([t["status"] for t in tests])
-    stage["failures"] = [{"test": t["name"], "reason": t["reason"]} for t in tests if t["status"] == "failed"]
+    stage["failures"] = [dict({"test": t["name"], "reason": t["reason"]}, **({"location": t["location"]} if t.get("location") else {}))
+                         for t in tests if t["status"] == "failed"]
     stage["status"] = "failed" if stage["failures"] else "passed"
     return stage
+
+
+def run_stage2(root: str, stage2_dir: str) -> Dict[str, Any]:
+    node_files = find_node_tests(stage2_dir)
+    py_dir, py_files = find_python_tests(stage2_dir)
+    note = "試験なし（%s に *.test.mjs も task/test_*.py もない）" % os.path.relpath(stage2_dir, root)
+    return run_stage2_tests(root, node_files, [py_dir] if py_files else [], note)
 
 
 # ---------------------------------------------------------------- 結果
@@ -450,6 +469,8 @@ def format_text(result: Dict[str, Any]) -> str:
             lines.append("  " + stage["note"])
         for failure in stage["failures"]:
             lines += ["  不合格: %s" % failure["test"], "      理由: %s" % failure["reason"]]
+            if failure.get("location"):
+                lines.append("      場所: %s" % failure["location"])
         for warning in stage["warnings"]:
             lines.append("  注意: %s（%s）" % (warning["message"], warning["test"]))
     lines += ["", "結果: %s" % STATUS_TEXT[result["status"]], "結果のファイル: %s" % result["resultsFile"]]
@@ -465,10 +486,9 @@ def write_results(result: Dict[str, Any], path: str) -> None:
     os.replace(tmp, path)   # 読む側が書きかけを見ないように、一時ファイルに書いてから名前を変える
 
 
-def run(root: str, stage1_script: str, stage2_dir: str, results_path: str, extra_needs: List[str]) -> Dict[str, Any]:
+def run_with(root: str, items: List[Dict[str, Any]], results_path: str, run_stages: Callable[[], List[Dict[str, Any]]]) -> Dict[str, Any]:
+    """道具の確かめの結果（items）が全部あれば run_stages で段階を動かし、結果をまとめてファイルに書く。足りなければそこで止まる。"""
     started = datetime.datetime.now().astimezone()
-    needs, probe_dir = gather_needs(stage2_dir, extra_needs)
-    items = check_tools(needs, probe_dir)
     result: Dict[str, Any] = {
         "root": root, "startedAt": started.isoformat(timespec="seconds"),
         "tools": {"ok": all(i["ok"] for i in items), "items": items, "missing": [i for i in items if not i["ok"]]},
@@ -477,13 +497,19 @@ def run(root: str, stage1_script: str, stage2_dir: str, results_path: str, extra
     if not result["tools"]["ok"]:
         result.update({"status": "stopped", "ok": False, "exitCode": 2})
     else:
-        result["stages"] = [run_stage1(root, stage1_script), run_stage2(root, stage2_dir)]
+        result["stages"] = run_stages()
         failed = any(s["status"] == "failed" for s in result["stages"])
         result.update({"status": "failed" if failed else "passed", "ok": not failed, "exitCode": 1 if failed else 0})
     result["finishedAt"] = datetime.datetime.now().astimezone().isoformat(timespec="seconds")
     result["durationSeconds"] = round((datetime.datetime.now().astimezone() - started).total_seconds(), 1)
     write_results(result, results_path)
     return result
+
+
+def run(root: str, stage1_script: str, stage2_dir: str, results_path: str, extra_needs: List[str]) -> Dict[str, Any]:
+    needs, probe_dir = gather_needs(stage2_dir, extra_needs)
+    return run_with(root, check_tools(needs, probe_dir), results_path,
+                    lambda: [run_stage1(root, stage1_script), run_stage2(root, stage2_dir)])
 
 
 def venv_python(root: str) -> Optional[str]:
