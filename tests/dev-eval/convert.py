@@ -177,6 +177,8 @@ def convert_model(value, where: str, ctx: Context) -> str:
     """model（1つ、または優先する順のリスト）→ Claude Code の ID 1つ。"""
     candidates = [value] if isinstance(value, str) else [v for v in (value or []) if isinstance(v, str)]
     for name in candidates:  # 1) Claude のモデルがあれば、最初のもの
+        if name in MODEL_MAP and name.startswith("claude-"):
+            return MODEL_MAP[name]
         if CLAUDE_ID.match(name):
             return name
     for name in candidates:  # 2) なければ、価格表で同じ値段の Claude
