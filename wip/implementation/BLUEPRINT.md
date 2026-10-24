@@ -22,10 +22,10 @@ skills/
     SKILL.md                         hearing.md 10章
     references/                      段階ごとの問いの型（各 20KB 未満）と、言葉の置き換えの表（words.md）
     scripts/scaffold.py              組み立てと、土台がひな形と同じかの確かめ（creator-structure.md 2章、4.1）
-    assets/template/                 ひな形（2章）
   test-plugin/
     SKILL.md
     scripts/                         道具の確かめと用意、EVAL の実行、採点（testing.md 10章）
+template/                            ひな形（2章）。スキルのフォルダの外に置く（Copilot CLI はスキルを読むたびに、そのフォルダの全ファイルの名前をモデルに足すため。ユーザーの答え25）
 com.github.copilot/
   agents/reader.agent.md             読み取り役（hearing.md 9章）
   agents/worker.agent.md             作業エージェント（creator-structure.md 3.3）
@@ -36,7 +36,7 @@ tests/
   dev-eval/                          開発の試験の EVAL（変換、Agent SDK の実行、ユーザー役、模擬ユーザー、会話例の作成）
 ```
 
-- ひな形の土台（`core/`、`ui/`、`extension.mjs`）は `skills/make-plugin/assets/template/com.github.copilot/extensions/_plugin_/` にだけ置く。クリエイターのエクステンションは、ここから `ui/` の画面のサーバーと描画の部品を相対パスで読み込む（generated-plugin-structure.md 9章）。
+- ひな形の土台（`core/`、`ui/`、`extension.mjs`）は `template/com.github.copilot/extensions/_plugin_/` にだけ置く。クリエイターのエクステンションは、ここから `ui/` の画面のサーバーと描画の部品を相対パスで読み込む（generated-plugin-structure.md 9章）。
 - 生成の途中のファイル（作業の定義の案、作業エージェントが書いた部分）は、作業フォルダの中の一時フォルダ `.plugin-creator-work/` に置き、生成のときに組み立てのスクリプトが消す（ユーザーの答え7）。
 
 ## 2. ひな形（生成プラグインのフォルダ）
