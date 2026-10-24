@@ -138,12 +138,13 @@ describe('モデルで判定する関数', () => {
 
 describe('道具の置き場所と読み込み', () => {
   /** パッケージの入った道具のフォルダを作る（実物の package.json の exports と同じ形） */
-  function fakeTools({ sdk = true, playwright = true, chromium = true } = {}) {
+  function fakeTools({ sdk = true, playwright = true, chromium = true, extension = true } = {}) {
     const dir = makeTemp('c3-tools-');
     if (sdk) {
       writeFiles(dir, {
         'node_modules/@github/copilot-sdk/package.json': JSON.stringify({ name: '@github/copilot-sdk', version: '1.0.25', type: 'module', exports: { '.': { import: { types: './dist/index.d.ts', default: './dist/index.js' }, require: { default: './dist/cjs/index.js' } } } }),
         'node_modules/@github/copilot-sdk/dist/index.js': 'export class CopilotClient {}\nexport const RuntimeConnection = {};\n',
+        ...(extension ? { 'node_modules/@github/copilot-sdk/dist/extension.js': 'export const joinSession = () => {};\n' } : {}),
       });
     }
     if (playwright) {
@@ -169,6 +170,7 @@ describe('道具の置き場所と読み込み', () => {
     assert.equal(typeof tools.chromium.launch, 'function');
     assert.deepEqual(tools.versions, { copilotSdk: '1.0.25', playwright: '1.56.1', node: process.version });
     assert.equal(tools.dir, dir);
+    assert.equal(tools.extensionSdkPath, path.join(dir, 'node_modules', '@github', 'copilot-sdk', 'dist'), 'セッションの extensionSdkPath に渡す、SDK のフォルダ');
     const { module } = await importFromDir(dir, 'playwright');
     assert.equal(typeof module.chromium.launch, 'function');
   });
@@ -185,5 +187,6 @@ describe('道具の置き場所と読み込み', () => {
     });
     await assert.rejects(loadEvalTools({}, { dir: fakeTools({ playwright: false }) }), (error) => error.missing.length === 1 && error.missing[0].name === 'playwright');
     await assert.rejects(loadEvalTools({}, { dir: fakeTools({ chromium: false }) }), /chromium が見つかりません/);
+    await assert.rejects(loadEvalTools({}, { dir: fakeTools({ extension: false }) }), /extension\.js がありません/);
   });
 });

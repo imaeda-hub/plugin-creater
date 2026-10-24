@@ -791,3 +791,80 @@ describe('混ざったものと、使われたもの', () => {
     assert.match(result.runs[0].error, /URL が示されませんでした/);
   });
 });
+
+describe('エクステンションの起動（Copilot SDK では、起動のしかたを EVAL の仕組みが決める）', () => {
+  const SDK_PATH = '/tools/node_modules/@github/copilot-sdk/dist';
+  const request = (id, source = 'plugin') => ({ id, name: id.split(':').at(-1), modulePath: `/x/${id}/extension.mjs`, source });
+
+  test('REQ-041 ありの実行だけ、SDK のフォルダ（extensionSdkPath）と、エクステンションの起動のしかた（extensionLaunchProvider）を渡す', async () => {
+    const world = createWorld({ outputs: GOOD });
+    await run(world, { extensionSdkPath: SDK_PATH });
+    const [withClient, withoutClient] = world.sdk.clients;
+    const [withSession, withoutSession] = world.sdk.sessions;
+    assert.equal(withSession.config.extensionSdkPath, SDK_PATH);
+    assert.equal(typeof withClient.options.extensionLaunchProvider.resolve, 'function');
+    assert.equal('extensionSdkPath' in withoutSession.config, false);
+    assert.equal('extensionLaunchProvider' in withoutClient.options, false);
+  });
+
+  test('REQ-041 SDK のフォルダを渡されなければ、どちらも渡さない', async () => {
+    const world = createWorld({ outputs: GOOD });
+    await run(world);
+    assert.equal('extensionLaunchProvider' in world.sdk.clients[0].options, false);
+    assert.equal('extensionSdkPath' in world.sdk.sessions[0].config, false);
+  });
+
+  test('REQ-041 起動を引き受けるのは、生成プラグインのエクステンションだけ。ユーザーの・プロジェクトの・ほかのプラグインのものは断る', async () => {
+    const world = createWorld({ outputs: GOOD });
+    await run(world, { extensionSdkPath: SDK_PATH });
+    const provider = world.sdk.clients[0].options.extensionLaunchProvider;
+    const ours = await provider.resolve(request('plugin:weekly-report:weekly-report'));
+    assert.equal(ours.launch.executable, process.execPath);
+    assert.match(ours.launch.args[0], /extension-bootstrap\.mjs$/);
+    assert.equal(ours.launch.env.EXTENSION_PATH, '/x/plugin:weekly-report:weekly-report/extension.mjs');
+    for (const id of ['user:my-helper', 'project:team-tool', 'plugin:another:another']) {
+      assert.deepEqual(await provider.resolve(request(id, id.split(':')[0])), {}, id);
+    }
+    assert.deepEqual(provider.launched, ['plugin:weekly-report:weekly-report']);
+    assert.deepEqual(provider.skipped, ['user:my-helper', 'project:team-tool', 'plugin:another:another']);
+  });
+
+  test('REQ-041 起動を断ったエクステンションは「混ざった」に数えず、記録（refusedExtensions）に残す。動いているほかのものは混ざったと示す', async () => {
+    const world = createWorld({
+      outputs: GOOD,
+      behavior: {
+        extensions: (session) => [
+          ...(session.variant === 'with' ? [{ id: 'plugin:weekly-report:weekly-report', name: 'weekly-report:weekly-report', source: 'plugin', status: 'running' }] : []),
+          { id: 'user:my-helper', name: 'my-helper', source: 'user', status: 'failed' },
+          { id: 'project:team-tool', name: 'team-tool', source: 'project', status: session.variant === 'with' ? 'running' : 'disabled' },
+        ],
+      },
+    });
+    const result = await run(world, { extensionSdkPath: SDK_PATH });
+    const [withRun, withoutRun] = result.runs;
+    assert.deepEqual(withRun.refusedExtensions, ['user:my-helper']);
+    assert.deepEqual(withRun.foreignExtensions, ['project:team-tool']);
+    assert.deepEqual(withoutRun.foreignExtensions, []);
+    assert.deepEqual(withoutRun.refusedExtensions, ['user:my-helper', 'project:team-tool']);
+    assert.equal(result.warnings.filter((w) => w.startsWith('ほかのエクステンションが混ざった')).length, 1);
+    assert.match(result.warnings.find((w) => w.startsWith('ほかのエクステンションが混ざった')), /project:team-tool/);
+    assert.doesNotMatch(result.warnings.join(''), /user:my-helper/);
+  });
+
+  test('REQ-041 実行の記録に、起動したエクステンションと、起動を断ったエクステンションを残す', async () => {
+    const world = createWorld({
+      outputs: GOOD,
+      behavior: {
+        onCreateSession: async (client) => {
+          const provider = client.options.extensionLaunchProvider;
+          if (!provider) return;
+          await provider.resolve(request('plugin:weekly-report:weekly-report'));
+          await provider.resolve(request('user:my-helper', 'user'));
+        },
+      },
+    });
+    const result = await run(world, { extensionSdkPath: SDK_PATH });
+    assert.deepEqual(result.runs[0].extensionLaunch, { launched: ['plugin:weekly-report:weekly-report'], refused: ['user:my-helper'] });
+    assert.equal('extensionLaunch' in result.runs[1], false);
+  });
+});

@@ -33,7 +33,7 @@ async function runMain(world, argv, extra = {}) {
     stdout,
     stderr,
     env: { PATH: '/usr/bin' },
-    loadTools: async () => ({ sdk: world.sdk, chromium: { fake: true }, versions: { copilotSdk: '1.0.25', playwright: '1.56.1', node: process.version }, dir: '/tools' }),
+    loadTools: async () => ({ sdk: world.sdk, chromium: { fake: true }, extensionSdkPath: '/tools/node_modules/@github/copilot-sdk/dist', versions: { copilotSdk: '1.0.25', playwright: '1.56.1', node: process.version }, dir: '/tools' }),
     makeScreen: (args) => {
       made.screens.push(args);
       return world.screen;
@@ -144,6 +144,8 @@ describe('run', () => {
     assert.match(stderr.text(), /\[T-01 あり 1\/1\] 実行します/);
     assert.match(stderr.text(), /\[T-01 なし 1\/1\] completed（1\/2 合格）/);
     assert.equal(world.sdk.sessions[0].config.model, 'gpt-6-luna');
+    assert.equal(world.sdk.sessions[0].config.extensionSdkPath, '/tools/node_modules/@github/copilot-sdk/dist', 'ありの実行に、SDK のフォルダを渡す');
+    assert.equal('extensionSdkPath' in world.sdk.sessions[1].config, false, 'なしの実行には渡さない');
     assert.equal(made.screens.length, 1);
     assert.deepEqual(made.screens[0].chromium, { fake: true });
     assert.equal(made.judges.length, 0, 'model の基準がなければ、判定の関数は作らない');
