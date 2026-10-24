@@ -70,7 +70,7 @@ RUNTIME_TOOLS = {
     "bash": "Bash", "powershell": "Bash", "view": "Read", "create": "Write", "edit": "Edit",
     "str_replace_editor": "Edit", "apply_patch": "Edit", "grep": "Grep", "rg": "Grep", "glob": "Glob",
     "web_fetch": "WebFetch", "web_search": "WebSearch", "ask_user": "AskUserQuestion",
-    "update_todo": "TodoWrite", "task": "Agent", 
+    "update_todo": "TodoWrite", "task": "Agent", "skill": "Skill",
 }
 # カスタムエージェントの tools の別名（小文字で引く）。1つの別名が複数の Claude Code のツールになる。
 AGENT_ALIASES = {
@@ -177,8 +177,6 @@ def convert_model(value, where: str, ctx: Context) -> str:
     """model（1つ、または優先する順のリスト）→ Claude Code の ID 1つ。"""
     candidates = [value] if isinstance(value, str) else [v for v in (value or []) if isinstance(v, str)]
     for name in candidates:  # 1) Claude のモデルがあれば、最初のもの
-        if name in MODEL_MAP and name.startswith("claude-"):
-            return MODEL_MAP[name]
         if CLAUDE_ID.match(name):
             return name
     for name in candidates:  # 2) なければ、価格表で同じ値段の Claude
