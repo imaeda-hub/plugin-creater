@@ -15,14 +15,15 @@
 - [x] 偽の API で、本物の Agent SDK 0.3.310 の Claude Code を動かして、つなぎ方を確かめた（分かったことは下の節）
 - [x] 共通の部品：package.json、model-map.mjs、isolation.mjs、mcp-tools.mjs、fake-anthropic.mjs と、それぞれの試験
 - [x] inner-adapter.mjs（内側のつなぎ口）と試験 inner-adapter.test.mjs（25 件）
-- [x] inner-run.mjs（実行1回。あり・なし）と試験 inner-run.test.mjs（19 件）
+- [x] inner-run.mjs（実行1回。あり・なし）と試験 inner-run.test.mjs（24 件）
 - [x] inner-judge.mjs（モデルで判定する関数の Agent SDK 版）と試験 inner-judge.test.mjs（5 件）
-- [x] inner.mjs（入口。コマンドラインと innerEval）と試験 inner.test.mjs（10 件）
-- [x] inner-e2e.test.mjs（11 件）：本物の Agent SDK と Claude Code の本体、本物の生成プラグイン〔C2 の見本を組み立てて D1a の変換スクリプトで置き換えたもの〕の画面と Playwright を、偽の Anthropic API につないで、ありの実行・なしの実行・チャットの返事・質問のツール・止める・設定の欄をユーザー役が決めること（決められたとき、決められなかったとき）を通した。あとの4件は V1 の直しへの合わせ（断りの文がモデルに届くこと）と、統括の tools をなくしたことへの合わせ（統括が使えるツール）
-- [x] 通しの確認：tests/dev-eval/runner/ の試験すべて（D1c の分を含む）190 件が通った。D1d の分は 103 件（共通の部品 25 件を含む）。変換の試験（test_convert.py）77 件、模擬ユーザーの検査（personas）40 件も通った。D1d の分を続けて動かしても通った
+- [x] inner.mjs（入口。コマンドラインと innerEval）と試験 inner.test.mjs（11 件）
+- [x] inner-e2e.test.mjs（12 件）：本物の Agent SDK と Claude Code の本体、本物の生成プラグイン〔C2 の見本を組み立てて D1a の変換スクリプトで置き換えたもの〕の画面と Playwright を、偽の Anthropic API につないで、ありの実行・なしの実行・チャットの返事・質問のツール・止める・設定の欄をユーザー役が決めること（決められたとき、決められなかったとき）を通した。あとの4件は V1 の直しへの合わせ（断りの文がモデルに届くこと）と、統括の tools をなくしたことへの合わせ（統括が使えるツール）
+- [x] 通しの確認：tests/dev-eval/runner/ の試験すべて（D1c の分を含む）225 件が通った（D1c の分が増えた）。D1d の分は 112 件（共通の部品 25 件を含む）。変換の試験（test_convert.py）78 件、模擬ユーザーの検査（personas）42 件も通った。D1d の分を続けて動かしても通った
 - [x] 変異試験（わざと壊す検査）：下の「変異試験」
 - [x] 最後の返事（1回目）
 - [x] 続きの仕事（統括の決定）：画面の開始前の設定の欄を、ユーザー役が読んで決める（inner-settings.mjs）。下の「画面の設定の欄を決める」
+- [x] 追加の仕事（ユーザー役へ、質問の前にチャットに書いた文を渡す）：外側の EVAL の直し（D1c、0663685）と同じ渡し方に、内側の EVAL をそろえた。下の「ユーザー役へ、質問の前の文を渡す」
 - [x] 追加の仕事（統括の tools をなくしたことへの合わせ）：内側の EVAL の統括にも、使ってよいツールだけを効かせる（inner-adapter.mjs）。test_convert.py の落ちていた2件を直した。下の「統括の tools をなくしたことへの合わせ」
 - [x] 追加の確かめ（V1 の直しへの合わせ）：記録のツールの断りの文が、内側の EVAL でモデルに届くこと。偽の API だけを使うための守り（guardSdk）。クリエイターの置き換え（creator-tools.mjs）の failure の結果への合わせ。下の「V1 の直しへの合わせ」
 
@@ -54,7 +55,7 @@ node tests/dev-eval/runner/inner.mjs --plugin <生成プラグインのフォル
 | `runner/inner-run.mjs` | 実行1回 `runInnerArm({ arm, task, runDir, sdk, userRole, judge, screen, ... })`。流れは先頭のコメント。`asksForReply`（返事を求めているかの見分け）、`buildChecks`（動きの確かめ） |
 | `runner/inner-judge.mjs` | `createAgentSdkJudge({ sdk, model })`。grade.mjs の buildJudgePrompt と parseJudgeReply を使う |
 | `runner/inner.mjs` | `innerEval(...)`（課題 × 回数 × あり・なし。点数とその差。利用枠の上限で止まったら残りを skipped）、`main(argv, deps)`〔deps.sdk・deps.chromium は試験用〕、`parseArgs`、`scoresOf`、`summarizeRun` |
-| `runner/inner-settings.mjs` | 画面の開始前の設定の欄を、ユーザー役が決める。`decideSettings`（値を決める順と記録）、`describeSetting`（ユーザー役に聞く文）、`normalizeSettingAnswer`（答えを欄の値にする）、`previewInputs`（渡したファイルの先頭）。試験は `inner-settings.test.mjs`（8 件） |
+| `runner/inner-settings.mjs` | 画面の開始前の設定の欄を、ユーザー役が決める。`decideSettings`（値を決める順と記録）、`describeSetting`（ユーザー役に聞く文）、`normalizeSettingAnswer`（答えを欄の値にする）、`previewInputs`（渡したファイルの先頭）。試験は `inner-settings.test.mjs`（10 件） |
 | `runner/inner-test-support.mjs` | 試験の道具。`buildSamplePlugin()`（C2 の見本から組み立てて、D1a の convert.py で置き換える）、`scriptedModel(scenario)`（偽の API の台本。メイン・統括・作業・検証・ユーザー役・判定を見分けて、決まった順にツールを呼ぶ。`badPlan` は、わざと間違った試行の番号で記録を呼ぶ） |
 
 ## 共通の部品（D1c と分け合うもの。置き場所と形）
@@ -149,6 +150,28 @@ D1c は、次の部品を使っている（isolation・mcp-tools・model-map・f
 - 外側の EVAL のモデルに断りの文が届くかは、本物の SDK では確かめていない（creator-tools.test.mjs は MCP のクライアントとサーバーを通す。Claude Code の本体を通す試験は、内側の e2e の3件が同じ MCP の経路を確かめている）。
 
 **変異試験**：この分の13か所を1つずつ壊して、どれも試験が見つけた。内側のつなぎ口と守り（8か所：失敗の結果の `isError`、断りの判定、断りの理由の文、予期しない例外の文を内部の文にすること、画面を開くツールの失敗の文の使い分け、`tool_error` の記録、`tool_refused` の記録、守りの判定）と、クリエイターの置き換え（5か所：`toMcpResult` の成功・失敗の分け、記録の `isError`、変換を通さないこと、JSON を理由にすること、resultType 未指定の扱い）。
+
+## ユーザー役へ、質問の前にチャットに書いた文を渡す（D1c の外側の EVAL の直し、0663685 への合わせ）
+
+背景：外側の EVAL で、クリエイターが質問の前にチャットに書いた文が、ユーザー役に渡っていなかった。testing.md 6.1「ユーザー役には、それまでのやり取りも渡す」。D1c が直し、`createUserRole().answer(question, choices, via, meta, notes)` の第5引数 `notes`（文字の並びか文字）を受けるようにした。内側の EVAL も、同じ形で、質問と選択肢しか渡していなかった（`inner.mjs` の `userRoleFunction` と `inner-run.mjs`）。
+
+**直したこと**（D1c の部品を使い回した。`user-role.mjs` の `createUserRole` と `joinNotes`。ユーザー役側は変えていない）
+- `inner-run.mjs`：メインのエージェントが書いた文（`assistant` メッセージの `text` ブロック。サブエージェントの文と空の文は入れない）を `unreadNotes` に集め、次にユーザー役に聞くときに取り出して `notes` として渡す。渡したものは、次からは出ない。
+  - 質問のツール（`AskUserQuestion`）の問い：その前に書いた文を渡す。1 回の呼び出しに問いの欄が複数あるときは、最初の欄にだけ付ける（外側の EVAL と同じ）。質問のコールバックが、直前の文を処理する側より先に呼ばれることがあるので、渡す前に 1 回処理を譲る（`setImmediate`。外側の EVAL と同じ）。
+  - チャットでの返事の求め（手番の最後の文）：問いそのものを前の文に入れず、それより前に書いた文だけを渡す。
+  - 画面の設定の欄（`via: 'setting'`）：最初にユーザー役に聞く欄にだけ付ける。人は、画面を開いたと伝えるチャットの文（URL と「画面で設定して、開始ボタンを押してください」）を設定の前に読むため。課題や補いで決まっていて聞かない欄は、数えない。`decideSettings` の引数 `takeNotes` で受ける。
+- `inner.mjs` の `userRoleFunction`：`({ question, choices, via, meta, notes })` の `notes` を、`role.answer` の第5引数に渡す（なければ空）。
+- 見せた文の記録：`result.history[]`、`result.settings[]`（`events.jsonl` の `settings`）に、見せた文を `notes`（空行でつないだ文字）で残す。見せていないときは項目なし。D1c のユーザー役の記録（`record.userRole.answers[].notes`）と同じ内容が、内側の実行の記録にも残る。
+
+**試験**（偽の API だけ。本物の SDK を使う試験は `guardSdk` を通した）
+- inner-run.test.mjs に5件（問いと一緒に渡り、次の問いには付かない。質問の呼び出しが文の処理より先に来ても取りこぼさない。複数の欄は最初だけ。返事の求めは問いそのものを入れない。サブエージェントと空の文は入れない）。
+- inner-settings.test.mjs に2件（最初に聞く欄にだけ付く、決められなかった欄の記録にも残る、`notesField`）。inner.test.mjs に1件（`userRoleFunction` が渡す）。
+- inner-e2e.test.mjs：設定の欄の試験に、画面を開いたと伝える文が渡ることを足した。本物の Agent SDK で、質問のツールを呼ぶ応答の中の文が、その問いと一緒に渡る試験を1件足した（偽の API の台本に `askNote` を足した）。
+- 変異試験は、本物のファイルではなく、別の作業ツリー（git worktree）の写しで 12 か所を壊して、すべて試験が見つけた（処理を譲らない、文を集めない、空の文を入れる、複数の欄すべてに付ける、返事の求めに問いそのものを入れる、質問への受け渡し、返事の求めへの受け渡し、設定への受け渡し、設定で最初の欄以外にも付ける、`userRoleFunction` が落とす、履歴の記録、設定の記録）。
+
+**外側の EVAL との違い**：外側は、文を集める場所が `creator.text` の記録の場所で、質問と文章の問い（手番の最後の文）の2つ。内側は、そのほかに画面の設定の欄の質問がある。その欄に付ける文は、D1c と相談せず決めた（上の「画面の設定の欄」）。外れるなら、`resolveScreenSettings` から `takeNotes` を外すだけで戻せる。
+
+**要確認**：ユーザー役の指示（user-role.mjs）は、前の文を「読んだもの」として踏まえる指示になった（D1c が追記）。本物のモデルで、内側の EVAL の質問（設定の欄の聞き方など）に、前の文が邪魔にならないかは、最初の EVAL の記録（`settings[].notes` と `answer`）で見る。
 
 ## 統括の tools をなくしたことへの合わせ（B1 の 6a281b3・6201eb4）
 
