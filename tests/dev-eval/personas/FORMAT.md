@@ -2,7 +2,7 @@
 
 開発の試験の外側の EVAL（[試験の設計](../../../docs/design/testing.md) 6章）で、人の代わりに話すユーザー役が使う「模擬ユーザー」の形を定める。内側の EVAL の課題と採点の基準（7章）も、模擬ユーザーごとにここに置く。
 
-- 使う人：ユーザー役とユーザー役の試験、外側の EVAL、会話例の作成（D1c）。内側の EVAL（D1d）。見ない模擬ユーザーを作る人（H1）。
+- 使う側：ユーザー役とユーザー役の試験、外側の EVAL、会話例の作成。内側の EVAL。見ない模擬ユーザーを作る側。
 - 模擬ユーザーは 1 人 1 フォルダである。見ない模擬ユーザー（`tests/dev-eval/heldout/`）も、同じ形で作る。
 - 形に合うかは、`validate.mjs` で確かめる（6章）。ユーザー役と外側の EVAL が読み込むときも、同じスクリプトを使う。
 
@@ -21,7 +21,7 @@ tests/dev-eval/personas/            直して使う模擬ユーザー（クリ�
       eval.json
       inputs/…                      課題の入力のファイル
       golden/…                      正しい成果物の見本
-tests/dev-eval/heldout/<id>/        クリエイターを直すときに見ない模擬ユーザー（同じ形。H1 が作る）
+tests/dev-eval/heldout/<id>/        クリエイターを直すときに見ない模擬ユーザー（同じ形。見ない模擬ユーザーを作る側が作る）
 ```
 
 - `id` は、英小文字・数字・ハイフンだけ（例：`weekly-report`）。
@@ -160,7 +160,7 @@ JSON である。文字は UTF-8。正規表現と書いてあるところは、
 
 内側の EVAL の課題と採点の基準である（testing.md 7章）。クリエイターが生成プラグインに入れた課題と基準は使わない。自分で作った基準で自分を採点しないためである。
 
-- `inner/eval.json`：課題。形は、生成プラグインの `tests/eval/<課題>/eval.json` と同じ（[BLUEPRINT](../../../wip/implementation/BLUEPRINT.md) 4.3。`skills/test-plugin/scripts/grade.mjs` の `validateTask` が確かめる）。1 人に 1 課題である。
+- `inner/eval.json`：課題。形は、生成プラグインの `tests/eval/<課題>/eval.json` と同じ（基準の `check` の種類は `skills/test-plugin/scripts/grade.mjs` の先頭にある。`validateTask` が確かめる）。1 人に 1 課題である。
   - `id`、`prompt`（頼むときの言葉。入力のファイルの場所を含める）、`inputs`（`inner/` からの相対の場所）、`settings`（任意）、`criteria`。
   - `criteria[]` は、`id`、`text`、`grading`、`check` に加えて、`knowledge`（ナレッジの id）を必ず付ける。
   - 採点の基準は、ナレッジに書いたとおりにする。ナレッジにない細かさまで求めると、正しい成果物を落とす（testing.md 7章）。
@@ -182,7 +182,7 @@ JSON である。文字は UTF-8。正規表現と書いてあるところは、
 
 ## 5. 使う側がすること
 
-**ユーザー役（D1c）**
+**ユーザー役を動かす側**
 
 - ユーザー役に渡すもの：`profile`、`files` の `place`・`describe`・`reveal`、`knowledge` の `fact`・`reveal`・`volunteer`、`file` の `answer`・`detail`、話し方の `instruction`、それまでのやり取り。
 - ユーザー役に渡さないもの：`markers`、`userRoleTests`、`inner`、`id`、ほかの模擬ユーザー。言葉の見分けを知らせると、答え方が変わるためである。
@@ -190,7 +190,7 @@ JSON である。文字は UTF-8。正規表現と書いてあるところは、
 - `hurry` の `signal`：`afterAnswers` 回答えた後の次の答えに `text` を足し、足した位置を記録する。
 - `experience` が `never` のときは、ファイルを示さない。「ありません。まだやったことがないので」と答える。
 
-**ナレッジごとの記録（外側の EVAL、D1c）**
+**ナレッジごとの記録（外側の EVAL）**
 
 | 記録 | 求め方 |
 | --- | --- |
@@ -200,9 +200,9 @@ JSON である。文字は UTF-8。正規表現と書いてあるところは、
 | 基準に入ったか | `task` があれば、課題と基準のファイルが `task` にすべて当たる |
 | 聞かれずに話した | `volunteer` が `false` で、答えが `answered` に当たり、直前の質問が `asked` に当たらない |
 
-- 6.5 の採点のうち、模擬ユーザーの定義から見るもの：REQ-017（`excluded` が空であること。`incidental` と `wrong` が入っていない）、REQ-016（`experience` が `never` で、`first-run` の `asked` に当たる問いがあり、その後に想定の 1 回をたどっている）、REQ-038（`role` が `input` のファイルが、生成プラグインのリポジトリにある）、REQ-015（`hurry` の `signal` の後に、残りの項目と 3 つの進め方の問いがある）。
+- 6.5 の採点のうち、模擬ユーザーの定義から見るもの：REQ-017（`incidental` と `wrong` のナレッジの `excluded` に当たる書き方が、生成プラグインにない）、REQ-016（`experience` が `never` で、`first-run` の `asked` に当たる問いがあり、その後に想定の 1 回をたどっている）、REQ-038（`role` が `input` のファイルが、生成プラグインのリポジトリにある）、REQ-015（`hurry` の `signal` の後に、残りの項目と 3 つの進め方の問いがある）。
 
-**内側の EVAL（D1d）**
+**内側の EVAL**
 
 - `inner/eval.json` を課題として読み、`inner/inputs/` を作業フォルダに写す（`tasks.mjs` の `prepareWorkDir`、`dir` を `inner/` にした課題を渡す）。採点は `grade.mjs` を使い、モデルで判定する分は Agent SDK で行う。
 - チャットで返事を求められたときに答えるユーザー役は、同じ模擬ユーザーの `knowledge` を使う。
@@ -222,5 +222,5 @@ node tests/dev-eval/personas/validate.mjs <模擬ユーザーのフォルダ>…
   const { persona, dir, files } = await loadPersona('tests/dev-eval/personas/weekly-report'); // 誤りがあれば Error
   ```
 
-  `files` は、示すファイルの元の絶対の場所と、作業フォルダでの置き場所の対応（`{ src, place, role }`）である。
+  `files` は、示すファイルの元の絶対の場所と、作業フォルダでの置き場所の対応（`{ src, place, role, describe }`）である。
 - 確かめること：persona.json の項目と型、id の重なり、正規表現が読めるか、`answered`・`leak` が `fact` の中の言葉か、示すファイルの有無と `evidence` が文書の文字にあるか、3 種類の決まり、`userRoleTests` の質問、話し方、`inner/eval.json`（`validateTask`）、基準と `knowledge` の対応、`golden` で `program` の基準が合格すること。

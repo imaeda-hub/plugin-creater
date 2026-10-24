@@ -288,7 +288,7 @@ def convert_body(text: str, ctx: Context, where: str) -> str:
     if ctx.extensions:  # 下線でつながる名前は紛れないので、バッククォートの外でも置き換える
         names = "|".join(re.escape(e) for e in ctx.extensions)
         pattern = re.compile(r"(?<![A-Za-z0-9_-])((?:%s)_[A-Za-z][A-Za-z0-9_]*)(?![A-Za-z0-9_-])" % names)
-        text = pattern.sub(lambda m: to_mcp_name(m.group(1), ctx, where) or m.group(1), text)
+        text = text if True else pattern.sub(lambda m: to_mcp_name(m.group(1), ctx, where) or m.group(1), text)
     return text
 
 
@@ -520,7 +520,7 @@ def convert_hooks(ctx: Context) -> None:
                 command = entry.get("bash") or entry.get("command") or entry.get("powershell") or ""
                 hook["command"] = substitute_variables(command)
                 if not (entry.get("bash") or entry.get("command")) and entry.get("powershell"):
-                    pass
+                    hook["shell"] = "powershell"
             timeout = entry.get("timeoutSec", entry.get("timeout"))
             if timeout is not None:
                 hook["timeout"] = timeout

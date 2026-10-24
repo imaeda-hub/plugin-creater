@@ -111,6 +111,7 @@
 - 最終確認で人が確かめること（B3-fix の依頼）：marketplace.json の source "./" で入れられるか（copilot plugin marketplace add、marketplace browse、plugin install、plugin list --json）。test-plugin が隣の make-plugin の references を読めるか。読み込みの確認の題に出る名前。
 - D1c への引き継ぎ（B3-fix）：会話例を置いたら、README の「置きます」を「あります」に直す。
 - B2-fix：上位の文書で直すこと（tasks/B2-fix.md）。BLUEPRINT 8章：差し込み口の見出しは ### 以下、統括の差し込み口は作業エージェントに渡すもので検証エージェントにはナレッジを渡さない。generated-plugin-structure.md 4.8 の3：検証エージェントに渡すものに、作業ごとの設定の値と入力のファイルの場所を足す。REQ-011・4.3・4.8：頼みの文と合否の基準が食い違うときの決まりがない（ユーザーに確認）。
+- A1（続き）：上位の文書で直すこと。設計書 4.3 の統括への指示文の中身に最初の1文を足す。6.2 の表と 4.2 に「実行中に呼ばれたら頼みの文は受け付けず、始められない旨の知らせを返す」を足す。ひな形の docs/design/design.md も同じ。
 - R2：`requestSandboxPermissive` を「サンドボックスの外で動かす」と示さない（generated-plugin-structure.md 6.3）。tasks.list には shell と client のタスクも入る。
 
 ## 後の仕事に渡すこと（作業のエージェントの報告から）
