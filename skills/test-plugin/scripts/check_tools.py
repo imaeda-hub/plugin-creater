@@ -429,11 +429,6 @@ def tail(text: str) -> str:
     return text.strip()[-OUTPUT_TAIL:]
 
 
-def step(ctx: Context, ids: List[str], what: str, cmd: List[str], where: str, cwd: Optional[str], timeout: int) -> Dict[str, Any]:
-    code, out = ctx.run(cmd, cwd=cwd, timeout=timeout)
-    return {"ids": ids, "what": what, "where": where, "commandText": command_text(cmd), "ok": code == 0, "output": "" if code == 0 else tail(out)}
-
-
 def build_steps(ctx: Context, tools: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """入れる手順を、入れる順に作る。--install なしでは予定として示し、--install では同じものを動かす。
     順：仮想環境、pip、1・2段目の Playwright、EVAL の道具、ブラウザー（Playwright が入った後）。Python と Node.js そのものは入れない。"""

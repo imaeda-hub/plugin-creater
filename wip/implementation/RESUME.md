@@ -98,6 +98,8 @@
 - C2：要確認。marketplace.json の source "./" が手元のフォルダのマーケットプレイスから入るか（最終確認）。jsonschema のない Python で build したときは task.json の形の確かめを1段目に任せる（警告）。生成プラグインの名前が plugin-creator と同じとき断らない（記録のツールの名前が重なる）。
 - C2→A3：1段目の自己試験が _plugin_ のパスを直書きしていて、生成プラグインの中では動かない（入口には響かない）。1段目に marketplace.json の確かめ（plugins[].name と plugin.json の name）を足す提案。
 - C2：git の名前とメールが設定されていないときは、最初のコミットだけ plugin-creator <plugin-creator@localhost> を使う（設定ファイルは変えない）。生成の後の直しのコミットとタグ（plugin-creator-generated）は、同じやり方の git -c で行える。
+- B1：上位の文書で直すこと（tasks/B1.md）。generated-plugin-structure.md 3.4・7章、creator-structure.md 2章・4.1：土台に adapter.mjs が加わる。3.2 の「偽物のつなぎ口」は「偽物の SDK のセッションを adapter.mjs に渡す」形になった。BLUEPRINT 3.1・3.2：tool.completed の toolName は開始から補う、tool.started に arguments、parentAgentId は tasks.list にない、agent.started.agentType のそろえ方。4.14：許可の受け口に requestId は渡らない。6.2：open の返り値の形。
+- B1：実機でしか確かめられないこと：agentType・agentName の届き方、onSubagentStop が終わりのイベントより先に届くか、Auto の見分け（modelId が auto か）、model.list の要素の形、tool.started の arguments の全文が記録に残って大きくなりうること、Windows では SIGTERM を受けられないこと。
 - R2：`requestSandboxPermissive` を「サンドボックスの外で動かす」と示さない（generated-plugin-structure.md 6.3）。tasks.list には shell と client のタスクも入る。
 
 ## 後の仕事に渡すこと（作業のエージェントの報告から）
@@ -146,7 +148,7 @@
 | B2 | ae0285d8193b30123（完了） |
 | B2 の点検 | design ab9b178fb21c516c7、format a601e2263da67d231、models a8867cdfa37807567、language af819d6c8db5a58b7。指摘は reviews/B2-<観点>.md。全部そろったら、直す担当（Opus）を立てる |
 | B3 の点検 | design（＋constitution）a2216a7d623ca20ec、format a0beeebe3a6691ad6、models a036d2c25c4d5d2e8、language ab1ea81ee5665979f。指摘は reviews/B3-<観点>.md。全部そろったら、直す担当（Opus）を立てる |
-| B1 | a7b491f44bb4b21eb（指示は briefs/B1.md） |
+| B1 | a7b491f44bb4b21eb（完了） |
 | C2 | ab07d1229ed5e8971（完了） |
 | C3 | ad65681a2d31da659（指示は briefs/C3.md） |
 
