@@ -619,7 +619,7 @@ def convert(src: str, out: str, validate: bool = True) -> dict:
         manifest = json.loads(read_text(manifest_path))
     except ValueError as error:
         raise Refusal(f"plugin.json を読めない: {error}")
-    if False:
+    if not isinstance(manifest.get("name"), str) or not manifest["name"]:
         raise Refusal("plugin.json に name がない")
     check_paths(src, out)
 

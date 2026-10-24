@@ -265,6 +265,14 @@ class AgentTools(Base):
         self.assertIn("mcp__plugin_demo-plugin_calc__add", tools)
         self.assertIn("mcp__plugin_demo-plugin_calc__*", tools)
 
+    def test_4_a_plugin_name_that_cannot_be_part_of_an_mcp_name_is_warned(self):
+        ctx = convert.Context("s", "o", "my.plugin", [])
+        convert.convert_tools(["calc/add"], ctx, "agents/x")
+        self.assertTrue(any("agents/x" in w and "MCP" in w for w in ctx.warnings))
+        ctx = convert.Context("s", "o", "my-plugin", [])
+        convert.convert_tools(["calc/add"], ctx, "agents/x")
+        self.assertEqual(ctx.warnings, [])
+
     def test_4_no_duplicates(self):
         tools = self.tools("orchestrator")
         self.assertEqual(len(tools), len(set(tools)))
@@ -566,6 +574,20 @@ class Refusals(Base):
         os.remove(os.path.join(self.src, "plugin.json"))
         with self.assertRaises(convert.Refusal):
             self.run_convert()
+
+    def test_a_plugin_json_without_a_name_or_with_broken_json_is_refused(self):
+        write(self.src, "plugin.json", json.dumps({"version": "1.0.0"}))
+        with self.assertRaises(convert.Refusal):
+            self.run_convert()
+        write(self.src, "plugin.json", "{ broken")
+        with self.assertRaises(convert.Refusal):
+            self.run_convert()
+        self.assertFalse(os.path.exists(self.out))
+
+    def test_the_final_check_runs_in_every_conversion(self):
+        with mock.patch.object(convert, "check_clean") as check:
+            self.run_convert()
+        check.assert_called_once_with(self.out)
 
     def test_an_existing_folder_that_is_not_an_old_output_is_refused_and_left_alone(self):
         write(self.out, "mine.txt", "消さない\n")

@@ -13,7 +13,7 @@
 //   await ctx.ask(questions)                 AskUserQuestion。canUseTool に渡し、答え（{ 質問の文: 答え }）を返す
 //   await ctx.tool(name, input, opts)        ツールの呼び出し。mcp__<サーバー名>__ のツールは、MCP のクライアントで本物のサーバーに呼ぶ
 //                                            それ以外は opts.run(input) か、既定の 'ok'。opts.parent で、サブエージェントの中の呼び出しにする
-//   台本が文字を返すと、それが result の文。何も返さなければ、最後の ctx.say の文
+//   台本が文字を返すと、それが最後の発言（assistant の文）と result の文になる。何も返さなければ、最後の ctx.say の文
 //
 // 本物の Claude Code の本体は動かさない。本物の本体と偽の API でつなぐ試験は、fake-anthropic.mjs を使う。
 
@@ -149,7 +149,11 @@ export function createFakeSdk({ userRole, agent, model = 'claude-sonnet-5-5', co
     const finish = (async () => {
       try {
         const returned = await agent(ctx);
-        if (typeof returned === 'string') lastText = returned;
+        if (typeof returned === 'string') {
+          // 本物と同じに、最後の文もメインのエージェントの発言として流す
+          if (returned !== lastText) await ctx.say(returned);
+          lastText = returned;
+        }
         emit({ type: 'result', subtype: 'success', is_error: false, result: lastText, total_cost_usd: costPerCall, num_turns: 1, duration_ms: Date.now() - started });
       } catch (error) {
         emit({ type: 'result', subtype: 'error_during_execution', is_error: true, result: error?.message ?? String(error), total_cost_usd: costPerCall });

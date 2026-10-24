@@ -1,0 +1,298 @@
+// 内側のつなぎ口（inner-adapter.mjs）。偽の Agent SDK が、フックを自分で呼んで、統括・作業・検証の動きを再現する。
+// 中心の処理は本物（生成プラグインの core/）。実際のモデルも、Claude Code の本体も、ブラウザーも使わない。
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+import test from 'node:test';
+
+import { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
+
+import { createInnerAdapter, describeOpened, rewriteModel } from './inner-adapter.mjs';
+import { buildSamplePlugin, pythonHasModules, tmpDir } from './inner-test-support.mjs';
+
+const SKIP = !pythonHasModules() ? 'Python に PyYAML と jsonschema がありません' : false;
+
+/** 偽の Agent SDK。query() が呼ばれるたびに、その options を test に渡す。close() されるまで終わらない */
+function fakeSdk() {
+  const queries = [];
+  const sdk = {
+    USAGE_LIMIT_ERROR_PREFIXES: ["You've hit your"],
+    query({ prompt, options }) {
+      const queue = [];
+      let wake = null;
+      let closed = false;
+      const entry = {
+        prompt, options, closed: () => closed,
+        push(message) {
+          queue.push(message);
+          wake?.();
+        },
+        end() {
+          closed = true;
+          wake?.();
+        },
+      };
+      queries.push(entry);
+      const generator = (async function* generate() {
+        for (;;) {
+          if (queue.length > 0) {
+            yield queue.shift();
+            continue;
+          }
+          if (closed) return;
+          await new Promise((resolve) => { wake = resolve; });
+        }
+      })();
+      generator.close = () => entry.end();
+      return generator;
+    },
+  };
+  return { sdk, queries };
+}
+
+async function setup(t) {
+  const fixture = buildSamplePlugin();
+  const { sdk, queries } = fakeSdk();
+  const events = [];
+  const adapter = await createInnerAdapter({
+    sdk, pluginRoot: fixture.pluginRoot, convertedRoot: fixture.convertedRoot, workDir: tmpDir('adapter-work'), runDir: tmpDir('adapter-run'), record: (entry) => events.push(entry),
+  });
+  t.after(() => adapter.shutdown());
+  return { fixture, adapter, queries, events, neutral: () => events.filter((e) => e.t === 'event').map((e) => e.e) };
+}
+
+const hookOf = (query, name) => query.options.hooks[name][0].hooks[0];
+
+async function startRun(adapter, models = {}) {
+  await adapter.core.open({ requestText: '週報を作ってください' });
+  await adapter.core.start({ models, maxIterations: 1, task: { week: '2026-W42' } });
+}
+
+test('REQ-007 統括の起動：統括の定義の本文を効かせ、画面で選んだモデルを置き換えた版のコピーの定義に書く（元の置き換えた版は変えない）', { skip: SKIP }, async (t) => {
+  const { fixture, adapter, queries, neutral } = await setup(t);
+  await startRun(adapter, { orchestrator: 'claude-opus-5.5', worker: 'gpt-6-luna', verifier: 'gpt-6.1-sol' });
+  assert.equal(queries.length, 1);
+  const { options, prompt } = queries[0];
+  assert.equal(options.agent, 'weekly-report:orchestrator');
+  assert.equal(options.model, 'claude-opus-5-5');
+  assert.deepEqual(options.settingSources, []);
+  assert.deepEqual(options.systemPrompt, { type: 'preset', preset: 'claude_code' });
+  assert.deepEqual(Object.keys(options.mcpServers), ['weekly-report']);
+  assert.match(prompt, /実行の番号：/);
+  assert.match(prompt, /C-01：週報は、見出し/);
+  const copy = options.plugins[0].path;
+  assert.notEqual(copy, fixture.convertedRoot);
+  const model = (root, name) => /^model: (.+)$/m.exec(fs.readFileSync(path.join(root, 'agents', `${name}.md`), 'utf8'))[1];
+  assert.equal(model(copy, 'orchestrator'), 'claude-opus-5-5');
+  assert.equal(model(copy, 'worker'), 'claude-haiku-5-5');
+  assert.equal(model(copy, 'verifier'), 'claude-sonnet-5-5');
+  assert.equal(model(fixture.convertedRoot, 'orchestrator'), 'claude-sonnet-5-5');
+  assert.equal(model(fixture.convertedRoot, 'worker'), 'claude-haiku-5-5');
+  // 統括の始まりが、選んだ Copilot の名前つきで中心の処理に届く
+  const started = neutral().find((e) => e.type === 'agent.started');
+  assert.equal(started.agentType, 'weekly-report:orchestrator');
+  assert.equal(started.model, 'claude-opus-5.5');
+  assert.equal(started.executionMode, 'background');
+  assert.equal(started.parentAgentId, undefined);
+});
+
+test('REQ-007 統括の起動：表にないモデルと、統括以外の種類は断る（黙って別のものを起動しない）', { skip: SKIP }, async (t) => {
+  const { adapter } = await setup(t);
+  await assert.rejects(adapter.port.startAgent({ agentType: 'weekly-report:orchestrator', name: 'x', model: 'gpt-9', prompt: 'p' }), /gpt-9.*対応の表にありません/);
+  await assert.rejects(adapter.port.startAgent({ agentType: 'weekly-report:worker', name: 'x', model: 'gpt-6-luna', prompt: 'p' }), /統括（weekly-report:orchestrator）のほかは起動できません/);
+  assert.deepEqual(adapter.agents(), []);
+});
+
+test('REQ-008 サブエージェント：始まりのフックと Agent の呼び出しから親と説明と実行のしかたを結び付け、モデルは画面の選択と比べられる名前で届く', { skip: SKIP }, async (t) => {
+  const { adapter, queries, neutral } = await setup(t);
+  await startRun(adapter, { worker: 'gpt-6-luna' });
+  const q = queries[0];
+  const rootId = adapter.agents()[0].agentId;
+  // 統括が Agent で作業を呼ぶ（前面）→ 作業が始まる
+  await hookOf(q, 'PreToolUse')({ tool_name: 'Agent', tool_use_id: 'toolu_a1', tool_input: { description: '試行 1 の作業', subagent_type: 'weekly-report:worker', prompt: 'p', run_in_background: false } });
+  await hookOf(q, 'SubagentStart')({ agent_id: 'sub-1', agent_type: 'weekly-report:worker' });
+  // 作業のメッセージが先に届いても、始まりのあとで反映される（順序が前後しても取りこぼさない）
+  q.push({ type: 'assistant', agent_id: 'sub-1', parent_tool_use_id: 'toolu_a1', message: { model: 'claude-haiku-5-5', content: [{ type: 'text', text: '書きます' }] } });
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  const started = neutral().find((e) => e.type === 'agent.started' && e.agentId === 'sub-1');
+  assert.equal(started.parentAgentId, rootId);
+  assert.equal(started.agentType, 'weekly-report:worker');
+  assert.equal(started.description, '試行 1 の作業');
+  assert.equal(started.executionMode, 'sync');
+  // 画面で選んだ gpt-6-luna は claude-haiku-5-5 に当たるので、選んだ名前のまま届く
+  const configured = neutral().find((e) => e.type === 'agent.configured' && e.agentId === 'sub-1');
+  assert.equal(configured.model, 'gpt-6-luna');
+  // 終わり：最後の返事が届く
+  await hookOf(q, 'SubagentStop')({ agent_id: 'sub-1', agent_type: 'weekly-report:worker', last_assistant_message: '成果物：out/weekly.md' });
+  const completed = neutral().find((e) => e.type === 'agent.completed' && e.agentId === 'sub-1');
+  assert.equal(completed.response, '成果物：out/weekly.md');
+  assert.equal(completed.cancelled, false);
+  const tasks = await adapter.port.listTasks();
+  assert.deepEqual(tasks.map((x) => [x.agentType, x.status, x.parentAgentId === null ? null : 'root']), [['weekly-report:orchestrator', 'running', null], ['weekly-report:worker', 'completed', 'root']]);
+  // 裏で呼ぶ（run_in_background を false にしない）と、実行のしかたは background で届く（中心の処理が決まりの違反として記録する）
+  await hookOf(q, 'PreToolUse')({ tool_name: 'Agent', tool_use_id: 'toolu_a2', tool_input: { description: '試行 1 の確かめ', subagent_type: 'weekly-report:verifier', prompt: 'p' } });
+  await hookOf(q, 'SubagentStart')({ agent_id: 'sub-2', agent_type: 'weekly-report:verifier' });
+  assert.equal(neutral().find((e) => e.type === 'agent.started' && e.agentId === 'sub-2').executionMode, 'background');
+});
+
+test('REQ-007 実際のモデルが画面の選択と違うときは、実際のモデルに当たる Copilot の名前で届く（違いを画面に出せる）', { skip: SKIP }, async (t) => {
+  const { adapter, queries, neutral } = await setup(t);
+  await startRun(adapter, { worker: 'gpt-6-luna' });
+  const q = queries[0];
+  await hookOf(q, 'PreToolUse')({ tool_name: 'Agent', tool_use_id: 'toolu_a1', tool_input: { description: 'd', subagent_type: 'weekly-report:worker', prompt: 'p', run_in_background: false } });
+  await hookOf(q, 'SubagentStart')({ agent_id: 'sub-1', agent_type: 'weekly-report:worker' });
+  q.push({ type: 'assistant', agent_id: 'sub-1', message: { model: 'claude-sonnet-5-5', content: [] } });
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  assert.equal(neutral().find((e) => e.type === 'agent.configured' && e.agentId === 'sub-1').model, 'claude-sonnet-5.5');
+  assert.equal(adapter.agents().find((a) => a.agentId === 'sub-1').actualClaudeId, 'claude-sonnet-5-5');
+});
+
+test('REQ-011 記録のツール：呼んだエージェントを、フックの tool_use_id と MCP の呼び出しの番号で結び付け、中心の処理の決まりで断る', { skip: SKIP }, async (t) => {
+  const { adapter, queries } = await setup(t);
+  await startRun(adapter);
+  const q = queries[0];
+  const [clientSide, serverSide] = InMemoryTransport.createLinkedPair();
+  await q.options.mcpServers['weekly-report'].instance.connect(serverSide);
+  const client = new Client({ name: 'test', version: '1' });
+  await client.connect(clientSide);
+  const call = (name, args, id) => client.callTool({ name, arguments: args, _meta: { 'claudecode/toolUseId': id } });
+  // 統括の plan：統括のフックが tool_use_id を覚えているので、統括の呼び出しとして受かる
+  await hookOf(q, 'PreToolUse')({ tool_name: 'mcp__weekly-report__plan', tool_use_id: 'toolu_p', tool_input: {} });
+  const plan = await call('plan', { iteration: 1, criteria: [{ id: 'C-01', text: '週報は、見出し「今週やったこと」と「来週やること」の2つがあれば合格とする。' }, { id: 'C-02', text: '数字は半角で書く（例：3件）。' }], plan: '計画' }, 'toolu_p');
+  assert.notEqual(plan.isError, true, JSON.stringify(plan.content));
+  // 統括が verdict を呼ぶと、検証エージェントではないので断られ、理由が返る
+  await hookOf(q, 'PreToolUse')({ tool_name: 'mcp__weekly-report__verdict', tool_use_id: 'toolu_v', tool_input: {} });
+  const verdict = await call('verdict', { iteration: 1, verdicts: [{ criterionId: 'C-01', pass: true }] }, 'toolu_v');
+  assert.equal(verdict.isError, true);
+  assert.match(verdict.content[0].text, /検証/);
+  // 画面を開くツールは、URL と注意を返す
+  const opened = await call('open', { requestText: '週報' }, 'toolu_o');
+  assert.match(opened.content[0].text, /^Web管理画面の URL：http:\/\/127\.0\.0\.1:\d+\/\?k=/);
+  assert.match(opened.content[0].text, /ユーザーに伝えてください：/);
+  // 引数の決まり（JSON Schema）は、中心の処理の定義そのまま
+  const { tools } = await client.listTools();
+  const planTool = tools.find((x) => x.name === 'plan');
+  assert.deepEqual(planTool.inputSchema, adapter.core.toolDefinitions.find((d) => d.shortName === 'plan').parameters);
+  assert.deepEqual(tools.map((x) => x.name).sort(), ['finish', 'issue', 'open', 'plan', 'review', 'show', 'verdict']);
+  await client.close();
+});
+
+test('REQ-008 ツールの開始と終わりは、Copilot CLI のときと同じ名前（<エクステンション>_<ツール>）で届く。失敗の理由も添える', { skip: SKIP }, async (t) => {
+  const { adapter, queries, neutral } = await setup(t);
+  await startRun(adapter);
+  const q = queries[0];
+  await hookOf(q, 'PreToolUse')({ tool_name: 'mcp__weekly-report__plan', tool_use_id: 'toolu_1', tool_input: { iteration: 1 } });
+  await hookOf(q, 'PostToolUse')({ tool_name: 'mcp__weekly-report__plan', tool_use_id: 'toolu_1', tool_input: {}, tool_response: [] });
+  await hookOf(q, 'PreToolUse')({ tool_name: 'Read', tool_use_id: 'toolu_2', tool_input: { file_path: '/x' } });
+  await hookOf(q, 'PostToolUseFailure')({ tool_name: 'Read', tool_use_id: 'toolu_2', tool_input: {}, error: 'ファイルがありません' });
+  const tools = neutral().filter((e) => e.type.startsWith('tool.'));
+  assert.deepEqual(tools.map((e) => [e.type, e.toolName, e.success]), [
+    ['tool.started', 'weekly-report_plan', undefined], ['tool.completed', 'weekly-report_plan', true],
+    ['tool.started', 'Read', undefined], ['tool.completed', 'Read', false],
+  ]);
+  assert.equal(tools[3].error, 'ファイルがありません');
+  assert.deepEqual(tools[0].arguments, { iteration: 1 });
+  assert.equal(tools[0].agentId, adapter.agents()[0].agentId);
+});
+
+test('REQ-009 止める：統括の query() だけを閉じ、統括の終わり（cancelled）だけを届け、下のエージェントは取り消しにする。以後のツールは拒む', { skip: SKIP }, async (t) => {
+  const { adapter, queries, neutral } = await setup(t);
+  await startRun(adapter);
+  const q = queries[0];
+  await hookOf(q, 'PreToolUse')({ tool_name: 'Agent', tool_use_id: 'toolu_a1', tool_input: { description: 'd', subagent_type: 'weekly-report:worker', prompt: 'p', run_in_background: false } });
+  await hookOf(q, 'SubagentStart')({ agent_id: 'sub-1', agent_type: 'weekly-report:worker' });
+  await adapter.core.stop();
+  for (let i = 0; i < 100 && (await adapter.core.getState()).run?.status !== 'finished'; i += 1) await new Promise((resolve) => setTimeout(resolve, 50));
+  const state = await adapter.core.getState();
+  assert.equal(state.run.status, 'finished');
+  assert.equal(state.run.endReason.kind, 'user_stopped');
+  assert.equal(q.closed(), true);
+  assert.deepEqual((await adapter.port.listTasks()).map((x) => x.status), ['cancelled', 'cancelled']);
+  const ends = neutral().filter((e) => e.type === 'agent.completed');
+  assert.deepEqual(ends.map((e) => [e.agentId, e.cancelled]), [[adapter.agents()[0].agentId, true]]);
+  // 止めたあとの、木のエージェントのツールは拒まれる（フックの返す形で）
+  const denied = await hookOf(q, 'PreToolUse')({ tool_name: 'Write', tool_use_id: 'toolu_w', agent_id: 'sub-1', tool_input: { file_path: 'x' } });
+  assert.equal(denied.hookSpecificOutput.permissionDecision, 'deny');
+  assert.match(denied.hookSpecificOutput.permissionDecisionReason, /止められた/);
+  // 拒んだツールは、開始と失敗の終わりが届く
+  const last = neutral().filter((e) => e.type.startsWith('tool.')).slice(-2);
+  assert.deepEqual(last.map((e) => [e.type, e.success]), [['tool.started', undefined], ['tool.completed', false]]);
+});
+
+test('REQ-012 統括の実行の終わり：結果が成功なら completed（最後の返事つき）、誤りなら failed。利用枠の上限は記録に残す', { skip: SKIP }, async (t) => {
+  const { adapter, queries, neutral } = await setup(t);
+  await startRun(adapter);
+  queries[0].push({ type: 'assistant', message: { model: 'claude-sonnet-5-5', content: [{ type: 'text', text: '最後の返事' }] } });
+  queries[0].push({ type: 'result', subtype: 'success', is_error: false, result: '最後の返事', total_cost_usd: 0.25, num_turns: 4 });
+  await adapter.whenRunsEnded().catch(() => {});
+  queries[0].end();
+  await adapter.whenRunsEnded();
+  const completed = neutral().find((e) => e.type === 'agent.completed');
+  assert.equal(completed.response, '最後の返事');
+  assert.equal(completed.cancelled, false);
+  assert.equal(adapter.runs()[0].costUsd, 0.25);
+  assert.equal(adapter.agents()[0].status, 'completed');
+  assert.equal(adapter.limitHit(), null);
+});
+
+test('REQ-012 統括の実行が利用枠の上限で誤りになったら failed を届け、limitHit に残す（試験全体を止める合図）', { skip: SKIP }, async (t) => {
+  const { adapter, queries, neutral } = await setup(t);
+  await startRun(adapter);
+  queries[0].push({ type: 'result', subtype: 'success', is_error: true, result: "You've hit your session limit · resets 3pm", total_cost_usd: 0, num_turns: 1 });
+  queries[0].end();
+  await adapter.whenRunsEnded();
+  assert.match(neutral().find((e) => e.type === 'agent.failed').error, /session limit/);
+  assert.equal(adapter.limitHit().runId.startsWith('orch-'), true);
+  assert.equal(adapter.agents()[0].status, 'failed');
+});
+
+test('REQ-012 統括の実行が、結果を返さずに終わったときと、例外で終わったときは failed を届ける', { skip: SKIP }, async (t) => {
+  const { adapter, queries, neutral } = await setup(t);
+  await startRun(adapter);
+  queries[0].end();
+  await adapter.whenRunsEnded();
+  assert.match(neutral().find((e) => e.type === 'agent.failed').error, /結果を返さずに終わりました/);
+  // 例外で終わる query
+  const throwing = {
+    query: () => ({ [Symbol.asyncIterator]() { return this; }, next: async () => { throw new Error('プロセスが落ちた'); }, close() {} }),
+  };
+  const events = [];
+  const fixture = buildSamplePlugin();
+  const second = await createInnerAdapter({ sdk: throwing, pluginRoot: fixture.pluginRoot, convertedRoot: fixture.convertedRoot, workDir: tmpDir('w'), runDir: tmpDir('r'), record: (e) => events.push(e) });
+  t.after(() => second.shutdown());
+  await startRun(second);
+  await second.whenRunsEnded();
+  assert.match(events.find((e) => e.t === 'event' && e.e.type === 'agent.failed').e.error, /プロセスが落ちた/);
+});
+
+test('REQ-007 選べるモデルは変換の表の Copilot の名前、今のモデルはメインのモデルに当たる名前（Auto ではない）', { skip: SKIP }, async (t) => {
+  const { adapter } = await setup(t);
+  assert.deepEqual((await adapter.port.listModels()).map((m) => m.id), ['claude-haiku-5.5', 'gpt-6-luna', 'claude-sonnet-5.5', 'gpt-6.1-sol', 'claude-opus-5.5']);
+  assert.deepEqual(await adapter.port.getCurrentModel(), { model: 'claude-sonnet-5.5', isAuto: false });
+  const setup1 = (await adapter.core.open({ requestText: 'x' })).url;
+  assert.match(setup1, /^http:\/\/127\.0\.0\.1:/);
+  const state = await adapter.core.getState();
+  // 画面の既定のモデルは、エージェントの定義の既定（統括・検証は sonnet、作業は gpt-6-luna）
+  assert.deepEqual(state.setup.defaults, { orchestrator: 'claude-sonnet-5.5', worker: 'gpt-6-luna', verifier: 'claude-sonnet-5.5' });
+  assert.equal(state.setup.isAuto, false);
+});
+
+test('testing.md 4章 変換レポートのエージェントが使うツールと、中心の処理が出すツールが過不足なく合うかを確かめられる', { skip: SKIP }, async (t) => {
+  const { adapter } = await setup(t);
+  const check = adapter.checkToolNames();
+  assert.deepEqual(check.missing, []);
+  assert.deepEqual(check.unused, []);
+});
+
+test('testing.md 4章 エージェントの定義の model を書き換える：あれば置き換え、なければ足す。本文は変えない', () => {
+  const text = '---\nname: worker\nmodel: claude-haiku-5-5\ntools: Read\n---\n本文の model: 変えない\n';
+  assert.equal(rewriteModel(text, 'claude-opus-5-5'), '---\nname: worker\nmodel: claude-opus-5-5\ntools: Read\n---\n本文の model: 変えない\n');
+  assert.equal(rewriteModel('---\nname: w\n---\nx', 'claude-opus-5-5'), '---\nname: w\nmodel: claude-opus-5-5\n---\nx');
+  assert.throws(() => rewriteModel('本文だけ', 'claude-opus-5-5'), /フロントマター/);
+});
+
+test('REQ-005 画面を開くツールの返り値：URL と、ユーザーに伝える注意の並び', () => {
+  assert.equal(describeOpened({ url: 'http://127.0.0.1:1/?k=a', notices: [] }), 'Web管理画面の URL：http://127.0.0.1:1/?k=a');
+  assert.equal(describeOpened({ url: 'u', notices: ['A', '', 'B'] }), 'Web管理画面の URL：u\n\nユーザーに伝えてください：\n- A\n- B');
+});

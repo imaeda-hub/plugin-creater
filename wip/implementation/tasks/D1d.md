@@ -15,10 +15,12 @@
 - [x] 偽の API で、本物の Agent SDK 0.3.310 の Claude Code を動かす実験（スクラッチ。分かったことは上の節）
 - [x] 共通の部品：package.json、model-map.mjs、isolation.mjs、mcp-tools.mjs と、それぞれの試験（20 件通った）、fake-anthropic.mjs（偽の Anthropic API）
 - [x] inner-adapter.mjs（内側のつなぎ口）、inner-run.mjs（実行1回）、inner-test-support.mjs（試験の道具）
-- [~] inner-e2e.test.mjs：ありの実行が、本物の Agent SDK と偽のモデル、本物の画面と Playwright で通った（1 件）。なしの実行、チャットの返事、止める、利用枠の上限、失敗の試験はこれから
-- [ ] inner-judge.mjs（モデルで判定する関数の Agent SDK 版）と試験
-- [ ] inner.mjs（入口：模擬ユーザーの inner/ の課題を、あり・なしで回して比べる）と試験
+- [x] inner-e2e.test.mjs：ありの実行・なしの実行・チャットの返事・質問のツール・止める（5 件通った。本物の Agent SDK 0.3.310 と Claude Code の本体、本物の生成プラグイン〔C2 の見本を組み立てて D1a の変換スクリプトで置き換えたもの〕の画面と Playwright を、偽の Anthropic API につないだ）
+- [x] inner-judge.mjs（モデルで判定する関数の Agent SDK 版）と試験 inner-judge.test.mjs（4 件通った）
+- [x] inner-run.mjs の状態の決め方の試験 inner-run.test.mjs（10 件通った。偽の Agent SDK）
+- [x] inner.mjs（入口：模擬ユーザーの inner/ の課題を、あり・なしで回して比べる。コマンドライン）と試験 inner.test.mjs（8 件通った。コマンドラインを、D1b の週報の模擬ユーザー・D1c のユーザー役と通した）
 - [ ] inner-adapter の単体の試験（偽の sdk）
+- [ ] 止めた後に claude のプロセスが残らないことの確かめ
 - [ ] 最後の返事
 
 ## 共通の部品（D1c と分け合うもの。置き場所と形）

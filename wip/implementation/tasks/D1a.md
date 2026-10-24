@@ -12,10 +12,12 @@
 
 - [x] 資料を読む（common.md、D1.md、BLUEPRINT、RESUME、testing.md 全章、ナレッジ3つ、R4、試作 convert.py、C1 のメモ、ひな形のエージェント）
 - [x] Claude Code の公式ドキュメントで確かめる（Agent の引数、tools の MCP 名、model、plugin.json）
-- [~] tests/dev-eval/convert.py（できた。クリエイターとサンプルの生成プラグインを置き換え、claude plugin validate に通ることを手で確かめた。試験はまだ）
-- [ ] 試験（test_convert.py）
-- [ ] 試験が通る
-- [ ] 最後の返事
+- [x] tests/dev-eval/convert.py（クリエイターと、組み立ての見本の生成プラグインを置き換え、`claude plugin validate` に通る）
+- [x] tests/dev-eval/test_convert.py（76 件が通る。変換の各規則、`claude plugin validate`、`claude -p` の init でプラグインのエージェント・スキルが読み込まれること、エクステンションのツール名が本物のツールの名前に合うこと）
+- [x] 試験が本当に落ちるか：変換スクリプトを約40か所こわして試験を動かし、すべて落ちた（最初に生き残った3か所は、試験を足して落ちるようにした）
+- [x] 最後の返事
+
+動かし方（リポジトリの根で）：`python3 -m unittest discover -s tests/dev-eval -p "test_convert.py"`（約20秒。claude コマンドがなければ validate を使う試験を、node がなければツール名の突き合わせを飛ばす）
 
 ## D1c・D1d・D1b と合わせること（先に決めた。変えるときは統括に知らせる）
 

@@ -76,7 +76,7 @@ test('REQ-015 流れ：質問のツールにも、文章の問いにも、ユー
   const runRoot = tmp('flow');
   const prompts = [];
   const sdk = createFakeSdk({
-    userRole: ({ prompt }) => (prompt.includes('成果物') ? '成果物は weekly_report.md です' : '特に決まっていません'),
+    userRole: ({ prompt }) => (/AI からの質問：[^\n]*成果物/.test(prompt) ? '成果物は weekly_report.md です' : '特に決まっていません'),
     agent: async (ctx) => {
       prompts.push(ctx.prompt);
       if (ctx.turn === 1) {
@@ -114,11 +114,12 @@ test('REQ-015 流れ：質問のツールにも、文章の問いにも、ユー
   assert.equal(o.sandbox, undefined, 'sandbox: false のときは付けない');
   assert.equal(o.env.HOME.includes('agent-home'), true);
   // 会話の全文
-  assert.deepEqual(record.conversation.map((c) => `${c.role}:${c.via}`), ['user:request', 'creator:text', 'creator:AskUserQuestion', 'user:AskUserQuestion', 'creator:text', 'user:text', 'creator:text']);
+  assert.deepEqual(record.conversation.map((c) => `${c.role}:${c.via}`), ['user:request', 'creator:text', 'creator:AskUserQuestion', 'user:AskUserQuestion', 'creator:text', 'user:text', 'creator:text', 'creator:text', 'user:text']);
   assert.equal(record.conversation[2].question, '成果物は何ですか？');
+  assert.equal(record.conversation[4].text, 'ほかに伝えたいことはありますか？');
   assert.equal(record.conversation[5].text, '特に決まっていません');
   // 問答の記録（qa.jsonl）：質問のツールの問答と、文章の問いへの返事。記録ができた後の分だけ（本物のフックと同じ）
-  assert.deepEqual(record.qa.map((e) => e.type), ['user_prompt']);
+  assert.deepEqual(record.qa.map((e) => e.type), ['user_prompt', 'user_prompt']);
   assert.equal(record.qa[0].text, '特に決まっていません');
   // 全項目の記録は、答えの中の抜き書きで通る
   const heard = record.grading.grades.find((g) => g.id === 'all-items-heard');
@@ -142,7 +143,7 @@ test('REQ-015 流れ：質問のツールの問答は、ヒアリングの記録
     },
   });
   const record = await runOuterOnce({ ...baseOptions(runRoot), loaded: loadedWeekly, query: sdk.query, maxExchanges: 1 });
-  assert.deepEqual(record.qa.map((e) => e.type), ['ask_user']);
+  assert.deepEqual(record.qa.map((e) => e.type), ['ask_user', 'user_prompt']);
   assert.equal(record.qa[0].question.message, '進め方は？');
   assert.equal(record.qa[0].answer, 'User responded: 月曜に集計します');
   fs.rmSync(runRoot, { recursive: true, force: true });
@@ -223,7 +224,7 @@ test('REQ-020 生成までたどる：本物の記録のツールで承認まで
   let statePath;
   const sdk = createFakeSdk({
     userRole: ({ prompt }) => {
-      const a = prompt.includes('作ってよいですか') ? '作ってください' : '成果物は weekly_report.md です';
+      const a = /AI からの質問：[^\n]*作ってよいですか/.test(prompt) ? '作ってください' : '成果物は weekly_report.md です';
       answers.push(a);
       return a;
     },

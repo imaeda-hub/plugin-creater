@@ -134,7 +134,9 @@ export async function createInnerAdapter(options) {
 
   const emit = (event) => {
     const full = { at: now(), ...event };
-    record({ t: 'event', e: full });
+    // 記録には、大きな引数（ファイルの中身など）を切り詰めて残す。中心の処理には全文を渡す
+    const logged = full.arguments !== undefined && JSON.stringify(full.arguments).length > 2000 ? { ...full, arguments: `${JSON.stringify(full.arguments).slice(0, 2000)}…（切り詰めた）` } : full;
+    record({ t: 'event', e: logged });
     core.onEvent(full);
   };
 
