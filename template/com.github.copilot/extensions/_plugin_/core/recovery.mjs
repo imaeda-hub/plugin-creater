@@ -92,7 +92,8 @@ export function finishRecoveredRun(ctx, runId, entries, begin, { detail, unstopp
     // 記録に書けなくても、終了の印は置く
   }
   ctx.store.writeResult(runId, result);
-  ctx.endedAtStartup.push(runId);
+  // 「前の実行が途中で終わっていました」と知らせるのは、画面の「前の結果」に出る範囲（同じセッション、なければ同じ作業フォルダ）の実行だけ
+  if (begin && (begin.sessionId === ctx.sessionId || begin.cwd === ctx.cwd)) ctx.endedAtStartup.push(runId);
   ctx.previousDirty = true;
 }
 

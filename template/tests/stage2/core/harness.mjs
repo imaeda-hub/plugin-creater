@@ -136,15 +136,16 @@ function readFileSyncLines(path) {
 }
 
 // 試験 1 本分の道具。reuse に前の道具を渡すと、記録の置き場所・作業フォルダ・プラグインの根を引き継ぐ（起動し直し）。
+// options.cwd を渡すと、作業フォルダだけを替えられる（ほかの作業フォルダの実行を見る試験）。
 export async function makeHarness(t, options = {}) {
   const reuse = options.reuse ?? null;
   const base = reuse ? reuse.base : mkdtempSync(join(tmpdir(), 'a1-core-'));
   const pluginRoot = reuse ? reuse.pluginRoot : join(base, 'plugin');
-  const cwd = reuse ? reuse.cwd : join(base, 'work');
+  const cwd = options.cwd ?? (reuse ? reuse.cwd : join(base, 'work'));
   const dataRoot = reuse ? reuse.dataRoot : join(base, 'data', 'runs');
+  mkdirSync(cwd, { recursive: true });
   if (!reuse) {
     mkdirSync(join(pluginRoot, 'com.github.copilot', 'agents'), { recursive: true });
-    mkdirSync(cwd, { recursive: true });
     writeFileSync(
       join(pluginRoot, 'plugin.json'),
       JSON.stringify({ name: PLUGIN, version: '0.1.0', description: '週報', repository: options.repository ?? 'https://github.com/example/weekly-report' }),

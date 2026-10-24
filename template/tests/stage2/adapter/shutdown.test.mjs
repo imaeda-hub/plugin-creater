@@ -81,8 +81,11 @@ describe('終わるとき（REQ-029）', () => {
     assert.match(lines[0], /つなぎ口.*終わる処理/);
   });
 
+  // Windows の Node.js は、子のプロセスに SIGTERM・SIGINT を届けられない（kill は強制終了になる）ので、合図を送る試験は飛ばす。
+  // Windows でも残る確かめ（プロセスが終わると画面のサーバーが残らない）は、下の「強制終了」の試験が受け持つ。
+  const SIGNAL_SKIP = process.platform === 'win32' ? 'Windows の Node.js は、子のプロセスに終了の合図（SIGTERM・SIGINT）を届けられないため、飛ばす' : false;
   for (const signal of ['SIGTERM', 'SIGINT']) {
-    test(`REQ-029 Copilot CLI の終了の合図（${signal}）を受けると、中心の処理の終わる処理を呼んでから、プロセスが終わる。画面のサーバーも残らない`, async () => {
+    test(`REQ-029 Copilot CLI の終了の合図（${signal}）を受けると、中心の処理の終わる処理を呼んでから、プロセスが終わる。画面のサーバーも残らない`, { skip: SIGNAL_SKIP }, async () => {
       const plugin = makePlugin();
       const child = spawn(process.execPath, [CHILD, plugin.adapterPath, tempDir('adapter-work-')], {
         env: { ...process.env, COPILOT_HOME: tempDir('adapter-home-') },
@@ -114,4 +117,32 @@ describe('終わるとき（REQ-029）', () => {
       }
     });
   }
+
+  test('REQ-029 エクステンションのプロセスが強制終了されても（異常終了と同じ）、画面のサーバーが残らない', async () => {
+    const plugin = makePlugin();
+    const child = spawn(process.execPath, [CHILD, plugin.adapterPath, tempDir('adapter-work-')], {
+      env: { ...process.env, COPILOT_HOME: tempDir('adapter-home-') },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    let out = '';
+    let err = '';
+    child.stdout.on('data', (chunk) => {
+      out += chunk;
+    });
+    child.stderr.on('data', (chunk) => {
+      err += chunk;
+    });
+    const exited = new Promise((resolve) => child.on('exit', () => resolve('exited')));
+    try {
+      await until(() => /READY http/.test(out) || child.exitCode !== null, { timeout: 15000 });
+      const url = out.match(/READY (http:\/\/\S+)/)?.[1];
+      assert.ok(url, `子のプロセスの出力：${out} ${err}`);
+      assert.equal((await fetch(url)).status, 200, '終わる前は、画面が開ける');
+      child.kill('SIGKILL'); // Windows でも強制終了として効く
+      assert.equal(await withTimeout(exited, 8000), 'exited', 'プロセスが終わらなかった');
+      await assert.rejects(fetch(url), '画面のサーバーが残っていない');
+    } finally {
+      if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL');
+    }
+  });
 });

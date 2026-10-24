@@ -246,3 +246,52 @@ test('REQ-008 記録の置き場所が使えなくても、起動は失敗せず
     createCore({ port: h.port, pluginRoot: h.pluginRoot, pluginName: PLUGIN, dataRoot: join(h.base, 'blocked', 'runs'), sessionId: 'x', cwd: h.cwd, clock: h.clock, task: TASK }),
   );
 });
+
+// ---- 知らせの範囲：画面の「前の結果」に出る実行（同じセッション、なければ同じ作業フォルダ）だけ ----
+
+const NOTICE = '前の実行が途中で終わっていました。画面で結果を見られます。';
+
+test('REQ-008 ほかの作業フォルダの実行が途中で切れても、「前の実行が途中で終わっていました」の知らせは出ない。前の結果にも出ない', async (t) => {
+  const { h1, runId } = await crashedRun(t);
+  await h1.clock.advance(LIMITS.ALIVE_STALE_MS + 1000); // 印が古くなった（ほかのセッションの実行として切れる）
+  const other = await makeHarness(t, { reuse: h1, sessionId: 's2', cwd: join(h1.base, 'other-work') });
+  await other.settle();
+  assert.equal(resultOf(other, runId).endReason.detail, 'cut_off', '記録の上では切れたことになる');
+  const { notices } = await other.core.open({ requestText: 'x' });
+  assert.ok(!notices.includes(NOTICE), notices.join(' / '));
+  assert.equal(other.state().previous, null, 'ほかの作業フォルダの実行は、前の結果に出ない');
+});
+
+test('REQ-008 同じ作業フォルダのほかのセッションの実行が途中で切れたときは、知らせが出て、前の結果にも出る', async (t) => {
+  const { h1, runId } = await crashedRun(t);
+  await h1.clock.advance(LIMITS.ALIVE_STALE_MS + 1000);
+  const same = await makeHarness(t, { reuse: h1, sessionId: 's2' });
+  await same.settle();
+  const { notices } = await same.core.open({ requestText: 'x' });
+  assert.ok(notices.includes(NOTICE));
+  assert.equal(same.state().previous.runId, runId);
+  // 知らせは 1 回だけ
+  assert.ok(!(await same.core.open({ requestText: 'x' })).notices.includes(NOTICE));
+});
+
+test('REQ-008 同じセッションの実行は、作業フォルダが違っても、知らせが出る（前の結果は同じセッションの実行を選ぶ）', async (t) => {
+  const { h1, runId } = await crashedRun(t);
+  h1.port.tasks.length = 0;
+  const same = await makeHarness(t, { reuse: h1, port: h1.port, sessionId: 's1', cwd: join(h1.base, 'moved-work') });
+  await same.settle();
+  assert.equal(resultOf(same, runId).endReason.detail, 'cut_off');
+  const { notices } = await same.core.open({ requestText: 'x' });
+  assert.ok(notices.includes(NOTICE));
+  assert.equal(same.state().previous.runId, runId);
+});
+
+test('REQ-008 決めた時間の後の確かめで切れた、ほかの作業フォルダの実行も、知らせは出ない', async (t) => {
+  const crashed = await makeHarness(t, { sessionId: 's3' });
+  await crashed.begin();
+  await crashed.core.shutdown();
+  await crashed.clock.advance(5000); // 印はまだ新しい
+  const checker = await makeHarness(t, { reuse: crashed, sessionId: 's4', cwd: join(crashed.base, 'other-work') });
+  await checker.clock.advance(LIMITS.ALIVE_STALE_MS + 1000);
+  assert.ok(existsSync(join(checker.dataRoot, crashed.run().id, 'result.json')));
+  assert.ok(!(await checker.core.open({ requestText: 'x' })).notices.includes(NOTICE));
+});
