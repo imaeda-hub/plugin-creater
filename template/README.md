@@ -20,11 +20,11 @@ copilot plugin install {{plugin_name}}@{{marketplace_name}}
 - `<このリポジトリのフォルダの場所>` には、このフォルダの絶対パスを書きます。
 - Copilot CLI の中では、`/plugin marketplace add <フォルダの場所>` と `/plugin install {{plugin_name}}@{{marketplace_name}}` でも入れられます。
 - フォルダを直接指定する入れ方（`copilot plugin install ./フォルダ`）は、Copilot CLI 1.0.102 が「廃止予定」と表示するので、マーケットプレイスを通す入れ方にしています。
-- 手元のフォルダのマーケットプレイスから入れたプラグインは、フォルダの中身を直したあと、`/restart` か新しいセッションで反映されます。
+- 手元のフォルダのマーケットプレイスから入れたプラグインは、フォルダの中身を直したあと、`/restart` か新しいセッション（Copilot CLI の1つの会話。`/clear` で新しいセッションになります）で反映されます。
 
 ### 2. 試験的機能を有効にする
 
-画面を動かす仕組み（エクステンション。Copilot CLI が起動する別のプログラム）は、試験的な機能です（Copilot CLI 1.0.102 の時点）。有効にしないと、{{plugin_name}} は使えません。
+画面を動かす仕組み（エクステンション。Copilot CLI が起動する別のプログラム）は、試験的な機能です（Copilot CLI 1.0.102 の時点）。有効にしないと、{{plugin_name}} は使えません。試験的な機能なので、Copilot CLI の更新で使い方が変わることがあります。
 
 初めて使うときは、`--experimental` を付けて Copilot CLI を起動します。一度付けると設定に残るので、次からは付けなくても有効です。
 
@@ -32,13 +32,11 @@ copilot plugin install {{plugin_name}}@{{marketplace_name}}
 copilot --experimental
 ```
 
-すでに起動しているときは、チャットで次のように打ちます。Copilot CLI が自動で再起動して、有効になります。再起動すると、今の会話は終わります。
+すでに起動しているときは、チャットで次のように打ちます。Copilot CLI が自動で再起動して、有効になります。再起動すると、今の会話は終わります。再起動の後は、まだ信頼していないフォルダでは、フォルダを信頼するかの確認が出て、続けて次の「3. 読み込むときの確認を許可する」の確認が出ます（読み込みの確認は、続けて2回出ることがあります）。
 
 ```text
 /settings experimental on
 ```
-
-どちらの場合も、起動のあとに、まだ信頼していないフォルダでは、フォルダを信頼するかの確認が出ます。続けて、次の「3. 読み込むときの確認を許可する」の確認が出ます。試験的な機能なので、Copilot CLI の更新で使い方が変わることがあります。
 
 ### 3. 読み込むときの確認を許可する
 
@@ -54,7 +52,7 @@ Copilot CLI 1.0.101 から、この確認は必ずあなたに出ます。許可
 確認の意味は次のとおりです。
 
 - `skip tool permission prompts`（ツールの許可の確認を省く）：{{plugin_name}} の記録のツールは、確認なしで動きます。画面に出す状態を書くだけで、ファイルやコマンドなど外を変えません。
-- `register hooks`（フックを登録する）：止めた実行のエージェントのツールを拒むために、Copilot CLI の「ツールを使ってよいか」の問い合わせを受けます。
+- `register hooks`（フックを登録する）：止めた実行のエージェントのツールと、統括エージェントに許していないツール（ファイルの書き込みやコマンドなど。統括は、それらを作業エージェントに頼みます）を拒むために、Copilot CLI の「ツールを使ってよいか」の問い合わせを受けます。
 - `handle permission requests`（許可の求めを扱う）：エージェントの許可の求めを見て、画面に「チャットで確認を待っています」と示します。{{plugin_name}} は許可の求めに答えません。許可も拒否も、あなたがチャットで行います。
 
 許可する理由は、断ると読み込まれず、画面で開始も監視もできないからです。選び方は次のとおりです。
@@ -62,8 +60,8 @@ Copilot CLI 1.0.101 から、この確認は必ずあなたに出ます。許可
 | 選択肢 | 意味 |
 | --- | --- |
 | Yes | 今回だけ許可します。Copilot CLI を起動するたびと、`/clear` のたびに、また確認が出ます |
-| Yes, and always allow "plugin:{{plugin_name}}:{{plugin_name}}" in this directory (<フォルダの場所>) | このフォルダでは常に許可します。このフォルダでは、次から確認が出ません（`/clear` の後も、起動し直しても）。ほかのフォルダでは、また出ます |
-| Yes, and don't ask again for "plugin:{{plugin_name}}:{{plugin_name}}" this session | フォルダが分からないときに、上の選択肢の代わりに出ます。このセッションの間は、確認が出ません |
+| Yes, and always allow "plugin:{{plugin_name}}:{{plugin_name}}" in this directory（後ろにフォルダの場所が付きます） | このフォルダでは常に許可します。このフォルダでは、次から確認が出ません（`/clear` の後も、起動し直しても）。ほかのフォルダでは、また出ます |
+| Yes, and don't ask again for "plugin:{{plugin_name}}:{{plugin_name}}" this session | フォルダが分からないときに、上の選択肢の代わりに出ます。このセッション（Copilot CLI の1つの会話。`/clear` で新しいセッションになります）の間は、確認が出ません |
 | No (Esc) | 断ります。{{plugin_name}} は読み込まれません |
 
 初めて使うときと、`/settings experimental on` で再起動した後は、フォルダを信頼するかの確認の後に、この確認が続けて2回出ることがあります。
@@ -103,7 +101,7 @@ Copilot CLI 1.0.101 から、この確認は必ずあなたに出ます。許可
 起票できるようにするには、次の手順を行います。起票できないときも案は並び、この手順が画面に示されます。
 
 1. {{plugin_name}} を GitHub に公開します。
-2. `plugin.json` の `repository` に、そのリポジトリの URL（例：`https://github.com/OWNER/REPO`）を書き、{{plugin_name}} を入れ直します。手元のフォルダのマーケットプレイスから入れているときは、新しいセッションを始めるだけでも反映されます。
+2. `plugin.json` の `repository` に、そのリポジトリの URL（例：`https://github.com/OWNER/REPO`）を書きます。手元のフォルダのマーケットプレイスから入れたときは、Copilot CLI を起動し直すか、`/clear` で新しい会話を始めると反映されます。GitHub から入れたときは、直した `plugin.json` を GitHub に送ってから、{{plugin_name}} を入れ直します。
 
    ```shell
    copilot plugin uninstall {{plugin_name}}
@@ -136,4 +134,4 @@ EVAL（実際のモデルで課題を実行して採点する試験）は、plug
 
 - 試験的機能を有効にしていない：`copilot --experimental` で起動し直します。すでに起動しているときは、チャットで `/settings experimental on` と打ちます（自動で再起動します）。
 - 読み込むときの確認を断った：Copilot CLI を起動し直して、出た確認を許可します。選び方は「3. 読み込むときの確認を許可する」にあります。
-- エクステンションを使わない設定（`/extensions mode` の Disabled）にしている：`/extensions mode` で Load & Augment か Load Only に戻します。Disabled は、次のセッションにも残ります。
+- エクステンションを使わない設定（`/extensions mode` の Disabled）にしている：`/extensions mode` で Load & Augment か Load Only に戻します。Disabled は、次に Copilot CLI を起動したときにも残ります。

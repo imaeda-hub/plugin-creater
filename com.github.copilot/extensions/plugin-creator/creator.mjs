@@ -11,6 +11,7 @@ import path from 'node:path';
 import { DRAFT_TASK_SUFFIX } from './constants.mjs';
 import { DEFAULT_PLUGIN_ROOT, createScreen, createUiLoader, listExamples } from './screen.mjs';
 import { DocTextError, documentText } from './doc-text.mjs';
+import { evalSettingsProblems, settingLabels } from './eval-settings.mjs';
 import { Refusal, createHearing, taskFileHash } from './hearing.mjs';
 import { createHooks } from './hooks.mjs';
 import { IssueError, fileIssue, runGh as defaultRunGh } from './issue.mjs';
@@ -67,6 +68,12 @@ export function createCreator({
     return store.readResults().map((file) => readResult(file));
   }
 
+  /** 画面に出す課題の設定の値。作業ごとの設定は、案の設定の見出し（label）を添える。見出しが分からないものは、名前（key）を見出しにする */
+  function settingsView(settings, labels) {
+    const task = Object.entries(settings?.task ?? {}).map(([key, value]) => ({ key, label: labels?.[key] || key, value }));
+    return { ...(settings?.maxIterations === undefined ? {} : { maxIterations: settings.maxIterations }), task };
+  }
+
   function confirmationView() {
     const state = hearing.state;
     const c = state?.confirmation;
@@ -83,7 +90,7 @@ export function createCreator({
         prompt: t.prompt,
         inputs: t.inputs,
         criteria: t.criteria.map((id) => ({ id, text: byId.get(id)?.text ?? '' })),
-        settings: t.settings ?? {},
+        settings: settingsView(t.settings, c.settingLabels),
       })),
       rebuild: c.rebuild ?? null,
       sampleUrl: sample.url,
@@ -108,8 +115,11 @@ export function createCreator({
 
   // ---- 生成前の確認 ----------------------------------------------------------------------------
 
-  /** 作業の定義の案を読み、合否の基準を差し込み、決まりで確かめて、見本を作り直す。見本の URL を返す */
-  async function prepareSample({ taskPath, knowledgeRows }) {
+  /**
+   * 作業の定義の案を読み、合否の基準を差し込み、決まりで確かめて、見本を作り直す。見本の URL と、案の設定の見出しを返す。
+   * evalTasks があれば、課題の作業ごとの設定の値が、案の設定に合うかも確かめる（見本を作り直す前に断る。X4-04）
+   */
+  async function prepareSample({ taskPath, knowledgeRows, evalTasks }) {
     let draft;
     try {
       draft = readDraft(taskPath);
@@ -140,8 +150,15 @@ export function createCreator({
         `画面と合格の条件の設定の案が決まりに合いません（${taskPath}）。直してから、もう一度知らせてください。\n${shown}${problems.length > 8 ? `\nほか${problems.length - 8}件` : ''}`,
       );
     }
+    if (evalTasks) {
+      const found = evalTasks.flatMap((t, i) => (t.settings?.task ? evalSettingsProblems(draft.settings, t.settings.task, `試しに動かして採点する試験の課題 ${i + 1} `) : []));
+      if (found.length) {
+        const shown = found.slice(0, 8).join('\n');
+        throw new Refusal(`課題の、作業の画面に入れる設定の値（settings.task）が、画面と合格の条件の設定の案（${taskPath}）に合いません。直してから、もう一度知らせてください。\n${shown}${found.length > 8 ? `\nほか${found.length - 8}件` : ''}`);
+      }
+    }
     try {
-      return await sample.update(task);
+      return { url: await sample.update(task), settingLabels: settingLabels(draft.settings) };
     } catch (error) {
       throw new Refusal(`作業の画面の見本を開けません：${errorMessage(error)}`);
     }
@@ -226,9 +243,9 @@ export function createCreator({
     }
     // 示す案の中身の印。見本を作る前に取る（見本を作る間に案が変わっても、変わった側に倒れて、示し直しを求める）。生成に進めるときに、今の中身と比べる
     const taskHash = taskFileHash(normalized);
-    const sampleUrl = await prepareSample({ taskPath: normalized, knowledgeRows: rows });
-    hearing.commitConfirmation({ ...a, taskPath: normalized, taskHash });
-    return `作る前の確認で示すものを受け付けました。画面で見られます。作業の画面の見本：${sampleUrl}`;
+    const prepared = await prepareSample({ taskPath: normalized, knowledgeRows: rows, evalTasks: a.evalTasks });
+    hearing.commitConfirmation({ ...a, taskPath: normalized, taskHash, settingLabels: prepared.settingLabels });
+    return `作る前の確認で示すものを受け付けました。画面で見られます。作業の画面の見本：${prepared.url}`;
   }
 
   /** 止まっている見本を作り直す。再開（--continue）のあと、生成前の確認が残っているときのため。失敗しても黙る */

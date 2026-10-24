@@ -177,7 +177,7 @@
   function settingsBlock(settings) {
     const entries = [];
     if (settings?.maxIterations !== undefined) entries.push(['繰り返しの上限', settings.maxIterations]);
-    for (const [key, value] of Object.entries(settings?.task ?? {})) entries.push([key, value]);
+    for (const item of settings?.task ?? []) entries.push([item.label, item.value]);
     if (entries.length === 0) return h('p', { class: 'help' }, '作業の画面に入れる設定の値はありません');
     return h('div', null, h('p', { class: 'help' }, 'この課題で作業の画面に入れる設定の値'), h('ul', { class: 'plain-list' }, entries.map(([key, value]) => h('li', null, `${key}：${String(value)}`))));
   }

@@ -87,8 +87,8 @@ Copilot CLI に依る部分を薄くし、それ以外を Copilot CLI なしで�
 - 決めたこと：Web管理画面は、エクステンション（`com.github.copilot/extensions/{{plugin_name}}/extension.mjs`）で動かす。開始で動き出す、すぐ止まる、Copilot CLI の終了でサーバーも終わる、の3つを1つの公式の部品で満たせるのは、エクステンションだけである。
 - 引き換えになること：
   - 試験的な機能である（Copilot CLI 1.0.102 の時点）。初めて使うときに `copilot --experimental` で起動する。一度付けると設定に残り、次からは付けなくてよい。起動した後なら、チャットで `/settings experimental on` と打つと、Copilot CLI が自動で再起動して有効になる。`/experimental on` も動くが、Copilot CLI が非推奨と示す。Copilot CLI の更新で使い方が変わることがある。
-  - 確認を省くツール（3.6）とフック（3.2）を登録し、許可の求めを見る（3.6）ので、読み込みのときにチャットで確認が出る。題は `Extension "plugin:{{plugin_name}}:{{plugin_name}}" wants elevated permissions`、文は「This extension wants to: skip tool permission prompts, register hooks, handle permission requests. Denying will prevent this extension from loading.」で、断るとエクステンションは読み込まれない。Copilot CLI 1.0.101 から、許可を自動で判定する設定（Assisted の許可）を使っていても、この確認は必ず人に出る。
-  - 選択肢は「Yes」「Yes, and always allow "plugin:{{plugin_name}}:{{plugin_name}}" in this directory (<作業フォルダ>)」「No (Esc)」である。フォルダが分からないときは、2つ目の代わりに「Yes, and don't ask again for "…" this session」が出る。「Yes」は起動のたびと `/clear` のたびに出る。「always allow」は、その作業フォルダについて `permissions-config.json` に残り、次から出ない。「don't ask again … this session」は、そのセッションの間だけ出ない。
+  - 確認を省くツール（3.6）とフック（3.2、3.5）を登録し、許可の求めを見る（3.6）ので、読み込みのときにチャットで確認が出る。題は `Extension "plugin:{{plugin_name}}:{{plugin_name}}" wants elevated permissions`、文は「This extension wants to: skip tool permission prompts, register hooks, handle permission requests. Denying will prevent this extension from loading.」で、断るとエクステンションは読み込まれない。Copilot CLI 1.0.101 から、許可を自動で判定する設定（Assisted の許可）を使っていても、この確認は必ず人に出る。
+  - 選択肢は「Yes」「Yes, and always allow "plugin:{{plugin_name}}:{{plugin_name}}" in this directory」（後ろにフォルダの場所が付く）「No (Esc)」である。フォルダが分からないときは、2つ目の代わりに「Yes, and don't ask again for "…" this session」が出る。「Yes」は起動のたびと `/clear` のたびに出る。「always allow」は、その作業フォルダについて `permissions-config.json` に残り、次から出ない。「don't ask again … this session」は、そのセッションの間だけ出ない。
   - 初めて使うときと、`/settings experimental on` で再起動した後は、フォルダを信頼するかの確認の後に、この確認が続けて2回出ることがある（再起動の後でセッションが切り替わるため）。
   - README と入口のスキルで、確認の意味・許可する理由・選び方の違いを示す。エクステンションのツールがないときは、試験的機能が有効でないか、確認を断ったか、`/extensions mode` が Disabled のどれかとして、3つとも直し方を示して止まる（REQ-004）。Disabled は次のセッションにも残るので、`/extensions mode` で Load & Augment か Load Only に戻す。
 - 採らなかった代案：フックとシェルのコマンド（エージェントを取り消せない）、MCP サーバーの中で画面を動かす（ツールの呼び出しが既定で30秒で時間切れ）、canvas（試験的で、GUI のない環境では URL を示すだけ）。
@@ -100,7 +100,7 @@ Copilot CLI に依る部分を薄くし、それ以外を Copilot CLI なしで�
 - サーバーはエクステンションと同じプロセスで動き、子プロセスを作らない。Copilot CLI を終えると一緒に終わる（REQ-029）。
 - 待ち受けるのは 127.0.0.1 だけ（REQ-006）。番号は土台の既定で、ふさがっていたら OS に空いている番号を選ばせる。
 - 起動ごとに乱数の合言葉を作り、URL に入れる（例：`http://127.0.0.1:8731/?k=<合言葉>`）。サーバーは、合言葉がない問い合わせと、Host が合わない問い合わせを断る。ほかの Web ページから開始・停止・起票を送られないようにするためである。
-- 1つのセッションでは、同時に1つの実行だけを扱う。実行中に画面を開くツールがまた呼ばれたら、新しく始めず、今の URL を返す。頼みの文は受け付けないので、黙って捨てずに、「いまの実行が終わるまで、新しい作業は始められません。…変えた作業を頼むときは、画面で止めてから、もう一度チャットで頼んでください」と知らせる（`core/constants.mjs` の `BUSY_NOTICE`）。終わった後は、新しい実行の準備に戻す。準備中の画面からも、同じセッションの前の結果と、承認していない Issue の案を開ける。
+- 1つのセッションでは、同時に1つの実行だけを扱う。実行中に画面を開くツールがまた呼ばれたら、新しく始めず、今の URL を返す。頼みの文は受け付けないので、黙って捨てずに、「いまの実行が終わるまで、新しい作業は始められません。…変えた作業を頼むときは、画面で止めてから、もう一度チャットで頼んでください」と知らせる（`core/constants.mjs` の `BUSY_NOTICE`）。終わった後は、新しい実行の準備に戻す。準備中の画面からも、同じセッションの前の結果（なければ、同じ作業フォルダの前の結果）と、承認していない Issue の案を開ける。
 - 窓口：`GET /`（画面）、`GET /api/state`（状態の全体）、`GET /api/agents/<番号>/reply`（返事の全文）、`GET /api/files/<番号>`（記録のツールで知らされた、作業フォルダの中のファイル）、`POST /api/start`、`POST /api/stop`、`POST /api/issues/<番号>/file`（承認して起票）。
 - ファイルの窓口は、シンボリックリンクをたどった後の場所が作業フォルダの中かを確かめる。画像は png・jpeg・gif・webp だけ返し、SVG と HTML はダウンロードさせる形で返す。どれにもスクリプトを動かさない指定（`Content-Security-Policy: sandbox`、`X-Content-Type-Options: nosniff`）を付ける。
 - エージェントや記録から来た文字は、すべて文字として出し、HTML として扱わない。
@@ -196,7 +196,7 @@ Copilot CLI に依る部分を薄くし、それ以外を Copilot CLI なしで�
 - 中心の処理は、実行の状態を記録のファイル（5.1）に書きながら進める。エクステンションが起動したときに、終わっていない実行を次のように終わらせる（`core/recovery.mjs` の `classifyUnfinishedRun`）。
   - 自分のセッションの実行：木のエージェントを拒む一覧にすぐ入れ、`tasks.list` で動いているものを探して取り消し、「途中で終わった（エクステンションが再起動した）」にする。止まったかは、止める（3.2）と同じ8秒まで確かめ、止まらないものは「止まっていないエージェント」として示す。動いているものが見つからないとき（もう止まっているときなど）は、「途中で終わった（途中で切れた）」にする。
   - ほかのセッションの実行：`alive` が決めた時間（30秒）より古いものだけを、「途中で終わった（途中で切れた）」にする。新しいものは、時間が過ぎてからもう一度確かめる。`/clear` の後はセッションの番号が変わるので、前の実行はこちらになる。
-- 次に画面を開いたときにそのことを示し、課題の一覧にも入れる。
+- 次に画面を開いたときに、同じセッションか同じ作業フォルダの実行なら、そのことを示し、課題の一覧にも入れる（ほかの作業フォルダの実行には知らせない）。
 - 今の実行に当たらない記録のツールの呼び出しは断り、「画面とのつながりが切れたので作業を終えてください」と返す。
 - 実行中は `/clear` しないことを、画面とチャットに示す。
 
@@ -267,7 +267,7 @@ stateDiagram-v2
 - 起票の状態（起票中／起票済みと URL／失敗と理由／起票したか分からない）は、印のファイルに書き、画面はそこから読む。`result.json` には書き足さない。
 - `gh` は順番待ちの列の外で動かし、時間の上限（例：60秒）を付ける。上限を超えたときと、起票中のまま5分が過ぎたときは、送信だけ済んでいることがありうるので、印を「起票したか分からない」にする。
 - もう一度承認したとき、前の印が「起票したか分からない」なら、起票の前に `gh issue list --state all --json title,url,body` で、本文にその案の印がある Issue を探す。あればその URL を「起票済み」にし、なければ起票する。題の一致は見分けに使わない。探す処理が失敗したら、起票に進まない。
-- リポジトリは、`plugin.json` の `repository`（GitHub の URL）から知る。入れ方によっては、プラグインがコピーされて `.git` が残らないことがあるためである（GitHub から入れたとき。Copilot CLI 1.0.57 の更新履歴）。手元のフォルダのマーケットプレイスから入れたプラグインは、コピーされず、そのフォルダを直接読むので、直したファイルは次のセッションで反映される（Copilot CLI 1.0.102 で確かめた）。
+- リポジトリは、`plugin.json` の `repository`（GitHub の URL）から知る。入れ方によっては、プラグインがコピーされて `.git` が残らないことがあるためである（GitHub から入れたとき。Copilot CLI 1.0.57 の更新履歴）。手元のフォルダのマーケットプレイスから入れたプラグインは、コピーされず、そのフォルダを直接読むので、直したファイルは次のセッションで反映される（Copilot CLI 1.0.102 で確かめた）。GitHub から入れたときは、直した `plugin.json` を GitHub に送ってから、入れ直す（コピーの動きは確かめていない）。
 - 画面を開いたときに、起票できるかを確かめる。`repository` がない、`gh` がない、`gh` でログインしていない、のどれかのときは、承認のボタンを押せなくし、起票できるようにする手順（REQ-014）を示す。
 - 起票は `gh` のログインに任せる。`GITHUB_TOKEN` などの環境変数は求めない。ユーザーが断るとエクステンションごと読み込まれないためである。
 
