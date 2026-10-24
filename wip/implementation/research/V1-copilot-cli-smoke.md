@@ -253,3 +253,8 @@
 - 案内の文の例：「Copilot CLI を `copilot --experimental` で起動します（一度付けると設定に残るので、次からは付けなくても有効です）。すでに起動しているときは、チャットで `/settings experimental on` と打つと、自動で再起動して有効になります。」
 - 再起動のあとは、読み込みの確認が続けて 2 回出ることがある、と添えるとよい（README の「この確認が 2 回出ることがあります」の記述と合う）。「always allow」を選べば、2 回目は出ない見込み（この再起動の流れでは確かめていない）。
 - 無効に戻すときは `/settings experimental off` か `copilot --no-experimental`（どちらも設定に残る）。
+
+## 8. 追記（統括、2026-10-24）：シェルのツールの定義
+
+- X3 が V1 の生データ（`scratchpad/v1/out/gen-a/requests.jsonl` の `bash` の定義）で確かめた。Copilot CLI 1.0.102 のシェルのツール `bash` は `initial_wait`（30〜600秒）を持つ。それまでに終わらないコマンドは、途中の出力を返して動き続け、終わると知らせが来る。
+- test-plugin の EVAL のように数十分かかるコマンドは、この知らせを待ち、同じコマンドを動かし直さない（B3 が test-plugin の手順7に入れた。X2-05）。
