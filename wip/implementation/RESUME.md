@@ -177,7 +177,7 @@
 | D1c 外側の EVAL | af526bb1af09f9618（完了） |
 | X1 突き合わせ（生成プラグインの側） | a573cbefd6ad8b7da（指示は briefs/X.md。指摘は reviews/X1.md） |
 | X2 突き合わせ（クリエイターの側） | a015be8b3c3f5b5f0（指摘は reviews/X2.md） |
-| T1 すべての試験の通し | a7e9349258395fe6a（Haiku。指示は briefs/T1.md。結果は tasks/T1.md） |
+| T1 すべての試験の通し | a7e9349258395fe6a（完了。約1,500件が通り、落ちたのは会話例がないこと〔REQ-037。EVAL の後に作る〕だけ。組み立てた生成プラグインの tests/run.py も、Playwright を入れた後に合格） |
 | V1 Copilot CLI の読み込みの確かめ | a2958fd3e81866605（指示は briefs/V1.md。報告は research/V1-copilot-cli-smoke.md） |
 | H1 見ない模擬ユーザー | ac4ca894931c3fb3d（完了。形の確かめに通った。tests/dev-eval/heldout/h1/ に作る。統括はこのフォルダの中身を読まない。git の出力も `grep -v heldout` で外して見る） |
 | B3 の点検 | 4つとも完了（design 19件〔high 2〕、format 7件、models 24件〔high 1〕、language 34件） |
