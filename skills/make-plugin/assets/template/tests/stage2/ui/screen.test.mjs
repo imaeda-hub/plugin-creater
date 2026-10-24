@@ -51,13 +51,29 @@ const { chromium } = await loadPlaywright();
 const { uiDir } = locateUi();
 const { startApp } = await import(pathToFileURL(path.join(uiDir, 'app.mjs')));
 
+// ブラウザー：環境変数 PLUGIN_TEST_BROWSER_CHANNEL（chrome か msedge。試験の入口 tests/run.py が、手元の Chrome か Edge を見つけて渡す）が
+// あれば、そのブラウザーを使う。なければ、または起動できなければ、Playwright の Chromium を使う。
+async function launchBrowser() {
+  const channel = process.env.PLUGIN_TEST_BROWSER_CHANNEL;
+  const failures = [];
+  if (channel && channel !== 'chromium') {
+    try {
+      return await chromium.launch({ channel });
+    } catch (error) {
+      failures.push(`${channel}：${String(error.message).split('\n')[0]}`);
+    }
+  }
+  try {
+    return await chromium.launch();
+  } catch (error) {
+    failures.push(`Playwright の Chromium：${error.message}`);
+    throw new Error(`ブラウザーを起動できません。Chrome か Edge を入れるか、PLAYWRIGHT_BROWSERS_PATH でブラウザーの場所を指定してください。\n${failures.join('\n')}`);
+  }
+}
+
 let browser;
 before(async () => {
-  try {
-    browser = await chromium.launch();
-  } catch (error) {
-    throw new Error(`ブラウザーを起動できません。PLAYWRIGHT_BROWSERS_PATH でブラウザーの場所を指定してください。\n${error.message}`);
-  }
+  browser = await launchBrowser();
 });
 after(async () => {
   await browser?.close();

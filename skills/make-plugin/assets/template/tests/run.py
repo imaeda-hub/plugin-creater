@@ -12,6 +12,14 @@
 終了コード: 0 合格、1 不合格あり、2 道具が足りなくて止まった。
 試験のない段階は「試験なし」と示す（合格とも不合格とも数えない）。モデルは使わない。
 
+道具の見つけ方（ユーザーの環境全体は変えない）:
+  - Python の PyYAML と jsonschema は、tests/.venv（Python の仮想環境）に入れる。tests/.venv があれば、この入口はその Python で動き直す。
+  - Playwright は tests/node_modules に入れる（tests の下の試験のファイルから、Node.js がふつうに見つける）。
+  - ブラウザーは、手元の Chrome か Edge を使う。どちらもないときだけ、Playwright の Chromium を使う。
+    Chrome か Edge が見つかると、画面の試験（tests/stage2/ui/screen.test.mjs）に環境変数 PLUGIN_TEST_BROWSER_CHANNEL（chrome か msedge）で渡す。
+    すでにその環境変数があれば、それを使う（chromium と書くと Playwright の Chromium）。
+  足りない道具は、足りないものと入れ方を示して止まる（クリエイターに試験を頼むと、ユーザーがよいと答えた後に、クリエイターが入れる）。
+
 クリエイター自身の試験でも使い回せるよう、次の指定ができる:
     --root フォルダ        試験するプラグインのフォルダ（既定は、このファイルのあるフォルダの1つ上）
     --stage1-script ファイル  1段目のスクリプト（`<root> --json` で動き、JSON を出すもの）
@@ -41,24 +49,32 @@ TIMEOUT_SECONDS = 900   # 1つの段階の上限。超えたら不合格にす�
 # ---------------------------------------------------------------- 道具の確かめ
 
 NODE_NEED = "20.19 以上か 22.12 以上"
-BROWSER_COMMANDS = ["google-chrome", "google-chrome-stable", "chrome", "microsoft-edge", "microsoft-edge-stable", "msedge"]
-BROWSER_PATHS = [
-    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-    "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
-    r"%PROGRAMFILES%\Google\Chrome\Application\chrome.exe",
-    r"%PROGRAMFILES(X86)%\Google\Chrome\Application\chrome.exe",
-    r"%LOCALAPPDATA%\Google\Chrome\Application\chrome.exe",
-    r"%PROGRAMFILES%\Microsoft\Edge\Application\msedge.exe",
-    r"%PROGRAMFILES(X86)%\Microsoft\Edge\Application\msedge.exe",
+PLAYWRIGHT_VERSION = "1.56.1"
+# 手元のブラウザー：(Playwright の channel, コマンドの名前, 標準の場所)。Chrome を先に探す
+BROWSERS = [
+    ("chrome", ["google-chrome", "google-chrome-stable", "chrome"], [
+        "/opt/google/chrome/chrome",
+        "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+        r"%PROGRAMFILES%\Google\Chrome\Application\chrome.exe",
+        r"%PROGRAMFILES(X86)%\Google\Chrome\Application\chrome.exe",
+        r"%LOCALAPPDATA%\Google\Chrome\Application\chrome.exe",
+    ]),
+    ("msedge", ["microsoft-edge", "microsoft-edge-stable", "msedge"], [
+        "/opt/microsoft/msedge/msedge",
+        "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
+        r"%PROGRAMFILES%\Microsoft\Edge\Application\msedge.exe",
+        r"%PROGRAMFILES(X86)%\Microsoft\Edge\Application\msedge.exe",
+    ]),
 ]
+VENV_HOWTO = "生成プラグインの tests/.venv（Python の仮想環境。なければ、生成プラグインのフォルダで `python3 -m venv tests/.venv` を実行して作る）の中で"
 HOWTO = {
     "python": "Python 3.9 以上を入れる（https://www.python.org/downloads/）",
-    "pyyaml": "Python の仮想環境の中で `python3 -m pip install PyYAML` を実行する",
-    "jsonschema": "Python の仮想環境の中で `python3 -m pip install -U jsonschema` を実行する",
-    "tiktoken": "Python の仮想環境の中で `python3 -m pip install tiktoken` を実行する",
+    "pyyaml": VENV_HOWTO + " `python3 -m pip install PyYAML` を実行する（仮想環境の Python は tests/.venv/bin/python、Windows は tests\\.venv\\Scripts\\python.exe）",
+    "jsonschema": VENV_HOWTO + " `python3 -m pip install -U jsonschema` を実行する（仮想環境の Python は tests/.venv/bin/python、Windows は tests\\.venv\\Scripts\\python.exe）",
+    "tiktoken": VENV_HOWTO + " `python3 -m pip install tiktoken` を実行する",
     "node": "Node.js %s を入れる（https://nodejs.org/）" % NODE_NEED,
-    "playwright": "試験のフォルダで `npm install playwright` を実行する（全体に入れたものは使えない）",
-    "browser": "Chrome か Edge を入れる。どちらもないときは、`npx playwright install chromium` で Playwright の Chromium を入れる",
+    "playwright": "生成プラグインのフォルダで `npm install --prefix tests --no-save --no-package-lock playwright@%s` を実行する（tests/node_modules に入る。全体に入れたものは使えない）" % PLAYWRIGHT_VERSION,
+    "browser": "Chrome か Edge を入れる。どちらもないときは、Playwright を入れた後に、`node tests/node_modules/playwright/cli.js install chromium` で Playwright の Chromium を入れる",
 }
 
 
@@ -116,14 +132,23 @@ def playwright_found(directory: str) -> Tuple[bool, str]:
     return node_import_works(directory, "await import('playwright')"), ""
 
 
+def browser_channel() -> Optional[str]:
+    """手元の Chrome か Edge の Playwright の channel（chrome、msedge）。どちらもなければ None"""
+    for channel, commands, paths in BROWSERS:
+        if any(shutil.which(command) for command in commands) or any(os.path.exists(os.path.expandvars(path)) for path in paths):
+            return channel
+    return None
+
+
 def browser_found(directory: str) -> Tuple[bool, str]:
     """手元の Chrome か Edge、なければ Playwright の Chromium。"""
-    for command in BROWSER_COMMANDS:
-        if shutil.which(command):
-            return True, command
-    for path in BROWSER_PATHS:
-        if os.path.exists(os.path.expandvars(path)):
-            return True, os.path.expandvars(path)
+    for channel, commands, paths in BROWSERS:
+        for command in commands:
+            if shutil.which(command):
+                return True, command
+        for path in paths:
+            if os.path.exists(os.path.expandvars(path)):
+                return True, os.path.expandvars(path)
     script = "import fs from 'node:fs'; const {chromium} = await import('playwright'); process.exit(fs.existsSync(chromium.executablePath()) ? 0 : 1)"
     return (True, "Playwright の Chromium") if node_import_works(directory, script) else (False, "")
 
@@ -284,8 +309,12 @@ def parse_tap(text: str) -> List[Dict[str, str]]:
 
 def run_node_tests(root: str, files: List[str]) -> List[Dict[str, str]]:
     node = shutil.which("node") or "node"
+    env = dict(os.environ)
+    channel = browser_channel()
+    if channel and "PLUGIN_TEST_BROWSER_CHANNEL" not in env:   # 画面の試験に、手元の Chrome か Edge を使わせる
+        env["PLUGIN_TEST_BROWSER_CHANNEL"] = channel
     try:
-        proc = subprocess.run([node, "--test", "--test-reporter=tap"] + files, cwd=root, capture_output=True,
+        proc = subprocess.run([node, "--test", "--test-reporter=tap"] + files, cwd=root, capture_output=True, env=env,
                               timeout=TIMEOUT_SECONDS)
     except subprocess.TimeoutExpired:
         return [{"name": "node --test", "status": "failed", "reason": "%d 秒たっても終わらない" % TIMEOUT_SECONDS}]
@@ -457,6 +486,30 @@ def run(root: str, stage1_script: str, stage2_dir: str, results_path: str, extra
     return result
 
 
+def venv_python(root: str) -> Optional[str]:
+    """tests/.venv の Python。なければ（または動かなければ）None"""
+    base = os.path.join(root, "tests", ".venv")
+    path = os.path.join(base, "Scripts", "python.exe") if os.name == "nt" else os.path.join(base, "bin", "python")
+    if not os.path.isfile(path):
+        return None
+    try:
+        return path if subprocess.run([path, "-c", "pass"], capture_output=True, timeout=30).returncode == 0 else None
+    except (OSError, subprocess.SubprocessError):
+        return None
+
+
+def rerun_in_venv(root: str, argv: List[str]) -> Optional[int]:
+    """tests/.venv があり、今の Python がその外にあるなら、その Python でこの入口を動かし直す（PyYAML と jsonschema はそこにある）。
+    動かし直したときは、その終了コードを返す。動かし直さないときは None。"""
+    if os.environ.get("PLUGIN_TESTS_IN_VENV"):
+        return None
+    python = venv_python(root)
+    if not python or os.path.realpath(sys.prefix) == os.path.realpath(os.path.dirname(os.path.dirname(python))):
+        return None
+    env = dict(os.environ, PLUGIN_TESTS_IN_VENV="1")   # 動かし直しが続かないように
+    return subprocess.call([python, os.path.abspath(__file__)] + argv, env=env)
+
+
 def main(argv: Optional[List[str]] = None) -> int:
     for stream in (sys.stdout, sys.stderr):
         if hasattr(stream, "reconfigure"):
@@ -473,6 +526,9 @@ def main(argv: Optional[List[str]] = None) -> int:
     if args.unittest_worker:
         return unittest_worker(*args.unittest_worker)
     root = os.path.abspath(args.root)
+    code = rerun_in_venv(root, sys.argv[1:] if argv is None else list(argv))
+    if code is not None:
+        return code
     results = os.path.abspath(args.results or os.path.join(root, "tests", "results", "latest.json"))
     result = run(root, os.path.abspath(args.stage1_script), os.path.abspath(args.stage2_dir), results, args.need)
     print(json.dumps(result, ensure_ascii=False, indent=2) if args.json else format_text(result))
